@@ -1,0 +1,265 @@
+; SPDX-License-Identifier: GPL-3.0-only
+; Copyright (C) 2026 Laine Jones
+; -------------------------------------------------------------------------
+; PrismRTG - Installer script
+; RTG (graphics card) software for AmigaOS 3.x:
+;   Village Tronic Picasso II / GBAPII++ (Zorro II) and MNT ZZ9000.
+; Needs the standard Installer, AmigaOS 3.0 or newer and a 68020 or better.
+; Double-click Install_PrismRTG, or from a Shell in this drawer:
+;     Installer Install_PrismRTG
+; Run it again to update PrismRTG or to remove it.
+;
+; The product is PrismRTG; its files keep their short names (PrismD, PrismPrefs,
+; the monitor file "Prism", the PRISM: screen modes).
+; -------------------------------------------------------------------------
+(set @app-name "PrismRTG")
+(complete 0)
+
+; ---- the machine ---------------------------------------------------------
+(if (< (/ (getversion "exec.library" (resident)) 65536) 39)
+    (abort "PrismRTG needs AmigaOS 3.0 or newer."))
+(set cpu (database "cpu"))
+(if (or (= cpu "68000") (= cpu "68010"))
+    (abort "PrismRTG needs a 68020 or better processor (this Amiga has a " cpu ")."))
+(if (not (exists "PrismD"))
+    (abort "Can't find PrismD next to this script.\n\n"
+           "Run the installer from the drawer it came in."))
+
+(set mon   "DEVS:Monitors")
+(set store "SYS:Storage/Monitors")
+(set smode "ENVARC:Sys/screenmode.prefs")
+(set sback "ENVARC:Sys/screenmode.prefs.before-prism")
+(set pnote "ENVARC:Prism.p96monitor")      ; name of the Picasso96 monitor we moved away
+(set plib  "LIBS:Picasso96API.library")
+(set pkeep "LIBS:Picasso96API.library.before-prism")   ; Picasso96's own, kept aside
+
+; ---- which card (PrismSetup looks; it changes nothing) -------------------
+(run "PrismSetup >NIL: DETECT")
+(set card    (getenv "PrismCard"))
+(set cardname (getenv "PrismCardName"))
+(set p96mon  (getenv "PrismP96Mon"))
+(set p96n    (getenv "PrismP96"))          ; pieces of an installed Picasso96 (0 = none)
+(set p96list (getenv "PrismP96List"))
+(set p96left 0)                            ; 1 = Picasso96 stays in place
+
+; ---- install, update or remove -------------------------------------------
+(set mode 0)
+(set fresh (not (exists (tackon mon "Prism"))))   ; a first install, not an update
+(if (not fresh)
+    (set mode
+        (askchoice
+            (prompt "PrismRTG is installed on this Amiga. What should the installer do?")
+            (help "Update copies this package's programs over the installed ones. "
+                  "Your settings are kept.\n\n"
+                  "Remove deletes PrismRTG, puts the Workbench screen mode back the way "
+                  "it was before, and moves Picasso96 back out of its backup drawer "
+                  "(SYS:Storage/Picasso96-parked) if the installer put it there.")
+            (choices "Update PrismRTG" "Remove PrismRTG")
+            (default 0))))
+
+(if (= mode 1)
+    (
+        ; our Picasso96API.library file goes first (only ours: it is tiny), so
+        ; that Picasso96's own can come back to its place
+        (if (exists plib)
+            (if (< (getsize plib) 2000)
+                (run (cat "Delete >NIL: \"" plib "\" QUIET"))))
+        ; Picasso96 back out of the backup drawer, while PrismSetup is still there
+        (set back "")
+        (if (exists "SYS:Storage/Picasso96-parked/Prism.manifest")
+            (
+                (if (exists "C:PrismSetup")
+                    (run "C:PrismSetup >NIL: P96RESTORE")
+                    (run "PrismSetup >NIL: P96RESTORE"))
+                (if (exists "SYS:Storage/Picasso96-parked/Prism.manifest")
+                    (set back (cat "\n\nSome of Picasso96 could not be moved back and is still "
+                                   "in SYS:Storage/Picasso96-parked."))
+                    (set back "\n\nPicasso96 is back where it was."))
+            ))
+        ; (run takes ONE string: several are not joined - always (cat ...) the command)
+        (run (cat "Delete >NIL: C:PrismD C:PrismSetup C:PrismProbe \"" (tackon mon "Prism")
+                  "\" \"" (tackon mon "Prism.info") "\" QUIET"))
+        (run "Delete >NIL: SYS:Prefs/PrismPrefs SYS:Prefs/PrismPrefs.info QUIET")
+        (run "Delete >NIL: ENVARC:Prism.prefs ENV:Prism.prefs ENVARC:Prism.booting QUIET")
+        (if (and (exists pkeep) (not (exists plib)))
+            (run (cat "Rename >NIL: \"" pkeep "\" \"" plib "\"")))
+        (if (exists sback)
+            (
+                (run (cat "Copy >NIL: \"" sback "\" \"" smode "\" CLONE"))
+                (run (cat "Delete >NIL: \"" sback "\" QUIET"))
+            ))
+        ; (a monitor file moved away by an older version of this installer)
+        (if (exists pnote)
+            (
+                ; make sure ENV: has it (it is only a copy of ENVARC: made at boot)
+                (run (cat "Copy >NIL: \"" pnote "\" ENV:Prism.p96monitor"))
+                (set old (getenv "Prism.p96monitor"))
+                (if (exists (tackon store old))
+                    (
+                        (run (cat "Rename >NIL: \"" (tackon store old) "\" \"" (tackon mon old) "\""))
+                        (if (exists (tackon store (cat old ".info")))
+                            (run (cat "Rename >NIL: \"" (tackon store (cat old ".info")) "\" \""
+                                      (tackon mon (cat old ".info")) "\"")))
+                        (set back (cat "\n\nThe Picasso96 monitor \"" old "\" is back in " mon "."))
+                    ))
+                (run (cat "Delete >NIL: \"" pnote "\" ENV:Prism.p96monitor QUIET"))
+            ))
+        (exit "PrismRTG is removed." back "\n\n"
+              "Reboot now: PrismRTG keeps running until then." (quiet))
+    ))
+
+; ---- a first install: say what it is, and check the card -----------------
+(if fresh
+    (message "Welcome to PrismRTG.\n\n"
+             "PrismRTG is graphics card (RTG) software for the Picasso II, the GBAPII++ and "
+             "the MNT ZZ9000: Workbench and programs in 256 colours, 16-bit and "
+             "24/32-bit, drawn by the card's blitter, with its own built-in "
+             "cybergraphics.library and Picasso96API.library for programs that ask "
+             "for one.\n\n"
+             "It takes the place of Picasso96: the two cannot be active on the same "
+             "Amiga. If Picasso96 is installed, the installer asks before it touches "
+             "anything, and nothing of Picasso96 is ever deleted."))
+
+(if (= card "0")
+    (if (not (askbool
+            (prompt "No graphics card that PrismRTG knows was found in this Amiga.\n\n"
+                    "PrismRTG drives the Picasso II, GBAPII++, Piccolo, Piccolo SD64, "
+                    "Spectrum 28/24 and the MNT ZZ9000.\n\n"
+                    "Install it anyway?")
+            (help "Without one of these cards PrismRTG starts, finds nothing and stops: "
+                  "the Amiga works as before. Installing anyway only makes sense if the "
+                  "card will be fitted later.")
+            (choices "Install anyway" "Cancel")
+            (default 0)))
+        (exit "Nothing was installed." (quiet))))
+(if (or (= card "1") (= card "5") (= card "6") (= card "7"))
+    (message "PrismRTG has been tested on this kind of card (" cardname ") only in an "
+             "emulator, never on the real hardware.\n\n"
+             "It may work, or the picture may be wrong. Picasso96 is not touched "
+             "unless you say so, and holding the left mouse button while booting "
+             "always starts the Amiga without PrismRTG."))
+(if (= card "4")
+    (message "This ZZ9000 is running in Zorro II mode.\n\n"
+             "PrismRTG can show pictures on it, but the card's blitter and mouse pointer "
+             "are only supported in Zorro III mode, and Zorro II mode has not been "
+             "tested. Picasso96 is the safer choice on this machine for now."))
+
+; ---- an installed Picasso96 ----------------------------------------------
+; PrismSetup DETECT listed what starts Picasso96 at boot: its monitor files in
+; DEVS:Monitors and its Picasso96API.library. With those in place PrismRTG
+; does not start (PrismD checks), so the choice is the user's, made before
+; anything is copied.
+(if (<> p96n "0")
+    (
+        (set p96what
+            (askchoice
+                (prompt "Picasso96 is installed on this Amiga:\n\n" p96list "\n"
+                        "PrismRTG and Picasso96 cannot both be active. What should the "
+                        "installer do with these files?")
+                (help "Back it up: the files listed are MOVED to the drawer "
+                      "SYS:Storage/Picasso96-parked, with a note of where each one came "
+                      "from. Nothing is deleted. The rest of Picasso96 (its drawer, its "
+                      "preferences, LIBS:Picasso96) stays where it is and does nothing "
+                      "without them. Removing PrismRTG with this installer moves them "
+                      "back.\n\n"
+                      "Leave it: nothing of Picasso96 is touched. PrismRTG is installed "
+                      "but does NOT start while these files are there - the Amiga goes "
+                      "on using Picasso96 exactly as before. Run this installer again "
+                      "when you want to switch.\n\n"
+                      "To stop here without installing anything, use Abort Install.")
+                (choices "Back it up and switch to PrismRTG"
+                         "Leave it (PrismRTG stays off)")
+                (default 0)))
+        (if (= p96what 0)
+            (
+                (run "PrismSetup >NIL: P96PARK")
+                (run "PrismSetup >NIL: DETECT")
+                (if (<> (getenv "PrismP96") "0")
+                    (
+                        (set p96left 1)
+                        (message "Not all of Picasso96 could be moved:\n\n"
+                                 (getenv "PrismP96List") "\n"
+                                 "PrismRTG will be installed but will not start until these "
+                                 "are out of the way (move them by hand, then reboot).")
+                    ))
+            )
+            (set p96left 1))
+    ))
+
+; ---- the programs --------------------------------------------------------
+(copyfiles (prompt "The PrismRTG driver")
+           (source "PrismD") (dest "C:")
+           (help @copyfiles-help))
+(copyfiles (source "PrismSetup") (dest "C:") (nogauge))
+(copyfiles (source "PrismProbe") (dest "C:") (nogauge))
+(copyfiles (source "Prism") (dest mon) (infos) (nogauge))
+(copyfiles (source "PrismPrefs") (dest "SYS:Prefs") (infos) (nogauge))
+; an archive unpacked by some tools loses the "executable" bit
+(run "Protect >NIL: C:PrismD +e")
+(run "Protect >NIL: C:PrismSetup +e")
+(run "Protect >NIL: C:PrismProbe +e")
+(run (cat "Protect >NIL: \"" (tackon mon "Prism") "\" +e"))
+(run "Protect >NIL: SYS:Prefs/PrismPrefs +e")
+(if (not (exists "ENVARC:Prism.prefs"))
+    (run "SYS:Prefs/PrismPrefs >NIL: SAVE"))
+
+; Prism's own Picasso96API.library: the working one is inside PrismD; this
+; small file is for programs that look for it in LIBS:. Ours is a few hundred
+; bytes - a bigger file of that name is Picasso96's and is kept, not deleted.
+(if (exists plib)
+    (if (> (getsize plib) 2000)
+        (if (not (exists pkeep))
+            (run (cat "Rename >NIL: \"" plib "\" \"" pkeep "\"")))))
+(copyfiles (source "Picasso96API.library") (dest "LIBS:") (nogauge))
+(complete 50)
+
+(complete 70)
+
+; ---- the Workbench screen ------------------------------------------------
+; slots (prefs.h): depth * 8 + size; sizes 640x400, 640x480, 800x600, 1024x768...
+; (a first install only: an update leaves the Workbench screen alone)
+(if (and fresh (= p96left 0))
+    (
+        (set wb
+            (askchoice
+                (prompt "Which screen should Workbench open on after the reboot?")
+                (help "A PrismRTG screen is shown by the graphics card. 800 x 600 works on "
+                      "practically every monitor. You can change it at any time in "
+                      "Prefs/ScreenMode (the PRISM: modes), and Prefs/PrismPrefs has a "
+                      "Test button that shows a mode for ten seconds before you commit "
+                      "to it.\n\n"
+                      "\"Leave it as it is\" keeps today's Workbench screen: choose a "
+                      "PRISM: mode in Prefs/ScreenMode yourself later.\n\n"
+                      "Today's setting is kept in " sback " and comes back when PrismRTG "
+                      "is removed.")
+                (choices "Prism 640 x 480, 256 colours"
+                         "Prism 800 x 600, 256 colours"
+                         "Prism 800 x 600, 16-bit"
+                         "Prism 1024 x 768, 16-bit"
+                         "Leave it as it is")
+                (default 1)))
+        (if (< wb 4)
+            (
+                (if (and (exists smode) (not (exists sback)))
+                    (run (cat "Copy >NIL: \"" smode "\" \"" sback "\" CLONE")))
+                (if (= wb 0) (run "C:PrismSetup >NIL: WBMODE=1"))
+                (if (= wb 1) (run "C:PrismSetup >NIL: WBMODE=2"))
+                (if (= wb 2) (run "C:PrismSetup >NIL: WBMODE=10"))
+                (if (= wb 3) (run "C:PrismSetup >NIL: WBMODE=11"))
+            ))
+    ))
+(complete 100)
+
+(if (= p96left 1)
+    (exit "PrismRTG is installed, but Picasso96 is still in place, so PrismRTG will "
+          "NOT start: this Amiga goes on using Picasso96.\n\n"
+          "Run Install_PrismRTG again and choose \"Back it up\" when you want to switch."
+          (quiet)))
+(exit (if fresh "PrismRTG is installed" "PrismRTG is updated")
+      (if (<> cardname "") (cat " for the " cardname) "")
+      ".\n\n"
+      "Reboot to start it.\n\n"
+      "If the screen stays dark or looks wrong: hold the LEFT MOUSE BUTTON while "
+      "booting and PrismRTG does not start. A start that hangs is also skipped by "
+      "itself on the next boot. Then use Prefs/PrismPrefs to change the modes."
+      (quiet))      ; no "can be found in your ... drawer" page: nothing lives in one drawer

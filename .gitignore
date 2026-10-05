@@ -1,0 +1,9 @@
+# build output (rebuild with build.sh)
+out/
+
+*.bak
+*~
+Thumbs.db
+
+# private working notes
+CLAUDE.md

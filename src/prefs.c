@@ -1,0 +1,122 @@
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Laine Jones */
+/*
+ * prefs.c - read and write ENV:Prism.prefs (see prefs.h).
+ */
+#include <exec/types.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include "prefs.h"
+
+/* New sizes go at the END: a slot's position is its ModeID. */
+const UWORD prefs_sizes[PREFS_NSIZES][2] = {
+    { 640, 400 }, { 640, 480 }, { 800, 600 }, { 1024, 768 },
+    { 1280, 720 }, { 1280, 1024 },
+    /* low resolution, for games that draw 320 pixels wide and assume the
+     * screen is exactly that (ADoom, 2026-10-04) */
+    { 320, 200 }, { 320, 240 },
+};
+/* New depths go at the END too. 24 = 3 bytes a pixel, 32 = 4: a card may
+ * have either or both (see board_format in prismd.c). */
+const UBYTE prefs_depths[PREFS_NDEPTHS] = { 8, 16, 24, 32 };
+const UBYTE prefs_rates[PREFS_NRATES] = { 0, 60, 70, 72, 75 };
+
+static const char *const boardNames[PB_COUNT] = { "AUTO", "PICASSO2", "ZZ9000" };
+
+void prefs_default(struct PrismPrefs *p)
+{
+    memset(p, 0, sizeof(*p));
+    p->board = PB_AUTO;
+    p->blitter = 1;
+    p->log = 0;
+    memset(p->on, 1, sizeof(p->on));
+}
+
+static int same(const char *a, const char *b)
+{
+    while (*a && *b) {
+        char x = *a++, y = *b++;
+        if (x >= 'a' && x <= 'z') x -= 32;
+        if (y >= 'a' && y <= 'z') y -= 32;
+        if (x != y)
+            return 0;
+    }
+    return *a == *b;
+}
+
+static int onoff(const char *v)
+{
+    return same(v, "ON") || same(v, "YES") || same(v, "1");
+}
+
+static void parse_mode(struct PrismPrefs *p, char *v)
+{
+    unsigned w, h, d, hz = 0;
+    char state[8] = "ON";
+    int i;
+
+    if (sscanf(v, "%ux%ux%u %7s %u", &w, &h, &d, state, &hz) < 3)
+        return;
+    for (i = 0; i < PREFS_NMODES; i++)
+        if (prefs_sizes[PREFS_SIZE(i)][0] == w && prefs_sizes[PREFS_SIZE(i)][1] == h &&
+            prefs_depths[PREFS_DEPTH(i)] == d) {
+            p->on[i] = onoff(state);
+            p->hz[i] = hz < 256 ? hz : 0;
+            return;
+        }
+}
+
+BOOL prefs_load(struct PrismPrefs *p, const char *path)
+{
+    FILE *f;
+    char line[96], *v, *e;
+    int i;
+
+    prefs_default(p);
+    if (!(f = fopen(path, "r")))
+        return FALSE;
+    while (fgets(line, sizeof(line), f)) {
+        if ((e = strpbrk(line, "\r\n")))
+            *e = 0;
+        if (line[0] == ';' || line[0] == '#' || !(v = strchr(line, '=')))
+            continue;
+        *v++ = 0;
+        if (same(line, "BOARD")) {
+            for (i = 0; i < PB_COUNT; i++)
+                if (same(v, boardNames[i]))
+                    p->board = i;
+        } else if (same(line, "BLITTER")) {
+            p->blitter = onoff(v);
+        } else if (same(line, "LOG")) {
+            p->log = same(v, "SYNC") ? 2 : onoff(v);
+        } else if (same(line, "PALETTE")) {
+            p->clutBGR = same(v, "BGR");
+        } else if (same(line, "MODE")) {
+            parse_mode(p, v);
+        }
+    }
+    fclose(f);
+    return TRUE;
+}
+
+BOOL prefs_save(const struct PrismPrefs *p, const char *path)
+{
+    FILE *f;
+    int i, ok;
+
+    if (!(f = fopen(path, "w")))
+        return FALSE;
+    fprintf(f, "; Prism RTG settings - written by PrismPrefs\n");
+    fprintf(f, "BOARD=%s\n", boardNames[p->board < PB_COUNT ? p->board : PB_AUTO]);
+    fprintf(f, "BLITTER=%s\n", p->blitter ? "ON" : "OFF");
+    fprintf(f, "LOG=%s\n", p->log ? "ON" : "OFF");
+    if (p->clutBGR)
+        fprintf(f, "PALETTE=BGR\n");
+    for (i = 0; i < PREFS_NMODES; i++)
+        fprintf(f, "MODE=%ux%ux%u %s %u\n", prefs_sizes[PREFS_SIZE(i)][0],
+                prefs_sizes[PREFS_SIZE(i)][1], prefs_depths[PREFS_DEPTH(i)],
+                p->on[i] ? "ON" : "OFF", p->hz[i]);
+    ok = !ferror(f);
+    return fclose(f) == 0 && ok;
+}

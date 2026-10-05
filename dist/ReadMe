@@ -1,0 +1,47 @@
+PrismRTG - RTG for AmigaOS 3.x
+==============================
+
+A from-scratch retargetable-graphics system for two boards:
+  * Village Tronic Picasso II / GBAPII++ (Cirrus GD542x), Zorro II
+  * Piccolo, Piccolo SD64, GVP Spectrum 28/24 (Zorro II) - emulator-tested only
+  * MNT ZZ9000, Zorro III
+
+It takes the place of Picasso96: the two cannot both be active on one
+Amiga, and PrismRTG does not start while Picasso96's monitor files are in
+DEVS:Monitors. Needs OS 3.0+ and a 68020 or better.
+
+Install:   double-click Install_PrismRTG (the standard Installer), or from a
+           Shell in this drawer:  Installer Install_PrismRTG
+           It finds the card, sets the Workbench screen and, if Picasso96
+           is installed, lists its monitor files and asks: back them up
+           (moved to SYS:Storage/Picasso96-parked, never deleted) or leave
+           them (then PrismRTG stays off). Remove moves them back.
+Update or remove: run Install_PrismRTG again.
+
+What goes where
+  C:PrismD               the driver; started at boot
+  C:PrismSetup           the installer's helper (card detection)
+  C:PrismProbe           lists the expansion boards PrismRTG can drive
+  DEVS:Monitors/Prism    starts PrismD before Workbench opens
+  SYS:Prefs/PrismPrefs   modes, refresh rates, board, blitter, log
+  ENVARC:Prism.prefs     the settings
+
+Using it
+  Reboot, open Prefs/ScreenMode and choose a PRISM: mode (8bit or 16bit).
+  Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
+  own built-in cybergraphics.library and Picasso96API.library.
+
+24-bit or 32-bit?
+  Both are true colour. On the GBAPII++ the card's blitter can draw text
+  and fills at 32-bit but not at 24-bit (text is several times faster),
+  while copying and scrolling are about a quarter faster at 24-bit because
+  each pixel is smaller. 24-bit is 640x480 only there; 32-bit also does
+  800x600. The Picasso II has 24-bit only, the ZZ9000 32-bit only.
+
+If something goes wrong
+  Hold the LEFT MOUSE BUTTON while booting: PrismRTG doesn't start and
+  Workbench opens on a native mode. Then use PrismPrefs (switch a mode
+  off, change its refresh, or turn the blitter off) and reboot.
+  With "Debug log" ticked, PrismD writes T:PrismD.log.
+
+Licence: GNU General Public License version 3. (c) 2026 Laine Jones.
