@@ -7,8 +7,11 @@ its own built-in `cybergraphics.library` and `Picasso96API.library` for programs
 that ask for one (both written for PrismRTG: nothing of CyberGraphX or Picasso96
 is used or shipped).
 
-It is standalone: it does not use, need or include any Picasso96 or
-CyberGraphX file. It takes the place of Picasso96 on the card it drives.
+It was written so that its author has an RTG system he can maintain himself:
+when something is wrong it can be fixed the same day. It is standalone - it
+uses, needs and includes nothing of Picasso96 or CyberGraphX - and it is free
+software under the GPL. It takes the place of Picasso96 on the Amiga it runs
+on.
 
 ![PrismPrefs on a PrismRTG Workbench (A4000, ZZ9000)](docs/a4000-prismprefs.png)
 
@@ -30,6 +33,10 @@ Needs AmigaOS 3.0 or newer and a 68020 or better.
 
 * PrismRTG modes appear in Prefs/ScreenMode and ASL requesters (`PRISM:800x600 16bit` ...).
 * Workbench 3.2 on the card at 8, 16, 24 and 32 bits, with colour icons.
+  Both the OS's own `icon.library` and PeterK's `icon.library` 51.4 are
+  used daily: the two real machines run PeterK's (which keeps its work
+  bitmaps in fast RAM - PrismRTG draws into those itself), the emulated
+  test machines the OS's.
 * graphics.library drawing into PrismRTG screens, checked pixel-for-pixel
   against the native chipset (`PrismBench`: fills, lines, text, planar blits).
 * cybergraphics.library 41 API: MultiView, AWeb and Amelinium show
@@ -58,22 +65,30 @@ own driver. Run-to-run noise is about 5%.
 
 ### A4000, 68060, ZZ9000 - 800x600, 8-bit
 
-| Test | Picasso96 | PrismRTG |
-|---|---|---|
-| RectFill 100x100 | 19,933 | **23,743** |
-| RectFill 8x8 | 26,148 | **37,429** |
-| Text, 40 characters | 4,894 | **5,455** |
-| Text, 4 characters | 9,844 | **16,222** |
-| ClipBlit 200x100 | 5,493 | **8,575** |
-| ScrollRaster 400x100 | 5,520 | **11,484** |
-| Line, ~390 pixels | 18,134 | **27,020** |
-| WritePixel | 92,941 | **118,233** |
-| Planar blit 64x32 (icons) | 241 | **1,028** |
-| Bitmap-to-screen blit 64x32 | 11,178 | **28,868** |
+PrismRTG 1.0 as released (5 October 2026); Picasso96 measured on the same
+machine two days earlier.
 
-16-bit and 32-bit show the same pattern (WritePixel at 32-bit: 92,875 / 100,985).
+| Test | Picasso96 | PrismRTG 1.0 |
+|---|---|---|
+| RectFill 100x100 | 19,933 | **22,046** |
+| RectFill 8x8 | 26,148 | **35,484** |
+| Text, 40 characters | 4,894 | **5,387** |
+| Text, 4 characters | 9,844 | **15,433** |
+| ClipBlit 200x100 | 5,493 | **8,695** |
+| ScrollRaster 400x100 | 5,520 | **11,149** |
+| Line, ~390 pixels | 18,134 | **26,761** |
+| WritePixel | 92,941 | **117,717** |
+| Planar blit 64x32 (icons) | 241 | **1,007** |
+| Bitmap-to-screen blit 64x32 | 11,178 | **24,271** |
+
+16-bit and 32-bit show the same pattern (WritePixel at 32-bit: 92,875 /
+99,498). Screen flips (`ScreenToFront` between two PrismRTG screens) run at
+25-33 a second against 50 for two native screens: one extra frame per flip.
 
 ### A2000, 68030 at 50 MHz, GBAPII++ - 640x480
+
+Measured on 4 October 2026 with the build of that day (the A2000 has not run
+the released build yet).
 
 | Test | P96 8-bit | **PrismRTG 8** | P96 16-bit | **PrismRTG 16** |
 |---|---|---|---|---|
@@ -107,6 +122,19 @@ faster for copies and scrolling because each pixel is smaller. Both are
 offered; choose in Prefs/ScreenMode. Picasso96 was measured in its 24-bit
 mode only.
 
+## Software it has been seen running
+
+Started one after another on an emulated Picasso II+ with Workbench on a
+PrismRTG screen at 16-bit and again at 256 colours, each screen captured
+and looked at (`docs/design.md` has the full list and what was found):
+AWeb, IBrowse, NetSurf, Amelinium, AmIRC, YAM, SimpleMail, WookieChat,
+Directory Opus 4, MultiView, MysticView, Personal Paint 7, ArtEffect 4,
+AmigaAMP, AMPlifier, HippoPlayer, Eagleplayer, FileX, EvenMore, CharMap,
+Lupe, HomeBank, MUIbase, MakeCD, FryingPan, Amiga Chess RTG, AmiArcadia,
+ArTKanoid, WBsteroids, MagicNumbers, dynAMIte, iGame, Ballfield, ADoom,
+DoomAttack, AHeretic, Hexen, the Joyride demo, Visage, CyberAVI, P96Speed.
+On the real A4000: CgxBenchmark, OpenDUNE, the KillerCGX demo, Amelinium.
+
 ## Install
 
 Unpack the archive, open the `PrismRTG` drawer and double-click
@@ -119,6 +147,8 @@ Unpack the archive, open the `PrismRTG` drawer and double-click
   with a note of where each came from) or **leave it** (nothing is
   touched, and PrismRTG stays off). Nothing of Picasso96 is ever deleted,
 * asks which PrismRTG screen Workbench should open on.
+
+![The installer's Picasso96 question](docs/installer-picasso96.png)
 
 Reboot. Run Install_PrismRTG again to update or to remove PrismRTG; Remove
 moves Picasso96 back out of the backup drawer and puts the previous screen

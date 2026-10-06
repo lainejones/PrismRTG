@@ -30,7 +30,7 @@ struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *GadToolsBase;
 
-static const char version[] __attribute__((used)) = "$VER: PrismPrefs 1.0 (04.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: PrismPrefs 1.0.1 (05.10.2026)";
 
 enum { GAD_LIST = 1, GAD_ON, GAD_HZ, GAD_BOARD, GAD_BLIT, GAD_LOG,
        GAD_SAVE, GAD_USE, GAD_DEFAULTS, GAD_CANCEL, GAD_STATUS, GAD_TEST };
@@ -326,7 +326,7 @@ static BOOL open_window(struct Gui *g)
     if (!make_gadgets(g, &iw, &ih))
         return FALSE;
     g->win = OpenWindowTags(NULL,
-        WA_Title, (ULONG)"Prism Preferences",
+        WA_Title, (ULONG)"PrismRTG Preferences",
         WA_Left, 20, WA_Top, g->scr->BarHeight + 4,
         WA_InnerWidth, iw, WA_InnerHeight, ih,
         WA_AutoAdjust, TRUE,

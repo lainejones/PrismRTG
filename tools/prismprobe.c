@@ -12,7 +12,7 @@
 #include <proto/expansion.h>
 #include <stdio.h>
 
-static const char version[] __attribute__((used)) = "$VER: PrismProbe 1.0 (04.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: PrismProbe 1.0.1 (05.10.2026)";
 
 struct ExpansionBase *ExpansionBase;
 

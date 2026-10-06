@@ -1402,3 +1402,12 @@ OpenDUNE 0.9 (NovaCoder's SDL port) on the A4000: opens PRISM:320x200
 Escape did nothing - whether it normally moves on at that point on this
 machine is a question for Laine. Started with `<NIL:` as input it leaves
 at once without a word; with a console it runs.
+
+### The two slow P96Speed lines, on the real machine (2026-10-05)
+
+`stftest` (two screens, flipped 40 times; then 200 ellipses) on the A4000:
+ScreenToFront between two PrismRTG screens 25-33 a second, between two
+native screens 50 a second - one extra frame per flip, not the 5 a second
+P96Speed measured on the cycle-exact emulated 68030. DrawEllipse: 477 a
+second on a PrismRTG screen against 124 on a native one. Neither needs
+work; the emulator's numbers were the emulator's speed.
