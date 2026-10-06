@@ -80,7 +80,70 @@ void park(void)
         Wait(0);
 }
 
-static char buf[4096];
+static char buf[16384];
+
+/* Where code lives, to put names to the PC and the return addresses on
+ * the stack: each process's loaded segments, and for each library the
+ * span its jump table points into. */
+static int segs(int len, const char *name, BPTR sl)
+{
+    int k = 0;
+
+    while (sl && k < 24 && len < (int)sizeof(buf) - 200) {
+        ULONG *s = (ULONG *)BADDR(sl);
+        len += sprintf(buf + len, "%s %s %08lx-%08lx", k ? "" : "\n  seg", k ? "" : name,
+                       (unsigned long)(s + 1), (unsigned long)s + s[-1] - 4);
+        sl = (BPTR)*s;
+        k++;
+    }
+    return len;
+}
+
+static int code_map(int len)
+{
+    struct List *lists[2] = { &SysBase->TaskWait, &SysBase->TaskReady };
+    struct Node *n;
+    int i;
+
+    for (i = 0; i < 2; i++)
+        for (n = lists[i]->lh_Head; n->ln_Succ; n = n->ln_Succ) {
+            struct Process *pr = (struct Process *)n;
+            struct CommandLineInterface *cli;
+            if (n->ln_Type != NT_PROCESS)
+                continue;
+            cli = (struct CommandLineInterface *)BADDR(pr->pr_CLI);
+            if (cli && cli->cli_Module)
+                len = segs(len, n->ln_Name ? n->ln_Name : "?", cli->cli_Module);
+            else if (pr->pr_SegList && ((LONG *)BADDR(pr->pr_SegList))[0] >= 3)
+                len = segs(len, n->ln_Name ? n->ln_Name : "?", ((BPTR *)BADDR(pr->pr_SegList))[3]);
+        }
+    if (trapTask && trapTask->tc_Node.ln_Type == NT_PROCESS) {
+        struct Process *pr = (struct Process *)trapTask;
+        struct CommandLineInterface *cli = (struct CommandLineInterface *)BADDR(pr->pr_CLI);
+        if (cli && cli->cli_Module)
+            len = segs(len, "(trapped)", cli->cli_Module);
+        else if (pr->pr_SegList && ((LONG *)BADDR(pr->pr_SegList))[0] >= 3)
+            len = segs(len, "(trapped)", ((BPTR *)BADDR(pr->pr_SegList))[3]);
+    }
+    for (n = SysBase->LibList.lh_Head; n->ln_Succ && len < (int)sizeof(buf) - 200; n = n->ln_Succ) {
+        struct Library *lib = (struct Library *)n;
+        ULONG lo = 0xffffffff, hi = 0;
+        UWORD v, nv = lib->lib_NegSize / 6;
+        for (v = 1; v <= nv; v++) {
+            UWORD *j = (UWORD *)((UBYTE *)lib - 6 * v);
+            ULONG a;
+            if (*j != 0x4ef9)
+                continue;
+            a = *(ULONG *)(j + 1);
+            if (a < lo) lo = a;
+            if (a > hi) hi = a;
+        }
+        if (hi)
+            len += sprintf(buf + len, "\n  lib %s %08lx-%08lx", n->ln_Name ? n->ln_Name : "?",
+                           (unsigned long)lo, (unsigned long)hi);
+    }
+    return len;
+}
 
 int main(int argc, char **argv)
 {
@@ -140,6 +203,9 @@ int main(int argc, char **argv)
                 if (i == 0) len += sprintf(buf + len, " |");
                 len += sprintf(buf + len, " %04x", ((UWORD *)trapPC)[i]);
             }
+        Forbid();
+        len = code_map(len);
+        Permit();
         len += sprintf(buf + len, "\n");
         if ((f = Open((STRPTR)argv[1], MODE_READWRITE))) {
             Seek(f, 0, OFFSET_END);
