@@ -230,6 +230,25 @@ static void test_aperture(void)
     assert(!b.ops->read(&b,&surface,120,target,16));
 }
 
+static void ignored_planar(struct BoardInfo *bi __asm("a0"),struct BitMap *bm __asm("a1"),
+    struct RenderInfo *ri __asm("a2"),struct ColorIndexMapping *map __asm("a3"),
+    SHORT sx __asm("d0"),SHORT sy __asm("d1"),SHORT dx __asm("d2"),SHORT dy __asm("d3"),
+    SHORT w __asm("d4"),SHORT h __asm("d5"),UBYTE mt __asm("d6"),UBYTE mask __asm("d7"))
+{ (void)bi;(void)bm;(void)ri;(void)map;(void)sx;(void)sy;(void)dx;(void)dy;
+  (void)w;(void)h;(void)mt;(void)mask; }
+static void test_planar_probe(void)
+{
+    p.bi.MemorySize=sizeof(pixels);
+    memcpy(expected,pixels,sizeof(pixels));
+    p.bi.BlitPlanar2Direct=rtg_planar_direct;
+    assert(rtg_probe_planar(&p.bi,PF_BIT(PF_RGB565BE)|PF_BIT(PF_BGR24)|PF_BIT(PF_BGRA32)));
+    assert(!memcmp(expected,pixels,sizeof(pixels)));
+    p.bi.BlitPlanar2Direct=ignored_planar;
+    assert(!rtg_probe_planar(&p.bi,PF_BIT(PF_BGRA32)));
+    p.bi.BlitPlanar2Direct=NULL;
+    assert(!rtg_probe_planar(&p.bi,PF_BIT(PF_BGRA32)));
+}
+
 int main(void)
 {
     setup();
@@ -238,6 +257,7 @@ int main(void)
     test_template();
     test_modes();
     test_aperture();
+    test_planar_probe();
     assert(waits != 0);
     puts("P96 adapter: ABI, formats, drawing fallbacks and mode setup passed");
     return 0;

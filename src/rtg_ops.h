@@ -29,5 +29,6 @@ enum PrismResult rtg_planar(struct PrismBoard *b,const struct PrismPlanar *s,
 ULONG rtg_pitch(struct PrismBoard *b,UWORD w,UWORD h,UBYTE f);
 BOOL rtg_read(struct PrismBoard *b,const struct PrismSurface *s,ULONG off,APTR mem,ULONG size);
 BOOL rtg_write(struct PrismBoard *b,const struct PrismSurface *s,ULONG off,const void *mem,ULONG size);
+BOOL rtg_probe_planar(struct BoardInfo *bi, ULONG formats);
 extern const struct PrismOps rtg_ops;
 #endif

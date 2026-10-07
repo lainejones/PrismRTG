@@ -627,6 +627,9 @@ static BOOL attach_board(struct P96Priv *p, struct PrismBoard *b)
         puts("PrismD: P96 driver has no compatible contiguous pixel formats");
         return FALSE;
     }
+    if (p->card && p->card->lib_IdString &&
+        !strncmp(p->card->lib_IdString,"UAE Graphics Card",17) &&
+        !rtg_probe_planar(bi, b->formats)) bi->BlitPlanar2Direct = rtg_planar_direct;
     b->ops = &p96_ops;
     b->priv = p;
     b->name = bi->BoardName ? bi->BoardName : p->name;
@@ -719,11 +722,6 @@ BOOL P96_Probe(struct PrismBoard *b, const char *card, const char *monitor)
         puts("PrismD: P96 card initialization failed");
         return FALSE;
     }
-    /* Same conservative UAE workaround as the native backend: some hosts
-     * silently ignore BLIT_SRC in BlitPlanar2Direct. Other card drivers
-     * keep their optional acceleration hook. */
-    if (p->card->lib_IdString && !strncmp(p->card->lib_IdString,"UAE Graphics Card",17))
-        p->bi.BlitPlanar2Direct = rtg_planar_direct;
     if (p->bi.SetInterrupt) p->bi.SetInterrupt(&p->bi, FALSE);
     return attach_board(p, b);
 

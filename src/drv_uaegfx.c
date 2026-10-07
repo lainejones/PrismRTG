@@ -328,10 +328,6 @@ BOOL UAEGFX_Probe(struct PrismBoard *b)
     }
     p->initialized = card_InitCard(lib, bi, p->tooltypes);
     if (!p->initialized) { puts("PrismD: UAE RTG initialization failed"); return FALSE; }
-    /* Older Unix UAE hosts omit BLIT_SRC in the direct planar path.
-     * Keep this optional operation on the CPU: the firmware version
-     * does not distinguish corrected hosts from affected releases. */
-    bi->BlitPlanar2Direct = rtg_planar_direct;
     if (bi->SetInterrupt) bi->SetInterrupt(bi, FALSE);
     if (!bi->MemoryBase || bi->MemorySize < 65536 || !bi->SetGC || !bi->SetDAC ||
         !bi->SetPanning || !bi->SetColorArray || !bi->SetSwitch || !bi->SetDisplay) {
@@ -346,6 +342,9 @@ BOOL UAEGFX_Probe(struct PrismBoard *b)
         }
     }
     if (!b->formats) { puts("PrismD: UAE has no enabled Prism pixel formats"); return FALSE; }
+    if (!rtg_probe_planar(bi, b->formats)) bi->BlitPlanar2Direct = rtg_planar_direct;
+    puts(bi->BlitPlanar2Direct == rtg_planar_direct ?
+        "PrismD: UAE planar copies use CPU fallback" : "PrismD: UAE planar copies use host hook");
     b->ops = &rtg_ops;
     b->priv = p; b->name = "UAE (native)";
     b->vram = bi->MemoryBase; b->vramSize = bi->MemorySize;

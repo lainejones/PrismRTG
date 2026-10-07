@@ -22,6 +22,8 @@ static void exercise(struct PrismBoard *b)
     static const UBYTE colors[] = { 255,0,0, 0,255,0, 255,255,255 };
     struct UAEPriv *p = b->priv;
     ULONG i;
+    emit(p->bi.BlitPlanar2Direct == rtg_planar_direct ?
+        "PLANAR CPU FALLBACK\n" : "PLANAR HOST HOOK\n");
     for (i = 0; i < 256; i++) palette[3*i] = palette[3*i+1] = palette[3*i+2] = i;
     for (bpp = 1; bpp <= 4; bpp++) {
         struct PrismMode m = { 640, 480, p->pf[bpp], 0, 0 };

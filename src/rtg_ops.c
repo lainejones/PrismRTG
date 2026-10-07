@@ -2,6 +2,7 @@
 #include <exec/memory.h>
 #include <graphics/rastport.h>
 #include <proto/exec.h>
+#include <string.h>
 #include "rtg_ops.h"
 
 /* Preserve BoardInfo in a0 across indirect register-ABI calls. */
@@ -77,6 +78,48 @@ void rtg_planar_direct(struct BoardInfo *bi __asm("a0"),struct BitMap *bm __asm(
         UBYTE *d=(UBYTE *)ri->Memory+(LONG)(dy+y)*ri->BytesPerRow+(LONG)(dx+x)*bpp;
         for(k=0;k<bpp;k++) d[k]=c>>(8*(bpp-k-1));
     }
+}
+/* The firmware version is shared by fixed and broken UAE hosts. Exercise
+ * the actual hook in saved VRAM before enabling scanout. UAE host traps
+ * require a VRAM destination, even when their source is in system RAM. */
+BOOL rtg_probe_planar(struct BoardInfo *bi, ULONG formats)
+{
+    struct ColorIndexMapping *map;
+    struct BitMap bm;
+    struct RenderInfo ri;
+    UBYTE saved[32], *pixels, plane[2] = {0x50, 0};
+    UBYTE f, i, k;
+    BOOL ok = TRUE;
+    if (!bi->BlitPlanar2Direct || !bi->WaitBlitter ||
+        !bi->MemoryBase || bi->MemorySize < sizeof(saved)) return FALSE;
+    map = AllocVec(sizeof(*map), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!map) return FALSE;
+    pixels = bi->MemoryBase + bi->MemorySize - sizeof(saved);
+    rtg_wait(bi);
+    CopyMem(pixels, saved, sizeof(saved));
+    memset(&bm, 0, sizeof(bm));
+    bm.BytesPerRow = 2; bm.Rows = 1; bm.Depth = 1; bm.Planes[0] = plane;
+    for (f = 0; f < PF_COUNT && ok; f++) {
+        UBYTE bpp = board_bpp(f);
+        if (bpp == 1 || !(formats & PF_BIT(f))) continue;
+        memset(pixels, 0xa5, sizeof(saved));
+        memset(&ri, 0, sizeof(ri));
+        ri.Memory = pixels; ri.BytesPerRow = 4 * bpp; ri.RGBFormat = rtg_formats[f];
+        map->ColorMask = bpp == 2 ? 0xffff : 0xffffffff;
+        map->Colors[0] = rtg_colour(f, 0x123456);
+        map->Colors[1] = rtg_colour(f, 0xa1b2c3);
+        bi->BlitPlanar2Direct(bi, &bm, &ri, map, 0, 0, 0, 0, 4, 1, 12, 255);
+        rtg_wait(bi);
+        for (i = 0; i < 4; i++) {
+            ULONG c = rtg_pen(map->Colors[i & 1], bpp);
+            for (k = 0; k < bpp; k++)
+                if (pixels[i*bpp+k] != (UBYTE)(c >> (8*(bpp-k-1)))) ok = FALSE;
+        }
+        for (i = 4*bpp; i < sizeof(saved); i++) if (pixels[i] != 0xa5) ok = FALSE;
+    }
+    CopyMem(saved, pixels, sizeof(saved));
+    FreeVec(map);
+    return ok;
 }
 static UBYTE *rtg_address(struct PrismBoard *b,const struct PrismSurface *s,ULONG off)
 {
