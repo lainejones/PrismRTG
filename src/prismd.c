@@ -53,7 +53,8 @@
 
 struct GfxBase       *GfxBase;
 struct IntuitionBase *IntuitionBase;
-struct Library       *UtilityBase;
+/* Use libnix's UtilityBase: its startup code needs utility.library before
+ * main. Our explicit OpenLibrary below holds an additional reference. */
 struct ExpansionBase *ExpansionBase;
 
 struct PrismBoard board;
@@ -2006,12 +2007,12 @@ static BOOL uninstall(void)
 
 /* ---- main ----------------------------------------------------------- */
 
-#define TEMPLATE "BOARD/K,PREFS/K,LOG/S"
+#define TEMPLATE "BOARD/K,PREFS/K,LOG/S,P96CARD/K,P96MONITOR/K"
 
 int main(void)
 {
-    LONG args[3] = { 0 };
-    static const char *const pbName[PB_COUNT] = { NULL, "PICASSO2", "ZZ9000" };
+    LONG args[5] = { 0 };
+    static const char *const pbName[PB_COUNT] = { NULL, "PICASSO2", "ZZ9000", "P96" };
     struct RDArgs *rda;
     const char *want;
     BOOL found = FALSE;
@@ -2067,6 +2068,9 @@ int main(void)
         found = Picasso2_Probe(&board);
     if (!found && (!want || !Stricmp(want, "ZZ9000")))
         found = ZZ9000_Probe(&board);
+    if (want && !Stricmp(want, "P96"))
+        found = P96_Probe(&board, args[3] ? (const char *)args[3] : prefs.p96card,
+                         args[4] ? (const char *)args[4] : prefs.p96monitor);
     if (!found) {
         printf("PrismD: no supported board\n");
         rc = 5;
@@ -2223,6 +2227,7 @@ int main(void)
     rc = 0;
 
 out:
+    P96_KeepResident();
     if (ExpansionBase) CloseLibrary((struct Library *)ExpansionBase);
     if (UtilityBase) CloseLibrary(UtilityBase);
     if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);

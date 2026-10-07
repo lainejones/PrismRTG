@@ -6,7 +6,9 @@
  *
  * The file is plain text, one KEY=VALUE per line:
  *
- *   BOARD=AUTO|PICASSO2|ZZ9000
+ *   BOARD=AUTO|PICASSO2|ZZ9000|P96
+ *   P96CARD=LIBS:Picasso96/uaegfx.card
+ *   P96MONITOR=SYS:Storage/Monitors/UAEgfx  (optional icon tooltypes)
  *   BLITTER=ON|OFF
  *   LOG=ON|OFF
  *   PALETTE=RGB|BGR             (Piccolo/Spectrum only, see drv_picasso2.c)
@@ -39,7 +41,7 @@ extern const UBYTE prefs_rates[PREFS_NRATES];    /* 0 = driver's default   */
 #define PREFS_DEPTH(i)  ((i) / PREFS_NSIZES)
 #define PREFS_IDLOW(i)  ((ULONG)PREFS_DEPTH(i) << 8 | PREFS_SIZE(i))
 
-enum { PB_AUTO, PB_PICASSO2, PB_ZZ9000, PB_COUNT };
+enum { PB_AUTO, PB_PICASSO2, PB_ZZ9000, PB_P96, PB_COUNT };
 
 struct PrismPrefs {
     UBYTE board;                     /* PB_*                               */
@@ -48,6 +50,8 @@ struct PrismPrefs {
     UBYTE clutBGR;                   /* PALETTE=BGR: load palettes blue first */
     UBYTE on[PREFS_NMODES];          /* mode offered                       */
     UBYTE hz[PREFS_NMODES];          /* refresh wanted, 0 = default        */
+    char p96card[256];
+    char p96monitor[256];
 };
 
 void prefs_default(struct PrismPrefs *p);
