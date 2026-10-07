@@ -77,6 +77,17 @@ static ULONG tagcall(struct TagItem *tags, ULONG d0v, int which)
     }
     return d0;
 }
+static ULONG pipcall(struct Window *window,struct TagItem *tags,int which)
+{
+    RA(ULONG,d0,"d0",0);RA(struct Window *,a0,"a0",window);
+    RA(struct TagItem *,a1,"a1",tags);RA(struct Library *,a6,"a6",P96Base);
+    switch(which) {
+    case 150: __asm volatile(P96CALL(150):"+r"(d0),"+r"(a0),"+r"(a1):"r"(a6):"d1","cc","memory");break;
+    case 156: __asm volatile(P96CALL(156):"+r"(d0),"+r"(a0),"+r"(a1):"r"(a6):"d1","cc","memory");break;
+    case 162: __asm volatile(P96CALL(162):"+r"(d0),"+r"(a0),"+r"(a1):"r"(a6):"d1","cc","memory");break;
+    }
+    return d0;
+}
 static ULONG p96GetModeIDAttr(ULONG id, ULONG attr)
 {
     RA(ULONG, d0, "d0", id); RA(ULONG, d1, "d1", attr); RA(struct Library *, a6, "a6", P96Base);
@@ -219,7 +230,7 @@ int main(void)
     }
     {
         struct TagItem pt[] = { { P96PIP_ErrorCode, (ULONG)&err }, { TAG_DONE, 0 } };
-        check("p96PIP_OpenTagList says not available", !tagcall(pt, 0, 144) && err == PIPERR_NOTAVAILABLE);
+        check("p96PIP_OpenTagList rejects missing size", !tagcall(pt, 0, 144) && err == PIPERR_BADDIMENSIONS);
     }
     check("p96EncodeColor R5G6B5", p96EncodeColor(RGBFB_R5G6B5, 0xff0000) == 0xf800 &&
                                    p96EncodeColor(RGBFB_R5G6B5PC, 0xff0000) == 0x00f8 &&
@@ -353,6 +364,75 @@ int main(void)
     check("p96AllocBitMap with the screen as friend", bm && v == p96GetBitMapAttr(rp->BitMap, P96BMA_RGBFORMAT));
     if (bm) p96FreeBitMap(bm);
 
+    {
+        struct Window *pip;
+        struct BitMap *source=NULL;
+        struct RastPort *sourceRP=NULL;
+        struct Screen *behind=NULL;
+        struct TagItem bt[]={{P96SA_Width,640},{P96SA_Height,480},
+            {P96SA_Depth,depth},{P96SA_Behind,TRUE},{TAG_DONE,0}};
+        ULONG width=0, brightness=0;
+        struct TagItem pt[]={{P96PIP_SourceWidth,32},{P96PIP_SourceHeight,24},
+            {P96PIP_SourceFormat,RGBFB_R8G8B8},{P96PIP_ErrorCode,(ULONG)&err},
+            {WA_CustomScreen,(ULONG)s},{WA_Left,64},{WA_Top,64},
+            {WA_Width,96},{WA_Height,80},{WA_Borderless,TRUE},{TAG_DONE,0}};
+        struct TagItem gt[]={{P96PIP_SourceBitMap,(ULONG)&source},
+            {P96PIP_SourceRPort,(ULONG)&sourceRP},{P96PIP_SourceWidth,(ULONG)&width},{TAG_DONE,0}};
+        struct TagItem set[]={{P96PIP_Brightness,16},{TAG_DONE,0}};
+        struct TagItem get[]={{P96PIP_Brightness,(ULONG)&brightness},{TAG_DONE,0}};
+        pip=(struct Window *)tagcall(pt,0,144);
+        check("p96PIP_OpenTagList memory window",pip && !err);
+        if(pip) {
+            check("p96PIP_GetTagList source",pipcall(pip,gt,162)==3 && source && sourceRP && width==32);
+            if(sourceRP) p96RectFill(sourceRP,0,0,31,23,0x123456);
+            check("p96PIP_SetTagList brightness",pipcall(pip,set,156)==1 &&
+                pipcall(pip,get,162)==1 && brightness==16);
+            Delay(10);
+            if(sourceRP)check("PIP source remains uncomposited",near(p96ReadPixel(sourceRP,2,2),0x123456,0));
+            behind=(struct Screen *)tagcall(bt,0,90);
+            check("RTG screen behind split",behind!=NULL);
+            ScreenPosition(s,SPOS_ABSOLUTE|SPOS_FORCEDRAG,0,24,0,0);
+            Delay(10);
+            printf("    dragged screen top: %d\n",s->TopEdge);
+            check("RTG screen dragging",s->TopEdge==24);
+            ScreenPosition(s,SPOS_ABSOLUTE|SPOS_FORCEDRAG,0,0,0,0);
+            check("p96PIP_Close",pipcall(pip,NULL,150));
+            if(behind)tagcall((struct TagItem *)behind,0,96);
+        }
+    }
+    {
+        struct Window *pip;
+        struct BitMap *source=NULL;
+        struct RastPort *sourceRP=NULL;
+        struct ColorSpec colours[]={{5,15,0,0},{-1,0,0,0}};
+        ULONG colours32[]={0x00010005,0x12121212,0x34343434,0x56565656,0};
+        struct TagItem pt[]={{P96PIP_SourceWidth,8},{P96PIP_SourceHeight,8},
+            {P96PIP_SourceFormat,RGBFB_CLUT},{P96PIP_Colors32,(ULONG)colours32},
+            {P96PIP_Colors,(ULONG)colours},{WA_CustomScreen,(ULONG)s},
+            {WA_Left,64},{WA_Top,64},{WA_Width,32},{WA_Height,32},
+            {WA_Borderless,TRUE},{TAG_DONE,0}};
+        struct TagItem gt[]={{P96PIP_SourceBitMap,(ULONG)&source},
+            {P96PIP_SourceRPort,(ULONG)&sourceRP},{TAG_DONE,0}};
+        BOOL correct=FALSE;
+        pip=(struct Window *)tagcall(pt,0,144);
+        if(pip) {
+            if(pipcall(pip,gt,162)==2 && source && sourceRP) {
+                LONG lk;
+                memset(&ri,0,sizeof(ri));
+                lk=p96LockBitMap(source,(UBYTE *)&ri,sizeof(ri));
+                if(lk) {
+                    if(ri.Memory && ri.BytesPerRow>=8 && ri.RGBFormat==RGBFB_CLUT) {
+                        ((UBYTE *)ri.Memory)[0]=5;
+                        correct=TRUE;
+                    }
+                    p96UnlockBitMap(source,lk);
+                }
+                if(correct)correct=near(p96ReadPixel(sourceRP,0,0),0x123456,0);
+            }
+            if(!pipcall(pip,NULL,150))correct=FALSE;
+        }
+        check("PIP Colors32 overrides later Colors",correct);
+    }
     if (args[1])
         Delay(*(LONG *)args[1] * 50);
 out:

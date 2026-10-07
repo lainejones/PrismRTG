@@ -192,7 +192,7 @@ struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE format, UWORD *penT
             p->pix = board.vram + off;
         }
     }
-    if (!p->inVram || (board.flags & PBF_SHADOW)) {
+    if ((board.flags & PBF_PRESENT) || !p->inVram || (board.flags & PBF_SHADOW)) {
         if (!(p->mem = AllocVec(size, MEMF_ANY | (clear ? MEMF_CLEAR : 0))))
             goto fail;
         p->pix = p->mem;
@@ -473,7 +473,7 @@ static enum PrismResult pbm_result(struct PBitMap *p,enum PrismResult result,
 void pbm_flush_shown(void)
 {
     UWORD i;
-    if (!(board.flags & PBF_SHADOW)) return;
+    if (!(board.flags & PBF_SHADOW) || (board.flags & PBF_PRESENT)) return;
     ObtainSemaphore(&lock);
     for (i=0;i<PBM_MAX;i++) if (table[i] && pbm_is_shown(table[i]))
         if (!pbm_upload(table[i])) dbg("driver: aperture upload failed\n");
@@ -482,7 +482,7 @@ void pbm_flush_shown(void)
 enum PrismResult pbm_hw_fill(struct PBitMap *p,UBYTE bpp,UWORD x,UWORD y,UWORD w,UWORD h,ULONG c)
 {
     struct PrismSurface s;
-    if (!p->inVram || !pbm_upload(p)) return PR_DECLINED;
+    if ((board.flags & PBF_PRESENT) || !p->inVram || !pbm_upload(p)) return PR_DECLINED;
     pbm_surface(p,&s);
     if (bpp==1 && p->bpp!=1) {
         if (board.flags & PBF_SHADOW) return PR_DECLINED;
@@ -497,7 +497,7 @@ enum PrismResult pbm_hw_copy(struct PBitMap *s,struct PBitMap *d,UWORD sx,UWORD 
     UWORD dx,UWORD dy,UWORD w,UWORD h)
 {
     struct PrismSurface a,b;
-    if (!s->inVram || !d->inVram || !pbm_upload(s) || (s!=d && !pbm_upload(d))) return PR_DECLINED;
+    if ((board.flags & PBF_PRESENT) || !s->inVram || !d->inVram || !pbm_upload(s) || (s!=d && !pbm_upload(d))) return PR_DECLINED;
     pbm_surface(s,&a); pbm_surface(d,&b);
     return pbm_result(d,board_copy(&board,&a,&b,sx,sy,dx,dy,w,h),(ULONG)dx*d->bpp,dy,(ULONG)w*d->bpp,h);
 }
@@ -505,14 +505,14 @@ enum PrismResult pbm_hw_expand(struct PBitMap *p,UWORD x,UWORD y,UWORD w,UWORD h
     const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr)
 {
     struct PrismSurface s;
-    if (!p->inVram || !pbm_upload(p)) return PR_DECLINED;
+    if ((board.flags & PBF_PRESENT) || !p->inVram || !pbm_upload(p)) return PR_DECLINED;
     pbm_surface(p,&s);
     return pbm_result(p,board_expand(&board,&s,x,y,w,h,src,mod,fg,bg,tr),(ULONG)x*p->bpp,y,(ULONG)w*p->bpp,h);
 }
 enum PrismResult pbm_hw_line(struct PBitMap *p,WORD x,WORD y,WORD dx,WORD dy,ULONG c)
 {
     struct PrismSurface s;
-    if (!p->inVram || !pbm_upload(p)) return PR_DECLINED;
+    if ((board.flags & PBF_PRESENT) || !p->inVram || !pbm_upload(p)) return PR_DECLINED;
     pbm_surface(p,&s);
     return pbm_result(p,board_line(&board,&s,x,y,dx,dy,c),
         (ULONG)(dx<0 ? x+dx : x)*p->bpp,dy<0 ? y+dy : y,
@@ -522,7 +522,7 @@ enum PrismResult pbm_hw_planar(const struct PrismPlanar *src,struct PBitMap *p,
     UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h,UBYTE mt,UBYTE mask)
 {
     struct PrismSurface d;
-    if (!p->inVram || !board.ops || !board.ops->planar || !pbm_upload(p)) return PR_DECLINED;
+    if ((board.flags & PBF_PRESENT) || !p->inVram || !board.ops || !board.ops->planar || !pbm_upload(p)) return PR_DECLINED;
     pbm_surface(p,&d);
     return pbm_result(p,board_planar(&board,src,&d,sx,sy,dx,dy,w,h,mt,mask),
         (ULONG)dx*p->bpp,dy,(ULONG)w*p->bpp,h);

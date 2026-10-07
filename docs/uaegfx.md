@@ -12,7 +12,7 @@ installer does not recognize the virtual board, choose "Install anyway"
 and set the preference before rebooting. Automatic board selection does
 not select this candidate yet.
 
-Enable UAE RTG memory and the emulator's hardware cursor. Keep P96's
+Enable UAE RTG memory. The emulator's hardware cursor is optional. Keep P96's
 monitor programs disabled, just as for other Prism drivers. Neither
 `P96CARD` nor `P96MONITOR` is used by this driver.
 
@@ -45,10 +45,13 @@ missing or broken hooks use a CPU fallback. Other drawing uses Prism's core.
 Host blits complete synchronously. Vblank waits use graphics.library's
 WaitTOF; UAE's card WaitVerticalSync entry point is a no-op.
 
-The hardware cursor is limited to 32x48 pixels. Prism has no software
-cursor fallback, so disabling UAE's hardware cursor leaves no RTG pointer.
-There is no overlay, screen-dragging or multi-board support in this
-candidate. Compatibility with every UAE fork or version is not implied.
+The hardware cursor is limited to 32x48 pixels. With hardware sprites
+disabled, Prism uses stable CPU shadows and its software cursor. The shared
+presentation path also supplies vertical RTG screen dragging and RGB/CLUT
+P96 memory-window PIPs. It does not use UAE's host overlay or split hooks.
+There is no multi-board support, and compatibility with every UAE fork or
+version is not implied. See [driver architecture](driver-architecture.md)
+for presentation costs and PIP limits.
 
 ## Lifetime
 

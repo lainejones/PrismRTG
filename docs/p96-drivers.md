@@ -21,7 +21,7 @@ P96CARD=LIBS:Picasso96/CyberVision64.card
 The path is an example, not an assertion that every CyberVision64 driver
 version is compatible. Use the actual card library you have installed.
 For UAE's resident card library, use `P96CARD=uaegfx.card`. The emulator
-must have UAE RTG memory enabled. Enable its hardware cursor as well.
+must have UAE RTG memory enabled. Its hardware cursor is optional.
 
 An optional `P96MONITOR` setting supplies driver-specific tooltypes from
 a monitor icon. Give its path **without** `.info`, for example:
@@ -82,11 +82,15 @@ files and arbitrary user-defined timings are not imported. External
 drivers must provide a pixel-clock resolver; large clock deviations are
 rejected.
 
-Hardware cursor input is limited to 32x48 pixels. Prism has no software
-cursor fallback: a driver or pixel format requiring one will not show an
-RTG pointer. Screen dragging and overlays are not supported by this
-backend. It is a compatibility path for suitable drivers, not full P96
-board or feature parity.
+Hardware cursor input is limited to 32x48 pixels. The core supplies a
+software cursor when the board or mode requires one, vertical dragging
+between RTG screens, and software P96 RGB/CLUT memory-window PIPs. PIPs
+support scaling, cropping, brightness and layer clipping; capture modes,
+YUV and custom render/save callbacks are not implemented. These features
+consume CPU time and extra buffers; they do not invoke card overlay engines.
+See [driver architecture](driver-architecture.md) for the memory and
+presentation contracts. Private `rtg.library` services and arbitrary bank
+protocols remain outside this adapter's interface.
 
 ## Driver lifetime
 

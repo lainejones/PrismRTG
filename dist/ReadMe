@@ -1,5 +1,5 @@
 PrismRTG - RTG for AmigaOS 3.x
-==============================
+=======================
 
 A from-scratch retargetable-graphics system for two boards:
   * Village Tronic Picasso II / GBAPII++ (Cirrus GD542x), Zorro II
@@ -44,6 +44,11 @@ New in 1.1 beta (experimental - please report how it goes)
                   of Picasso96. Tried with UAE's uaegfx.card only, not yet
                   with a real card's driver.
   Details: docs/uaegfx.md and docs/p96-drivers.md on GitHub.
+
+Presentation
+  Boards without a usable hardware sprite use a software pointer. Vertical
+  dragging between RTG screens and P96 RGB/CLUT memory-window PIPs are
+  composed in software. These features use extra RAM and CPU time.
 
 24-bit or 32-bit?
   Both are true colour. On the GBAPII++ the card's blitter can draw text

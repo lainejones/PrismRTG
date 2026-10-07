@@ -265,7 +265,8 @@ blitter off.
 ## Known limits
 
 * Tested on two machines by one person. Treat it as early software.
-* No screen dragging. No monitor detection (see above).
+* Vertical dragging composes the front and next RTG screen; native-chipset
+  screens cannot be mixed into the split. No monitor detection (see above).
 * The Picasso II, Piccolo, Piccolo SD64 and Spectrum have only run in WinUAE.
   A real card can differ from its emulation (the GBAPII++ did, in three
   places). If 256-colour screens on a real Piccolo or Spectrum show red and

@@ -121,6 +121,16 @@ struct ViewPort;
 void pointer_on(struct ViewPort *vp);        /* lock held                 */
 void pointer_off(void);                      /* lock held                 */
 void pointer_colours(struct ViewPort *vp);   /* lock held                 */
+BOOL pointer_software(void);
+void pointer_compose(struct PBitMap *, WORD);
+void present_tick(void);
+void present_stop(void);
+struct Screen;
+BOOL present_reserve(struct Screen *);
+struct PBitMap *prism_display_bitmap(void);
+struct Screen *prism_display_layers(struct PBitMap **,struct PBitMap **,WORD *,WORD *,UWORD *,UWORD *);
+BOOL p96_pip_active(struct Screen *);
+void p96_pip_compose(struct PBitMap *,struct Screen *,WORD);
 void pointer_tick(void);                     /* PrismD main loop          */
 
 

@@ -398,6 +398,7 @@ BOOL pbm_is_shown(struct PBitMap *p)
 /* Point the card at a bitmap, paging it into VRAM first. Lock held. */
 static BOOL show_pbm(struct PBitMap *p)
 {
+    present_stop();
     shownPbm = NULL;                     /* the old one may be evicted now */
     if (!pbm_to_vram(p)) {
         dbg("show: %ux%u doesn't fit in VRAM\n", p->w, p->h);
@@ -419,6 +420,7 @@ void pbm_gone(struct PBitMap *p)
         if (ps->front == p)
             ps->front = NULL;
     if (shownPbm == p) {
+        present_stop();
         shownPbm = NULL;
         if (shown && shown->pbm && shown->pbm != p)
             show_pbm(shown->pbm);
@@ -524,6 +526,26 @@ static struct PScreen *ps_by_vp(struct ViewPort *vp)
     return NULL;
 }
 
+struct PBitMap *prism_display_bitmap(void) { return shownPbm; }
+
+/* Intuition supplies the dragged front screen's origin. Different backing
+ * formats are converted into the active display mode by the compositor. */
+struct Screen *prism_display_layers(struct PBitMap **front,struct PBitMap **back,
+    WORD *top,WORD *backTop,UWORD *width,UWORD *height)
+{
+    struct Screen *s;
+    *front=shownPbm;*back=NULL;*top=*backTop=0;
+    if (!shown || !shown->screen || !shownPbm || !cardMode || !rtgOn) return NULL;
+    *width=cardMode->m.width;*height=cardMode->m.height;
+    *top=shown->screen->TopEdge;
+    s=shown->screen->NextScreen;
+    if(s) {
+        struct PScreen *ps=ps_by_screen(s);
+        if(ps) { *back=ps->front ? ps->front : ps->pbm;*backTop=s->TopEdge; }
+    }
+    return shown->screen;
+}
+
 /* A screen's colours changed: rebuild its pen table (16-bit) and, if it
  * is the screen on the card, reload the DAC and pointer. Lock held. */
 static void palette_update(struct ViewPort *vp)
@@ -566,6 +588,7 @@ static void update_display(void)
     if (ps) {
         struct PBitMap *dp = ps->front ? ps->front : ps->pbm;
         if (cardMode != ps->mode) {
+            present_stop();
             struct PrismMode m = ps->mode->m;
             /* Rebuilding the pool releases the old scanout allocation. */
             if ((board.flags & PBF_REINIT) && rtgOn) {
@@ -798,7 +821,7 @@ static ULONG P_GetDisplayInfoData(APTR h __asm("a0"), APTR buf __asm("a1"),
     case DTAG_DISP:
         len = sizeof(u.di);
         qhdr(&u.di.Header, tag, r->id, len);
-        u.di.PropertyFlags = DIPF_IS_WB | DIPF_IS_FOREIGN;
+        u.di.PropertyFlags = DIPF_IS_WB | DIPF_IS_FOREIGN | DIPF_IS_DRAGGABLE;
         u.di.Resolution.x = 22;
         u.di.Resolution.y = 22;
         u.di.PixelSpeed = 35;
@@ -830,7 +853,7 @@ static ULONG P_GetDisplayInfoData(APTR h __asm("a0"), APTR buf __asm("a1"),
         u.mi.ViewPositionRange.MaxY = r->m.height - 1;
         u.mi.TotalRows = r->m.height;
         u.mi.TotalColorClocks = r->m.width;
-        u.mi.Compatibility = MCOMPAT_NOBODY;
+        u.mi.Compatibility = MCOMPAT_SELF;
         /* ticks the pointer moves per mouse count: one pixel, as P96
          * reports it. With 1,1 here Intuition moved the pointer at half
          * speed (measured on the A4000 with relative mouse events). */
@@ -1169,6 +1192,7 @@ static void free_ps(struct PScreen *ps)
         if (p) p->next = ps->next;
     }
     if (shown == ps) {
+        present_stop();
         shown = NULL;
         shownVP = NULL;
         shownPbm = NULL;
@@ -2118,6 +2142,8 @@ int main(void)
         goto out;
     }
     Picasso2_ClutBGR = prefs.clutBGR;
+    if (!(board.flags & PBF_HW_CURSOR) || !board.cursorImage ||
+        !board.cursorShow || !board.cursorMove) board.flags |= PBF_SHADOW;
     if (!prefs.blitter) {
         board.flags |= PBF_SOFTWARE;
         board.fillRect = NULL;              /* render.c falls back to the CPU */
@@ -2223,6 +2249,7 @@ int main(void)
             }
             pbm_flush_shown();
             pointer_tick();
+            present_tick();
             if (prefs.log || ++tick % 25 == 0)
                 dbg_flush();
             /* up for a minute (3600 vertical blanks): this start is a good
@@ -2259,6 +2286,7 @@ int main(void)
     rc = 0;
 
 out:
+    present_stop();
     UAEGFX_KeepResident();
     P96_KeepResident();
     if (ExpansionBase) CloseLibrary((struct Library *)ExpansionBase);

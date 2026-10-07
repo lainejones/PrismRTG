@@ -361,7 +361,7 @@ BOOL UAEGFX_Probe(struct PrismBoard *b)
         bi->SetSpritePosition && bi->SetSpriteColor) {
         b->cursorImage = uae_cursor_image; b->cursorShow = uae_cursor_show;
         b->cursorMove = uae_cursor_move; b->flags |= PBF_HW_CURSOR;
-    } else puts("PrismD: enable UAE's hardware cursor for an RTG pointer");
+    } else puts("PrismD: UAE has no hardware cursor; using software pointer");
     return TRUE;
 }
 
