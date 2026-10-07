@@ -2012,7 +2012,7 @@ static BOOL uninstall(void)
 int main(void)
 {
     LONG args[5] = { 0 };
-    static const char *const pbName[PB_COUNT] = { NULL, "PICASSO2", "ZZ9000", "P96" };
+    static const char *const pbName[PB_COUNT] = { NULL, "PICASSO2", "ZZ9000", "P96", "UAEGFX" };
     struct RDArgs *rda;
     const char *want;
     BOOL found = FALSE;
@@ -2068,6 +2068,8 @@ int main(void)
         found = Picasso2_Probe(&board);
     if (!found && (!want || !Stricmp(want, "ZZ9000")))
         found = ZZ9000_Probe(&board);
+    if (want && !Stricmp(want, "UAEGFX"))
+        found = UAEGFX_Probe(&board);
     if (want && !Stricmp(want, "P96"))
         found = P96_Probe(&board, args[3] ? (const char *)args[3] : prefs.p96card,
                          args[4] ? (const char *)args[4] : prefs.p96monitor);
@@ -2227,6 +2229,7 @@ int main(void)
     rc = 0;
 
 out:
+    UAEGFX_KeepResident();
     P96_KeepResident();
     if (ExpansionBase) CloseLibrary((struct Library *)ExpansionBase);
     if (UtilityBase) CloseLibrary(UtilityBase);

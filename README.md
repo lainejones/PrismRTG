@@ -75,7 +75,20 @@ remain disabled, as with native Prism drivers.
 See [P96 driver configuration and limits](docs/p96-drivers.md) before
 using this backend. It supports linear framebuffers, not every P96 memory
 model, and a claimed driver remains resident until reboot. This provides
-uaegfx through its P96 driver; there is no separate native uaegfx driver yet.
+uaegfx through its P96 driver. A separate native candidate is available below.
+
+### Native UAE RTG candidate
+
+`BOARD=UAEGFX` selects the native candidate, which binds UAE's resident
+RTG host interface directly without loading a `.card` file or using the
+P96 adapter:
+
+```text
+Run >RAM:PrismD.log PrismD BOARD=UAEGFX
+```
+
+Enable UAE RTG memory and its hardware cursor. This candidate is selected
+explicitly; see [native UAE configuration and limits](docs/uaegfx.md).
 
 ## What works
 
@@ -251,7 +264,7 @@ tools, the release drawer is staged without icons.
 
 | Tool | What it does |
 |---|---|
-| `PrismD` | The driver. `PrismD [BOARD=ZZ9000|PICASSO2|P96] [P96CARD=file] [P96MONITOR=icon] [PREFS=file] [LOG]`; Ctrl-C removes its patches when no PrismRTG screen is open. P96 card drivers remain resident until reboot. |
+| `PrismD` | The driver. `PrismD [BOARD=ZZ9000|PICASSO2|P96|UAEGFX] [P96CARD=file] [P96MONITOR=icon] [PREFS=file] [LOG]`; Ctrl-C removes its patches when no PrismRTG screen is open. P96 and UAEGFX contexts remain resident until reboot. |
 | `PrismPrefs` | Settings editor. `FROM= USE SAVE TEST=<slot>` work without the window. |
 | `Prism` (`out/PrismMon`) | `DEVS:Monitors` launcher with the boot failsafe. |
 | `PrismSetup` | Installer helper: `DETECT`, `WBMODE=<slot>`. |

@@ -117,8 +117,8 @@ struct PrismBoard {
     void (*cursorShow)(struct PrismBoard *b, BOOL on);
     void (*cursorMove)(struct PrismBoard *b, WORD x, WORD y);
 
-    /* Optional bitmap row layout; NULL keeps the native 8-byte alignment.
-     * The adapter offers one compatible pixel format per byte depth. */
+    /* Optional bitmap row layout; NULL keeps the default 8-byte alignment.
+     * Drivers using this offer one compatible format per byte depth. */
     ULONG (*bytesPerRow)(struct PrismBoard *b, UWORD w, UWORD h, UBYTE bpp);
 };
 
@@ -133,6 +133,8 @@ BOOL P96_Probe(struct PrismBoard *b, const char *card, const char *monitor);
 /* After a P96 card was claimed, keep its callbacks and interrupt data alive.
  * Returns only if no card was claimed during this invocation. */
 void P96_KeepResident(void);
+BOOL UAEGFX_Probe(struct PrismBoard *b);
+void UAEGFX_KeepResident(void);
 extern UBYTE Picasso2_ClutBGR;      /* PALETTE=BGR in the prefs (drv_picasso2.c) */
 
 #endif

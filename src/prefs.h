@@ -6,7 +6,7 @@
  *
  * The file is plain text, one KEY=VALUE per line:
  *
- *   BOARD=AUTO|PICASSO2|ZZ9000|P96
+ *   BOARD=AUTO|PICASSO2|ZZ9000|P96|UAEGFX
  *   P96CARD=LIBS:Picasso96/uaegfx.card
  *   P96MONITOR=SYS:Storage/Monitors/UAEgfx  (optional icon tooltypes)
  *   BLITTER=ON|OFF
@@ -41,7 +41,7 @@ extern const UBYTE prefs_rates[PREFS_NRATES];    /* 0 = driver's default   */
 #define PREFS_DEPTH(i)  ((i) / PREFS_NSIZES)
 #define PREFS_IDLOW(i)  ((ULONG)PREFS_DEPTH(i) << 8 | PREFS_SIZE(i))
 
-enum { PB_AUTO, PB_PICASSO2, PB_ZZ9000, PB_P96, PB_COUNT };
+enum { PB_AUTO, PB_PICASSO2, PB_ZZ9000, PB_P96, PB_UAEGFX, PB_COUNT };
 
 struct PrismPrefs {
     UBYTE board;                     /* PB_*                               */
