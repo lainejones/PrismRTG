@@ -9,7 +9,7 @@ set -e
 export PATH=/opt/amiga/bin:$PATH
 
 CC=m68k-amigaos-gcc
-CFLAGS="-DPRISM_DEBUG -O2 -m68020-60 -noixemul -Wall -Wno-pointer-sign -fomit-frame-pointer -Isrc"
+CFLAGS="-DPRISM_DEBUG -O2 -m68020-60 -noixemul -Wall -Wno-pointer-sign -fomit-frame-pointer -Isrc -Isrc/p96sdk"
 
 mkdir -p out
 
@@ -22,7 +22,7 @@ if [ -f tools/prismtest.c ]; then
 fi
 
 echo "== M1 =="
-$CC $CFLAGS -s -o out/PrismD src/prismd.c src/prefs.c src/bitmap.c src/render.c src/pointer.c src/cgx.c src/p96.c src/stubs.S src/p2c.S src/drv_picasso2.c src/drv_zz9000.c
+$CC $CFLAGS -s -o out/PrismD src/prismd.c src/prefs.c src/bitmap.c src/render.c src/pointer.c src/cgx.c src/p96.c src/stubs.S src/p2c.S src/drv_picasso2.c src/drv_zz9000.c src/drv_uaegfx.c
 $CC $CFLAGS -s -o out/PrismScreen tools/prismscreen.c tools/m8tests.c
 $CC $CFLAGS -s -o out/PrismMouse tools/prismmouse.c
 $CC $CFLAGS -s -o out/PrismBench tools/prismbench.c -lm

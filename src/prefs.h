@@ -6,7 +6,7 @@
  *
  * The file is plain text, one KEY=VALUE per line:
  *
- *   BOARD=AUTO|PICASSO2|ZZ9000
+ *   BOARD=AUTO|PICASSO2|ZZ9000|UAEGFX
  *   BLITTER=ON|OFF
  *   LOG=ON|OFF
  *   PALETTE=RGB|BGR             (Piccolo/Spectrum only, see drv_picasso2.c)
@@ -39,7 +39,7 @@ extern const UBYTE prefs_rates[PREFS_NRATES];    /* 0 = driver's default   */
 #define PREFS_DEPTH(i)  ((i) / PREFS_NSIZES)
 #define PREFS_IDLOW(i)  ((ULONG)PREFS_DEPTH(i) << 8 | PREFS_SIZE(i))
 
-enum { PB_AUTO, PB_PICASSO2, PB_ZZ9000, PB_COUNT };
+enum { PB_AUTO, PB_PICASSO2, PB_ZZ9000, PB_UAEGFX, PB_COUNT };
 
 struct PrismPrefs {
     UBYTE board;                     /* PB_*                               */

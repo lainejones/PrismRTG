@@ -36,7 +36,7 @@ enum { GAD_LIST = 1, GAD_ON, GAD_HZ, GAD_BOARD, GAD_BLIT, GAD_LOG,
        GAD_SAVE, GAD_USE, GAD_DEFAULTS, GAD_CANCEL, GAD_STATUS, GAD_TEST };
 
 static STRPTR hzLabels[] = { "Default", "60 Hz", "70 Hz", "72 Hz", "75 Hz", NULL };
-static STRPTR boardLabels[] = { "Auto", "Picasso II", "ZZ9000", NULL };
+static STRPTR boardLabels[] = { "Auto", "Picasso II", "ZZ9000", "UAE (native)", NULL };
 
 struct Gui {
     struct Screen *scr;

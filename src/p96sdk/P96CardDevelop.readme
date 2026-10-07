@@ -1,0 +1,50 @@
+Short:        P96 Driver Development Files
+Author:       jens@icomp.de (Jens Schönfeld)
+Uploader:     thomas.richter@alumni.tu-berlin.de (Thomas Richter)
+Type:         dev/misc
+Version:      3.6.0
+Architecture: generic
+
+This archive contains files to aid the development of P96
+graphics card drivers. This archive exposes the internal
+API of P96 towards drivers which is not intended to be called
+or used by end-user applications.
+
+The HardWare directory contains an example implementation of
+a P96 driver, here for the Cirrus5434 based PiccoloSD64
+driver.
+
+The PrivateInclude directory contains include files for writing
+such drivers. In particular, the boardinfo.h / boardinfo.i files
+describe the interface towards a card or chip driver as used by
+the P96 core to represent a particular card or graphics chip.
+
+While cards are specific to a particular vendor of an end user
+device, the chip drivers represent the graphics chip implementing
+the core functionality of a graphics card. This design is useful
+if the same graphics chip has been used by multiple vendors in
+different card designs. The P96 core loads via the monitor icon
+the card driver, which then optionally loads a corresponding chip
+driver if it does not drive the chip directly.
+
+The settings.h and settings.i file describe the preferences of a
+particular card, thus the definition of its modes and resolutions
+as selected by the user.
+
+The PrivateInclude/pragma, clib and inline directories contain
+the interface definitions of card and chip drivers if you plan
+to implement card and chip drivers in C.
+
+Additional documentation on the driver interface is found online
+at http://wiki.icomp.de/wiki/P96_Driver_Development
+
+Additional information on P96, and the latest development files
+are found in the P96 wiki:
+https://wiki.icomp.de/wiki/P96
+
+This archive is freely distributable under CC-BY conditions, that
+is, it can be copied provided you attribute its source correctly.
+
+To find out more about Creative Commons Licenses and CC-BY in
+particular, visit https://creativecommons.org/licenses/by/4.0/
+

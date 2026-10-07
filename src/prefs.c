@@ -22,7 +22,7 @@ const UWORD prefs_sizes[PREFS_NSIZES][2] = {
 const UBYTE prefs_depths[PREFS_NDEPTHS] = { 8, 16, 24, 32 };
 const UBYTE prefs_rates[PREFS_NRATES] = { 0, 60, 70, 72, 75 };
 
-static const char *const boardNames[PB_COUNT] = { "AUTO", "PICASSO2", "ZZ9000" };
+static const char *const boardNames[PB_COUNT] = { "AUTO", "PICASSO2", "ZZ9000", "UAEGFX" };
 
 void prefs_default(struct PrismPrefs *p)
 {

@@ -4,12 +4,11 @@ Graphics card (RTG) software for AmigaOS 3.x, written from scratch. PrismRTG
 puts Workbench and programs on a graphics card in 256 colours, 16-bit and
 24/32-bit, drawn by the card's blitter, with a hardware mouse pointer and a
 its own built-in `cybergraphics.library` and `Picasso96API.library` for programs
-that ask for one (both written for PrismRTG: nothing of CyberGraphX or Picasso96
-is used or shipped).
+that ask for one (both implemented by PrismRTG).
 
 It was written so that its author has an RTG system he can maintain himself:
 when something is wrong it can be fixed the same day. It is standalone - it
-uses, needs and includes nothing of Picasso96 or CyberGraphX - and it is free
+needs no Picasso96 or CyberGraphX installation - and it is free
 software under the GPL. It takes the place of Picasso96 on the Amiga it runs
 on.
 
@@ -28,6 +27,19 @@ on.
 | MNT ZZ9000, Zorro II mode | | none | Untested. No blitter or pointer support in this mode. |
 
 Needs AmigaOS 3.0 or newer and a 68020 or better.
+
+### Native UAE RTG candidate
+
+`BOARD=UAEGFX` selects the native candidate, which binds UAE's resident
+RTG host interface directly without loading a `.card` file or using the
+P96 adapter:
+
+```text
+Run >RAM:PrismD.log PrismD BOARD=UAEGFX
+```
+
+Enable UAE RTG memory and its hardware cursor. This candidate is selected
+explicitly; see [native UAE configuration and limits](docs/uaegfx.md).
 
 ## What works
 
@@ -197,7 +209,7 @@ Output goes to `out/`, the release drawer to `out/pkg/PrismRTG`.
 
 | Tool | What it does |
 |---|---|
-| `PrismD` | The driver. `PrismD [BOARD=ZZ9000|PICASSO2] [PREFS=file] [LOG]`; Ctrl-C removes its patches when no PrismRTG screen is open. |
+| `PrismD` | The driver. `PrismD [BOARD=ZZ9000|PICASSO2|UAEGFX] [PREFS=file] [LOG]`; Ctrl-C removes its patches when no PrismRTG screen is open. UAEGFX retains its context until reboot. |
 | `PrismPrefs` | Settings editor. `FROM= USE SAVE TEST=<slot>` work without the window. |
 | `Prism` (`out/PrismMon`) | `DEVS:Monitors` launcher with the boot failsafe. |
 | `PrismSetup` | Installer helper: `DETECT`, `WBMODE=<slot>`. |

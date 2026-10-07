@@ -53,7 +53,7 @@
 
 struct GfxBase       *GfxBase;
 struct IntuitionBase *IntuitionBase;
-struct Library       *UtilityBase;
+/* Use libnix's UtilityBase, which is needed by runtime initialization. */
 struct ExpansionBase *ExpansionBase;
 
 struct PrismBoard board;
@@ -2003,7 +2003,7 @@ static BOOL uninstall(void)
 int main(void)
 {
     LONG args[3] = { 0 };
-    static const char *const pbName[PB_COUNT] = { NULL, "PICASSO2", "ZZ9000" };
+    static const char *const pbName[PB_COUNT] = { NULL, "PICASSO2", "ZZ9000", "UAEGFX" };
     struct RDArgs *rda;
     const char *want;
     BOOL found = FALSE;
@@ -2059,6 +2059,8 @@ int main(void)
         found = Picasso2_Probe(&board);
     if (!found && (!want || !Stricmp(want, "ZZ9000")))
         found = ZZ9000_Probe(&board);
+    if (want && !Stricmp(want, "UAEGFX"))
+        found = UAEGFX_Probe(&board);
     if (!found) {
         printf("PrismD: no supported board\n");
         rc = 5;
@@ -2215,6 +2217,7 @@ int main(void)
     rc = 0;
 
 out:
+    UAEGFX_KeepResident();
     if (ExpansionBase) CloseLibrary((struct Library *)ExpansionBase);
     if (UtilityBase) CloseLibrary(UtilityBase);
     if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);

@@ -1,0 +1,18 @@
+P96 driver development headers, release 3.6.0
+
+These three headers are copied unchanged from the P96 driver SDK in
+https://github.com/mheyer32/p96drivers/tree/master/Picasso96Develop
+Snapshot: e6fd03e87486fd3dc4f5ca41934a843b7911d0a1
+
+Sources:
+  PrivateInclude/boardinfo.h
+  PrivateInclude/settings.h
+  Include/libraries/Picasso96.h
+
+Authors: Alexander Kneer, Tobias Abt, Thomas Richter and Individual
+Computers. See P96CardDevelop.readme for the SDK's CC-BY redistribution
+terms and attribution. These headers describe the driver ABI; no P96
+implementation or card-driver binary is included.
+
+Interface documentation:
+https://wiki.icomp.de/wiki/P96_Driver_Development
