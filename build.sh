@@ -38,10 +38,6 @@ $CC $CFLAGS -s -o out/PrismShow tools/prismshow.c
 $CC $CFLAGS -s -o out/prismdiag tools/prismdiag.c
 $CC $CFLAGS -s -o out/iotime tools/iotime.c
 $CC $CFLAGS -s -o out/p2peek tools/p2peek.c
-sh tools/mkpkg.sh
-
-ls -l out
-echo "Done."
 $CC $CFLAGS -s -o out/lockwatch tools/lockwatch.c
 $CC $CFLAGS -s -o out/cmreq tools/cmreq.c
 $CC $CFLAGS -s -o out/lastalert tools/lastalert.c
@@ -54,3 +50,7 @@ $CC $CFLAGS -s -o out/p96test tools/p96test.c
 $CC $CFLAGS -s -o out/trapwatch tools/trapwatch.c
 $CC $CFLAGS -s -o out/tmpltest tools/tmpltest.c
 $CC $CFLAGS -s -o out/stftest tools/stftest.c
+
+sh tools/mkpkg.sh
+ls -l out
+echo "Done."
