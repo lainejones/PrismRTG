@@ -800,7 +800,8 @@ static ULONG P_GetDisplayInfoData(APTR h __asm("a0"), APTR buf __asm("a1"),
     case DTAG_NAME:
         len = sizeof(u.ni);
         qhdr(&u.ni.Header, tag, r->id, len);
-        strncpy((char *)u.ni.Name, r->name, DISPLAYNAMELEN - 1);
+        memcpy(u.ni.Name, r->name, sizeof(u.ni.Name));
+        u.ni.Name[sizeof(u.ni.Name) - 1] = 0;
         break;
     default:
         LEAVE();

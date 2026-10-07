@@ -112,8 +112,11 @@ static void find_p96_monitor(int card, char *out, int outLen)
                 continue;
             if (dob->do_ToolTypes && (bt = FindToolType((void *)dob->do_ToolTypes, "BOARDTYPE")) &&
                 boardtype_matches(bt, card)) {
-                strncpy(out, fib->fib_FileName, outLen - 1);
-                out[n - 5 < outLen - 1 ? n - 5 : outLen - 1] = 0;
+                n -= 5;                           /* omit .info */
+                if (n >= outLen)
+                    n = outLen - 1;
+                memcpy(out, fib->fib_FileName, n);
+                out[n] = 0;
             }
             FreeDiskObject(dob);
         }
