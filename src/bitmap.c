@@ -11,6 +11,7 @@
 #include <proto/graphics.h>
 #include <string.h>
 #include "prismint.h"
+#include "damage.h"
 
 static struct PBitMap *table[PBM_MAX];
 static ULONG used;
@@ -49,11 +50,11 @@ static ULONG pbm_bytes(struct PBitMap *p)
 
 /* VRAM for `size` bytes, evicting least recently shown bitmaps (never
  * `keep`) until it fits. Caller holds lock. */
-static LONG vram_get(ULONG size, struct PBitMap *keep)
+static LONG vram_get(struct PBitMap *p, struct PBitMap *keep)
 {
     LONG off;
 
-    while ((off = vram_alloc(size)) < 0) {
+    while ((off = vram_alloc(pbm_bytes(p),p->fmt,p->bpr,p->w,p->h)) < 0) {
         struct PBitMap *v = NULL;
         UWORD i;
         for (i = 0; i < PBM_MAX; i++) {
@@ -75,7 +76,7 @@ BOOL pbm_to_fast(struct PBitMap *p)
 
     if (!p->inVram)
         return TRUE;
-    if (p->locks) return FALSE;
+    if (p->locks && !(board.flags & PBF_SHADOW)) return FALSE;
     if ((board.flags & PBF_SHADOW) && p->mem) {
         vram_free(p->vramOff);
         p->inVram = FALSE;
@@ -101,12 +102,13 @@ BOOL pbm_to_vram(struct PBitMap *p)
 
     if (p->inVram)
         return TRUE;
-    if (p->locks || p->direct || (off = vram_get(size, p)) < 0)
+    if (((p->locks || p->direct) && !(board.flags & PBF_SHADOW)) ||
+        (off = vram_get(p, p)) < 0)
         return FALSE;
     if (board.waitBlit)
         board.waitBlit(&board);
     if (board.flags & PBF_SHADOW) {
-        p->inVram = TRUE; p->vramOff = off;
+        p->inVram = TRUE; p->vramOff = off; p->uploadValid = FALSE;
         if (pbm_upload(p)) return TRUE;
         p->inVram = FALSE; vram_free(off); return FALSE;
     }
@@ -117,6 +119,18 @@ BOOL pbm_to_vram(struct PBitMap *p)
     p->vramOff = off;
     p->pix = board.vram + off;
     dbg("vram: %ux%u x%u into VRAM +%lx\n", p->w, p->h, p->bpp, (ULONG)off);
+    return TRUE;
+}
+
+/* A driver's format change may rebuild its VRAM pool. Shadow pointers stay
+ * valid even for locked/direct bitmaps while their device storage is freed. */
+BOOL pbm_prepare_mode(void)
+{
+    UWORD i;
+    if (!(board.flags & PBF_REINIT)) return TRUE;
+    if (!(board.flags & PBF_SHADOW)) return FALSE;
+    for (i=0;i<PBM_MAX;i++)
+        if (table[i] && table[i]->inVram && !pbm_to_fast(table[i])) return FALSE;
     return TRUE;
 }
 
@@ -166,7 +180,7 @@ struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE format, UWORD *penT
         LONG off;
         ObtainSemaphore(&lock);
         /* vram 2 = free VRAM only (off-screen bitmaps never evict) */
-        off = (vram == 2) ? vram_alloc(size) : vram_get(size, NULL);
+        off = (vram == 2) ? vram_alloc(pbm_bytes(p),p->fmt,p->bpr,p->w,p->h) : vram_get(p, NULL);
         ReleaseSemaphore(&lock);
         if (off >= 0) {
             p->inVram = TRUE;
@@ -226,6 +240,7 @@ void pbm_free(struct PBitMap *p)
     }
     if (p->bm) FreeVec(p->bm);
     if (p->mem) FreeVec(p->mem);
+    if (p->uploaded) FreeVec(p->uploaded);
     FreeVec(p);
 }
 
@@ -373,20 +388,59 @@ void pbm_surface(const struct PBitMap *p, struct PrismSurface *s)
     s->pitch=p->bpr; s->width=p->w; s->height=p->h;
     s->format=p->fmt; s->bpp=p->bpp; s->flags=p->inVram ? PSF_VRAM : 0;
 }
+static BOOL pbm_write(struct PBitMap *p,struct PrismSurface *s,ULONG off,
+    const UBYTE *data,ULONG count)
+{
+    if (board.ops && board.ops->write) return board.ops->write(&board,s,off,data,count);
+    if (board.flags & PBF_BANKED) return FALSE;
+    if (board.waitBlit) board.waitBlit(&board);
+    CopyMem((APTR)data,board.vram+p->vramOff+off,count);
+    return TRUE;
+}
 BOOL pbm_upload(struct PBitMap *p)
 {
     struct PrismSurface s;
+    ULONG y;
     if (!p->inVram || !(board.flags & PBF_SHADOW)) return TRUE;
     pbm_surface(p,&s);
-    return board.ops && board.ops->write && board.ops->write(&board,&s,0,p->pix,s.allocation);
+    if (!p->uploaded) p->uploaded = AllocVec(s.allocation, MEMF_ANY);
+    if (!p->uploaded || !p->uploadValid) {
+        if (!pbm_write(p,&s,0,p->pix,s.allocation)) return FALSE;
+        if (p->uploaded) {
+            CopyMem(p->pix,p->uploaded,s.allocation);
+            p->uploadValid = TRUE;
+        }
+        return TRUE;
+    }
+    for (y=0; y<p->h; y++) {
+        ULONG first, count, off=y*p->bpr;
+        if (changed_span(p->pix+off,p->uploaded+off,p->bpr,&first,&count)) {
+            off += first;
+            if (!pbm_write(p,&s,off,p->pix+off,count)) return FALSE;
+            CopyMem(p->pix+off,p->uploaded+off,count);
+        }
+    }
+    return TRUE;
 }
-static enum PrismResult pbm_result(struct PBitMap *p,enum PrismResult result)
+static enum PrismResult pbm_result(struct PBitMap *p,enum PrismResult result,
+    ULONG xbytes,UWORD y,ULONG rowbytes,UWORD h)
 {
     struct PrismSurface s;
     if (result != PR_DECLINED && (board.flags & PBF_SHADOW)) {
+        UWORD row;
         pbm_surface(p,&s);
-        if (!board.ops->read || !board.ops->read(&board,&s,0,p->pix,s.allocation)) {
-            board.flags |= PBF_ACCEL_BROKEN; board.faults++; result=PR_FAILED;
+        for (row=0; row<h; row++) {
+            ULONG off=(ULONG)(y+row)*p->bpr+xbytes;
+            if (board.ops && board.ops->read ?
+                !board.ops->read(&board,&s,off,p->pix+off,rowbytes) :
+                (board.flags & PBF_BANKED) != 0) {
+                board.flags |= PBF_ACCEL_BROKEN; board.faults++; result=PR_FAILED;
+                p->uploadValid=FALSE;
+                break;
+            }
+            if (!board.ops || !board.ops->read)
+                CopyMem(board.vram+p->vramOff+off,p->pix+off,rowbytes);
+            if (p->uploadValid) CopyMem(p->pix+off,p->uploaded+off,rowbytes);
         }
     }
     if (result == PR_FAILED) dbg("driver: operation failed; acceleration disabled\n");
@@ -413,7 +467,7 @@ enum PrismResult pbm_hw_fill(struct PBitMap *p,UBYTE bpp,UWORD x,UWORD y,UWORD w
     else if (bpp!=p->bpp) return PR_DECLINED;
     /* Byte clears include row padding. */
     if (bpp==1) s.width=s.pitch;
-    return pbm_result(p,board_fill(&board,&s,x,y,w,h,c));
+    return pbm_result(p,board_fill(&board,&s,x,y,w,h,c),(ULONG)x*bpp,y,(ULONG)w*bpp,h);
 }
 enum PrismResult pbm_hw_copy(struct PBitMap *s,struct PBitMap *d,UWORD sx,UWORD sy,
     UWORD dx,UWORD dy,UWORD w,UWORD h)
@@ -421,7 +475,7 @@ enum PrismResult pbm_hw_copy(struct PBitMap *s,struct PBitMap *d,UWORD sx,UWORD 
     struct PrismSurface a,b;
     if (!s->inVram || !d->inVram || !pbm_upload(s) || (s!=d && !pbm_upload(d))) return PR_DECLINED;
     pbm_surface(s,&a); pbm_surface(d,&b);
-    return pbm_result(d,board_copy(&board,&a,&b,sx,sy,dx,dy,w,h));
+    return pbm_result(d,board_copy(&board,&a,&b,sx,sy,dx,dy,w,h),(ULONG)dx*d->bpp,dy,(ULONG)w*d->bpp,h);
 }
 enum PrismResult pbm_hw_expand(struct PBitMap *p,UWORD x,UWORD y,UWORD w,UWORD h,
     const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr)
@@ -429,14 +483,16 @@ enum PrismResult pbm_hw_expand(struct PBitMap *p,UWORD x,UWORD y,UWORD w,UWORD h
     struct PrismSurface s;
     if (!p->inVram || !pbm_upload(p)) return PR_DECLINED;
     pbm_surface(p,&s);
-    return pbm_result(p,board_expand(&board,&s,x,y,w,h,src,mod,fg,bg,tr));
+    return pbm_result(p,board_expand(&board,&s,x,y,w,h,src,mod,fg,bg,tr),(ULONG)x*p->bpp,y,(ULONG)w*p->bpp,h);
 }
 enum PrismResult pbm_hw_line(struct PBitMap *p,WORD x,WORD y,WORD dx,WORD dy,ULONG c)
 {
     struct PrismSurface s;
     if (!p->inVram || !pbm_upload(p)) return PR_DECLINED;
     pbm_surface(p,&s);
-    return pbm_result(p,board_line(&board,&s,x,y,dx,dy,c));
+    return pbm_result(p,board_line(&board,&s,x,y,dx,dy,c),
+        (ULONG)(dx<0 ? x+dx : x)*p->bpp,dy<0 ? y+dy : y,
+        (ULONG)(dx<0 ? 1-dx : dx+1)*p->bpp,dy<0 ? 1-dy : dy+1);
 }
 enum PrismResult pbm_hw_planar(const struct PrismPlanar *src,struct PBitMap *p,
     UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h,UBYTE mt,UBYTE mask)
@@ -444,5 +500,6 @@ enum PrismResult pbm_hw_planar(const struct PrismPlanar *src,struct PBitMap *p,
     struct PrismSurface d;
     if (!p->inVram || !board.ops || !board.ops->planar || !pbm_upload(p)) return PR_DECLINED;
     pbm_surface(p,&d);
-    return pbm_result(p,board_planar(&board,src,&d,sx,sy,dx,dy,w,h,mt,mask));
+    return pbm_result(p,board_planar(&board,src,&d,sx,sy,dx,dy,w,h,mt,mask),
+        (ULONG)dx*p->bpp,dy,(ULONG)w*p->bpp,h);
 }

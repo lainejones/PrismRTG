@@ -38,6 +38,8 @@ struct PrismOps {
     ULONG (*pitch)(struct PrismBoard *, UWORD, UWORD, UBYTE); /* full format */
     /* Transfer a range between stable CPU storage and device memory. The
      * driver controls aperture/bank changes. Caller holds the board lock. */
+    BOOL (*allocate)(struct PrismBoard *, struct PrismSurface *);
+    void (*release)(struct PrismBoard *, ULONG);
     BOOL (*read)(struct PrismBoard *, const struct PrismSurface *, ULONG, APTR, ULONG);
     BOOL (*write)(struct PrismBoard *, const struct PrismSurface *, ULONG, const void *, ULONG);
 };
@@ -45,6 +47,9 @@ struct PrismOps {
 #define PRISM_OPS_SIZE sizeof(struct PrismOps)
 
 #define PBF_SHADOW (1UL << 6)     /* CPU access goes through read/write */
+#define PBF_REINIT (1UL << 11)   /* release shadow VRAM before setMode */
+#define PBF_PRESENT (1UL << 10)  /* device holds composed, not source pixels */
+#define PBF_BANKED (1UL << 9)    /* CalculateMemory may remap every byte */
 #define PBF_SOFTWARE (1UL << 8)
 #define PBF_ACCEL_BROKEN (1UL << 7)
 

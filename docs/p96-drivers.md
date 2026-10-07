@@ -51,15 +51,28 @@ replacement `rtg.library` for drivers that depend on private core services.
 
 Mode setting, panning, palette updates and hardware sprites are forwarded
 to the driver. Accelerated fills, same-bitmap copies and monochrome text
-expansion have CPU fallback callbacks. Other rendering stays with Prism.
+expansion have CPU fallback callbacks. Plain planar copies can use the
+driver's planar-to-chunky or planar-to-direct hook, with CPU defaults.
+For uaegfx, a startup probe selects the host hook or a CPU fallback; see
+[the native UAE notes](uaegfx.md). Other rendering stays
+with Prism.
 The adapter waits for the blitter before handing control back to Prism.
 
-Prism uses the driver's bitmap pitch requirements. The adapter chooses
-one format per byte depth from the formats Prism supports, retaining only
-formats that can coexist in the same linear CPU aperture. It excludes
-formats whose `CalculateMemory` mapping differs from the logical VRAM
-address. A driver that replaces the VRAM allocator is rejected; private
-allocations through the core return failure.
+Prism uses the driver's bitmap pitch requirements and carries the exact
+pixel format through rendering calls. Compatible linear formats use direct
+VRAM pointers. Displaced contiguous apertures and incompatible memory modes
+use stable CPU shadow buffers. The adapter waits for the blitter, selects
+the memory mode and translates addresses for each transfer. Applications
+keep stable bitmap pointers while the adapter changes device mappings.
+
+Shadow uploads send changed row spans, including writes through retained
+bitmap pointers; accelerated readback covers only the destination region.
+The comparison history consumes an additional CPU buffer. Banked mappings
+are supported when `CalculateMemory` exposes each requested byte, using
+conservative transfers and CPU rendering. Custom allocators can wrap the
+adapter's allocator or own their pool, provided allocation and free hooks
+are both available. Incompatible format changes can release device storage
+and call `ReInitMemory` while preserving application shadows.
 
 Drivers with `BIF_INTERNALMODESONLY`, including uaegfx, supply their own
 mode lists. Other drivers receive standard timings for 640x400, 640x480,
@@ -71,8 +84,7 @@ rejected.
 
 Hardware cursor input is limited to 32x48 pixels. Prism has no software
 cursor fallback: a driver or pixel format requiring one will not show an
-RTG pointer. Screen dragging, overlays, special memory allocators and
-aperture switching between incompatible formats are not supported by this
+RTG pointer. Screen dragging and overlays are not supported by this
 backend. It is a compatibility path for suitable drivers, not full P96
 board or feature parity.
 

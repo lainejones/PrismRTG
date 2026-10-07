@@ -125,7 +125,7 @@ static UBYTE *rtg_address(struct PrismBoard *b,const struct PrismSurface *s,ULON
 {
     struct BoardInfo *bi=b->priv;
     RGBFTYPE f=rtg_formats[s->format];
-    struct RenderInfo ri={NULL,s->pitch,0,f};
+    struct RenderInfo ri={b->vram+s->offset,s->pitch,0,f};
     rtg_wait(bi);
     if(bi->SetMemoryMode) bi->SetMemoryMode(bi,f);
     return bi->CalculateMemory ? bi->CalculateMemory(bi,b->vram+s->offset+off,&ri,f) :
@@ -143,7 +143,7 @@ enum PrismResult rtg_fill(struct PrismBoard *b,const struct PrismSurface *d,
     UWORD x,UWORD y,UWORD w,UWORD h,ULONG c)
 {
     struct BoardInfo *bi=b->priv;struct RenderInfo ri;
-    if((bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || !bi->FillRect || !rtg_render(b,d,&ri)) return PR_DECLINED;
+    if((b->flags & PBF_BANKED) || (bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || !bi->FillRect || !rtg_render(b,d,&ri)) return PR_DECLINED;
     bi->FillRect(bi,&ri,x,y,w,h,rtg_pen(c,d->bpp),255,ri.RGBFormat);rtg_wait(bi);
     return PR_DONE;
 }
@@ -151,7 +151,7 @@ enum PrismResult rtg_copy(struct PrismBoard *b,const struct PrismSurface *s,
     const struct PrismSurface *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h)
 {
     struct BoardInfo *bi=b->priv;struct RenderInfo ri;
-    if((bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || s->offset!=d->offset || s->pitch!=d->pitch || !bi->BlitRect || !rtg_render(b,d,&ri))
+    if((b->flags & PBF_BANKED) || (bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || s->offset!=d->offset || s->pitch!=d->pitch || !bi->BlitRect || !rtg_render(b,d,&ri))
         return PR_DECLINED;
     bi->BlitRect(bi,&ri,sx,sy,dx,dy,w,h,255,ri.RGBFormat);rtg_wait(bi);
     return PR_DONE;
@@ -160,7 +160,7 @@ enum PrismResult rtg_expand(struct PrismBoard *b,const struct PrismSurface *d,
     UWORD x,UWORD y,UWORD w,UWORD h,const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr)
 {
     struct BoardInfo *bi=b->priv;struct RenderInfo ri;struct Template t;
-    if((bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || !bi->BlitTemplate || !bi->BlitTemplateDefault || mod>32767 || !rtg_render(b,d,&ri))
+    if((b->flags & PBF_BANKED) || (bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || !bi->BlitTemplate || !bi->BlitTemplateDefault || mod>32767 || !rtg_render(b,d,&ri))
         return PR_DECLINED;
     t.Memory=(APTR)src;t.BytesPerRow=mod;t.XOffset=0;t.DrawMode=tr ? JAM1:JAM2;
     t.FgPen=rtg_pen(fg,d->bpp);t.BgPen=rtg_pen(bg,d->bpp);
@@ -176,7 +176,7 @@ enum PrismResult rtg_planar(struct PrismBoard *b,const struct PrismPlanar *s,
     static struct ColorIndexMapping cim;
     UWORD i;
     if((ULONG)sx+w>32768 || (ULONG)sy+h>32768 ||
-       (bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || (mt & 0xf0)!=0xc0 || mask!=255 || !rtg_render(b,d,&ri)) return PR_DECLINED;
+       (b->flags & PBF_BANKED) || (bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || (mt & 0xf0)!=0xc0 || mask!=255 || !rtg_render(b,d,&ri)) return PR_DECLINED;
     if(d->bpp==1) {
         if(!bi->BlitPlanar2Chunky) return PR_DECLINED;
         bi->BlitPlanar2Chunky(bi,(struct BitMap *)s->bitmap,&ri,sx,sy,dx,dy,w,h,12,mask);
@@ -200,13 +200,24 @@ static BOOL rtg_transfer(struct PrismBoard *b,const struct PrismSurface *s,ULONG
     UBYTE *mem,ULONG size,BOOL write)
 {
     ULONG n;
+    struct BoardInfo *bi=b->priv;
+    struct RenderInfo ri;
     if(s->format>=PF_COUNT || off>s->allocation || size>s->allocation-off ||
         s->offset>b->vramSize || s->allocation>b->vramSize-s->offset || !s->pitch) return FALSE;
+    ri.Memory=b->vram+s->offset;ri.BytesPerRow=s->pitch;ri.pad=0;ri.RGBFormat=rtg_formats[s->format];
+    rtg_wait(bi);
+    if(bi->SetMemoryMode)bi->SetMemoryMode(bi,ri.RGBFormat);
     while(size) {
-        UBYTE *mapped=rtg_address(b,s,off);
+        UBYTE *mapped=bi->CalculateMemory ? bi->CalculateMemory(bi,b->vram+s->offset+off,&ri,ri.RGBFormat) :
+            b->vram+s->offset+off;
         if(!mapped) return FALSE;
-        n=s->pitch-off%s->pitch;if(n>size)n=size;
-        if(write) CopyMem(mem,mapped,n); else CopyMem(mapped,mem,n);
+        /* A banked aperture can change on every translation. Consume the
+         * mapping before asking for another address; never infer a window
+         * size by probing ahead and invalidating the current mapping. */
+        n=(b->flags & PBF_BANKED) ? 1 : s->pitch-off%s->pitch;
+        if(n>size)n=size;
+        if(n==1) { if(write)*mapped=*mem;else *mem=*mapped; }
+        else if(write) CopyMem(mem,mapped,n); else CopyMem(mapped,mem,n);
         mem+=n;off+=n;size-=n;
     }
     return TRUE;

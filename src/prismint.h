@@ -32,7 +32,7 @@ void memchk(const char *where);
 #define TRACE(n)
 #endif
 
-LONG vram_alloc(ULONG size);
+LONG vram_alloc(ULONG size, UBYTE format, ULONG pitch, UWORD width, UWORD height);
 void vram_free(ULONG off);
 
 /* ---- chunky bitmaps -------------------------------------------------
@@ -64,6 +64,8 @@ struct PBitMap {
     ULONG          vramOff;
     struct BitMap *dummy;       /* 1-plane chip bitmap behind Planes[]   */
     APTR           mem;         /* fast RAM block (off-screen bitmaps)   */
+    UBYTE         *uploaded;    /* last successful device upload, shadows only */
+    BOOL           uploadValid;
     UWORD          index;
     UWORD          locks;       /* cgx LockBitMap: pixels must not move  */
     UBYTE          direct;      /* Planes[0] = pix (pixel-format bitmaps) */
@@ -87,6 +89,7 @@ BOOL            pbm_to_vram(struct PBitMap *p);
 BOOL            pbm_to_fast(struct PBitMap *p);
 void pbm_surface(const struct PBitMap *, struct PrismSurface *);
 BOOL pbm_upload(struct PBitMap *);
+BOOL pbm_prepare_mode(void);
 void pbm_flush_shown(void);
 enum PrismResult pbm_hw_fill(struct PBitMap *, UBYTE, UWORD, UWORD, UWORD, UWORD, ULONG);
 enum PrismResult pbm_hw_copy(struct PBitMap *, struct PBitMap *, UWORD, UWORD, UWORD, UWORD, UWORD, UWORD);
@@ -120,7 +123,6 @@ void pointer_off(void);                      /* lock held                 */
 void pointer_colours(struct ViewPort *vp);   /* lock held                 */
 void pointer_tick(void);                     /* PrismD main loop          */
 
-#endif
 
 /* ---- render.c, for cgx.c -------------------------------------------- */
 typedef void (*rect_cb)(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
@@ -246,3 +248,5 @@ static inline ULONG pf_to_pixfmt(UBYTE fmt)
     }
     return 0;
 }
+
+#endif /* PRISMINT_H */

@@ -56,6 +56,8 @@ struct P96Priv {
     ULONG formats;
     UBYTE pf[5];                          /* selected Prism format by bpp */
     BOOL initialized, modeSet;
+    struct { ULONG offset, size; } allocations[256];
+    UWORD nallocations;
     UWORD sprite[4 + CURSOR_SIZE * 4];    /* 32-pixel P96 sprite + controls */
     char name[96];
 };
@@ -203,22 +205,57 @@ static BOOL vsync_state(struct BoardInfo *bi __asm("a0"), BOOL expected __asm("d
     return expected;
 }
 
-/* Prism owns VRAM allocation. A driver requesting private allocations
- * through the core must fail cleanly instead of calling a NULL vector. */
-static APTR no_card_alloc(struct BoardInfo *bi __asm("a0"), ULONG size __asm("d0"),
-                          BOOL force __asm("d1"), BOOL system __asm("d2"),
-                          ULONG pitch __asm("d3"), struct ModeInfo *mi __asm("a1"),
-                          RGBFTYPE format __asm("d7"))
+/* Drivers can wrap these defaults to impose stricter alignment. They also
+ * serve private driver allocations, so all P96 allocations share this pool.
+ * Migration is owned by Prism; force/system never evict behind its back. */
+static APTR card_alloc_at(struct BoardInfo *bi,ULONG size,ULONG offset,BOOL exact)
 {
-    (void)bi; (void)size; (void)force; (void)system;
-    (void)pitch; (void)mi; (void)format;
+    struct P96Priv *p=(struct P96Priv *)bi;
+    ULONG pos=0,end;UWORD i,j;
+    if(!size || size>0xfffffff0UL || p->nallocations==256)return NULL;
+    size=(size+15)&~15UL;
+    for(i=0;i<=p->nallocations;i++) {
+        end=i<p->nallocations ? p->allocations[i].offset : bi->MemorySize;
+        if(exact && pos<offset)pos=offset;
+        if(pos<=end && size<=end-pos) {
+            for(j=p->nallocations;j>i;j--)p->allocations[j]=p->allocations[j-1];
+            p->allocations[i].offset=pos;p->allocations[i].size=size;
+            p->nallocations++;
+            return bi->MemoryBase+pos;
+        }
+        if(i<p->nallocations)pos=p->allocations[i].offset+p->allocations[i].size;
+        if(exact && pos>offset)break;
+    }
     return NULL;
 }
-
-static BOOL no_card_free(struct BoardInfo *bi __asm("a0"), APTR mem __asm("a1"))
+static APTR card_alloc(struct BoardInfo *bi __asm("a0"), ULONG size __asm("d0"),
+    BOOL force __asm("d1"), BOOL system __asm("d2"), ULONG pitch __asm("d3"),
+    struct ModeInfo *mi __asm("a1"), RGBFTYPE format __asm("d7"))
 {
-    (void)bi; (void)mem;
+    (void)force;(void)system;(void)pitch;(void)mi;(void)format;
+    return card_alloc_at(bi,size,0,FALSE);
+}
+static APTR card_alloc_abs(struct BoardInfo *bi __asm("a0"),ULONG size __asm("d0"),
+    char *target __asm("a1"))
+{
+    ULONG offset=(ULONG)target-(ULONG)bi->MemoryBase;
+    if(offset>bi->MemorySize || (offset&15))return NULL;
+    return card_alloc_at(bi,size,offset,TRUE);
+}
+static BOOL card_free(struct BoardInfo *bi __asm("a0"),APTR mem __asm("a1"))
+{
+    struct P96Priv *p=(struct P96Priv *)bi;
+    ULONG offset=(ULONG)mem-(ULONG)bi->MemoryBase;UWORD i;
+    for(i=0;i<p->nallocations;i++)if(p->allocations[i].offset==offset) {
+        for(;i+1<p->nallocations;i++)p->allocations[i]=p->allocations[i+1];
+        p->nallocations--;return TRUE;
+    }
     return FALSE;
+}
+static void card_reinit(struct BoardInfo *bi __asm("a0"),RGBFTYPE format __asm("d0"))
+{
+    (void)format;
+    ((struct P96Priv *)bi)->nallocations=0;
 }
 
 static void init_list(struct MinList *l)
@@ -238,8 +275,10 @@ static void init_boardinfo(struct P96Priv *p)
     bi->BoardName = p->name;
     bi->BitsPerCannon = 8;
     bi->Flags = BIF_GRANTDIRECTACCESS;
-    bi->AllocCardMem = no_card_alloc;
-    bi->FreeCardMem = no_card_free;
+    bi->AllocCardMem = card_alloc;
+    bi->FreeCardMem = card_free;
+    bi->AllocCardMemAbs = card_alloc_abs;
+    bi->ReInitMemory = card_reinit;
     bi->MaxBMWidth = bi->MaxBMHeight = 4096;
     InitSemaphore(&bi->BoardLock);
     init_list(&bi->ResolutionsList);
@@ -393,9 +432,35 @@ static ULONG p96_pitch(struct PrismBoard *b, UWORD w, UWORD h, UBYTE bpp)
     struct P96Priv *p = b->priv;
     return bpp && bpp <= 4 ? p96_surface_pitch(b,w,h,p->pf[bpp]) : 0;
 }
-static const struct PrismOps p96_ops = {
+static BOOL p96_allocate(struct PrismBoard *b,struct PrismSurface *s)
+{
+    struct P96Priv *p=b->priv;
+    struct BoardInfo *bi=&p->bi;
+    struct ModeInfo mi;
+    struct PrismMode m;
+    BOOL displayable;
+    APTR memory;
+    memset(&m,0,sizeof(m));
+    m.width=s->width;m.height=s->height;m.format=s->format;
+    displayable=mode_info(p,&m,&mi);
+    wait_blitter(bi);
+    memory=bi->AllocCardMem(bi,s->allocation,FALSE,FALSE,
+        displayable ? s->pitch : 0,displayable ? &mi : NULL,
+        rgbformat[s->format]);
+    if (!memory) return FALSE;
+    s->offset=(ULONG)memory-(ULONG)b->vram;
+    return TRUE;
+}
+static void p96_release(struct PrismBoard *b,ULONG off)
+{
+    struct BoardInfo *bi=b->priv;
+    wait_blitter(bi);
+    bi->FreeCardMem(bi,b->vram+off);
+}
+static const struct PrismOps p96_alloc_ops = {
     .fill=rtg_fill,.copy=rtg_copy,.expand=rtg_expand,.planar=rtg_planar,
-    .pitch=p96_surface_pitch,.read=rtg_read,.write=rtg_write
+    .pitch=p96_surface_pitch,.read=rtg_read,.write=rtg_write,
+    .allocate=p96_allocate,.release=p96_release
 };
 
 static void p96_pan(struct PrismBoard *b, ULONG offset)
@@ -418,11 +483,19 @@ static BOOL p96_mode(struct PrismBoard *b, struct PrismMode *m)
     if (bi->SetInterrupt) bi->SetInterrupt(bi, FALSE);
     if (p->modeSet && bi->SetSprite) bi->SetSprite(bi, FALSE, bi->RGBFormat);
     bi->SetDisplay(bi, FALSE);
+    if ((b->flags & PBF_REINIT) && (!p->modeSet ||
+        !(bi->GetCompatibleFormats(bi,bi->RGBFormat) & (1UL<<rgbformat[m->format])))) {
+        bi->ReInitMemory(bi,rgbformat[m->format]);
+        b->vram=bi->MemoryBase;b->vramSize=bi->MemorySize;
+    }
     p->mode = mi;
     bi->ModeInfo = &p->mode;
     bi->RGBFormat = rgbformat[m->format];
     bi->Depth = mi.Depth;
     bi->Border = TRUE;
+    if (b->cursorImage && bi->EnableSoftSprite &&
+        !bi->EnableSoftSprite(bi,1UL<<bi->RGBFormat,&p->mode)) b->flags |= PBF_HW_CURSOR;
+    else b->flags &= ~PBF_HW_CURSOR;
     if (bi->SetMemoryMode) bi->SetMemoryMode(bi, bi->RGBFormat);
     bi->SetGC(bi, &p->mode, TRUE);
     if (bi->SetClock) bi->SetClock(bi);
@@ -591,12 +664,14 @@ static BOOL select_formats(struct P96Priv *p, struct PrismBoard *b)
         if (!(mask & bit)) continue;
         base=bi->CalculateMemory(bi,bi->MemoryBase,NULL,f);
         end=bi->CalculateMemory(bi,bi->MemoryBase+bi->MemorySize-1,NULL,f);
-        /* Fixed format apertures may be displaced, but must expose an
-         * entire contiguous view. Arbitrary banked P96 drivers remain out. */
-        if (!base || (ULONG)end-(ULONG)base != bi->MemorySize-1) continue;
+        /* A remapped window must be consumed one translation at a time. */
+        if (!base || !end) continue;
+        if ((ULONG)end-(ULONG)base != bi->MemorySize-1)
+            b->flags |= PBF_BANKED | PBF_SHADOW;
         if (((mask & accepted)!=accepted || !(compatible & bit)) && !bi->SetMemoryMode)
             continue;
-        if (base!=bi->MemoryBase || (mask & accepted)!=accepted || !(compatible & bit))
+        if (!(bi->Flags & BIF_GRANTDIRECTACCESS) || base!=bi->MemoryBase ||
+            (mask & accepted)!=accepted || !(compatible & bit))
             b->flags |= PBF_SHADOW;
         if (p->pf[bpp]==PF_COUNT) p->pf[bpp] = pf;
         b->formats |= PF_BIT(pf);
@@ -617,20 +692,23 @@ static BOOL attach_board(struct P96Priv *p, struct PrismBoard *b)
         puts("PrismD: P96 driver lacks required framebuffer operations");
         return FALSE;
     }
-    if (bi->AllocCardMem != no_card_alloc || bi->FreeCardMem != no_card_free ||
-        bi->AllocCardMemAbs || bi->ReInitMemory) {
-        puts("PrismD: P96 driver requires a custom VRAM allocator");
+    if (!bi->AllocCardMem || !bi->FreeCardMem) {
+        puts("PrismD: P96 allocator requires an allocation/free pair");
         return FALSE;
     }
     memset(b, 0, sizeof(*b));
     if (!select_formats(p, b)) {
-        puts("PrismD: P96 driver has no compatible contiguous pixel formats");
+        puts("PrismD: P96 driver has no CPU-mapped pixel formats");
         return FALSE;
     }
     if (p->card && p->card->lib_IdString &&
         !strncmp(p->card->lib_IdString,"UAE Graphics Card",17) &&
         !rtg_probe_planar(bi, b->formats)) bi->BlitPlanar2Direct = rtg_planar_direct;
-    b->ops = &p96_ops;
+    b->ops = &p96_alloc_ops;
+    if (bi->AllocCardMem != card_alloc || bi->FreeCardMem != card_free ||
+        bi->SoftSpriteFlags || bi->EnableSoftSprite != soft_sprite) b->flags |= PBF_SHADOW;
+    if (bi->ReInitMemory && bi->ReInitMemory != card_reinit)
+        b->flags |= PBF_SHADOW | PBF_REINIT;
     b->priv = p;
     b->name = bi->BoardName ? bi->BoardName : p->name;
     b->vram = bi->MemoryBase; b->vramSize = bi->MemorySize;
@@ -662,7 +740,7 @@ static BOOL attach_board(struct P96Priv *p, struct PrismBoard *b)
         b->cursorMove = p96_cursor_move;
         b->flags |= PBF_HW_CURSOR;
     } else {
-        puts("PrismD: P96 driver has no usable hardware cursor; no RTG pointer");
+        puts("PrismD: P96 driver has no usable hardware cursor; using software pointer");
     }
     return TRUE;
 }
