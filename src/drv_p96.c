@@ -3,8 +3,8 @@
  * P96 card-driver adapter. The P96 core is not loaded: Prism owns screens,
  * bitmaps and software rendering, and calls the card ABI directly.
  *
- * Contract: linear, CPU-accessible VRAM, mutually compatible apertures,
- * one selected format per byte depth. Special allocators are rejected.
+ * Contract: contiguous CPU apertures with explicit format switching.
+ * Mapped formats use stable CPU shadows. Special allocators are rejected.
  * P96 has no card teardown vector. Once FindCard succeeds, this task and
  * its libraries must remain resident, even on a subsequent startup error.
  *
@@ -30,6 +30,7 @@
 /* amiga-gcc 13 can put an indirect tail-call target in a0, overwriting
  * the BoardInfo argument. Keep register-ABI calls as ordinary calls. */
 #pragma GCC optimize ("no-optimize-sibling-calls")
+#include "rtg_ops.h"
 
 /* These are binary ABI offsets, not host C structure sizes. */
 _Static_assert(sizeof(BOOL) == 2, "P96 requires 16-bit BOOL");
@@ -52,6 +53,7 @@ struct P96Priv {
     struct DiskObject *disk;
     STRPTR emptyToolTypes[1];
     struct ModeInfo mode;
+    ULONG formats;
     UBYTE pf[5];                          /* selected Prism format by bpp */
     BOOL initialized, modeSet;
     UWORD sprite[4 + CURSOR_SIZE * 4];    /* 32-pixel P96 sprite + controls */
@@ -257,6 +259,8 @@ static void init_boardinfo(struct P96Priv *p)
     bi->BlitTemplate = bi->BlitTemplateDefault = cpu_template;
     bi->GetVSyncState = vsync_state;
     bi->EnableSoftSprite = bi->EnableSoftSpriteDefault = soft_sprite;
+    bi->BlitPlanar2ChunkyDefault = rtg_planar_chunky;
+    bi->BlitPlanar2DirectDefault = rtg_planar_direct;
     bi->MouseImage = p->sprite;
     bi->MouseWidth = 32;
     bi->MouseHeight = 48;
@@ -312,7 +316,7 @@ static BOOL mode_info(struct P96Priv *p, struct PrismMode *m, struct ModeInfo *m
     ULONG i;
     if (m->format >= PF_COUNT) return FALSE;
     bpp = rgb_bpp(rgbformat[m->format]);
-    if (!bpp || p->pf[bpp] != m->format) return FALSE;
+    if (!bpp || !(p->formats & PF_BIT(m->format))) return FALSE;
     type = mode_type(bpp);
     memset(mi, 0, sizeof(*mi));
     if (bi->Flags & BIF_INTERNALMODESONLY) {
@@ -372,21 +376,27 @@ static BOOL p96_check(struct PrismBoard *b, struct PrismMode *m)
     return mode_info(b->priv, m, &mi);
 }
 
-static ULONG p96_pitch(struct PrismBoard *b, UWORD w, UWORD h, UBYTE bpp)
+static ULONG p96_surface_pitch(struct PrismBoard *b, UWORD w, UWORD h, UBYTE format)
 {
     struct P96Priv *p = b->priv;
     struct ModeInfo mi;
     struct PrismMode m;
-    ULONG pitch;
-    if (!bpp || bpp > 4 || p->pf[bpp] == PF_COUNT ||
-        w > p->bi.MaxBMWidth || h > p->bi.MaxBMHeight || w > 32767 || h > 32767)
-        return 0;
+    if (format >= PF_COUNT || w > p->bi.MaxBMWidth || h > p->bi.MaxBMHeight ||
+        w > 32767 || h > 32767) return 0;
     memset(&m, 0, sizeof(m));
-    m.width = w; m.height = h; m.format = p->pf[bpp];
+    m.width = w; m.height = h; m.format = format;
     if (mode_info(p, &m, &mi)) return m.bytesPerRow;
-    pitch = p->bi.CalculateBytesPerRow(&p->bi, w, h, NULL, rgbformat[m.format]);
-    return pitch >= (ULONG)w * bpp && pitch <= 32767 ? pitch : 0;
+    return rtg_pitch(b,w,h,format);
 }
+static ULONG p96_pitch(struct PrismBoard *b, UWORD w, UWORD h, UBYTE bpp)
+{
+    struct P96Priv *p = b->priv;
+    return bpp && bpp <= 4 ? p96_surface_pitch(b,w,h,p->pf[bpp]) : 0;
+}
+static const struct PrismOps p96_ops = {
+    .fill=rtg_fill,.copy=rtg_copy,.expand=rtg_expand,.planar=rtg_planar,
+    .pitch=p96_surface_pitch,.read=rtg_read,.write=rtg_write
+};
 
 static void p96_pan(struct PrismBoard *b, ULONG offset)
 {
@@ -562,8 +572,8 @@ static void p96_cursor_move(struct PrismBoard *b, WORD x, WORD y)
 
 static BOOL select_formats(struct P96Priv *p, struct PrismBoard *b)
 {
-    /* Match Prism's preferred formats; only one per bpp because its
-     * acceleration callbacks identify surfaces by bpp, not RGBFormat. */
+    /* Advertise each accepted format. Retain a first choice per byte
+     * depth only for the legacy diagnostic callbacks. */
     static const UBYTE order[] = {
         PF_CLUT8, PF_RGB565BE, PF_BGR565LE, PF_RGB565LE,
         PF_BGR24, PF_RGB24, PF_BGRA32, PF_ARGB32, PF_RGBA32
@@ -575,19 +585,25 @@ static BOOL select_formats(struct P96Priv *p, struct PrismBoard *b)
         UBYTE pf = order[i], bpp = rgb_bpp(rgbformat[pf]);
         RGBFTYPE f = rgbformat[pf];
         ULONG bit = 1UL << f, mask;
-        if (p->pf[bpp] != PF_COUNT || !(bi->RGBFormats & bit) || !(compatible & bit))
-            continue;
+        UBYTE *base,*end;
+        if (!(bi->RGBFormats & bit)) continue;
         mask = bi->GetCompatibleFormats(bi, f);
-        if ((mask & accepted) != accepted || !(mask & bit)) continue;
-        if (bi->CalculateMemory(bi, bi->MemoryBase, NULL, f) != bi->MemoryBase ||
-            bi->CalculateMemory(bi, bi->MemoryBase + bi->MemorySize - 1, NULL, f) !=
-                bi->MemoryBase + bi->MemorySize - 1)
+        if (!(mask & bit)) continue;
+        base=bi->CalculateMemory(bi,bi->MemoryBase,NULL,f);
+        end=bi->CalculateMemory(bi,bi->MemoryBase+bi->MemorySize-1,NULL,f);
+        /* Fixed format apertures may be displaced, but must expose an
+         * entire contiguous view. Arbitrary banked P96 drivers remain out. */
+        if (!base || (ULONG)end-(ULONG)base != bi->MemorySize-1) continue;
+        if (((mask & accepted)!=accepted || !(compatible & bit)) && !bi->SetMemoryMode)
             continue;
-        p->pf[bpp] = pf;
+        if (base!=bi->MemoryBase || (mask & accepted)!=accepted || !(compatible & bit))
+            b->flags |= PBF_SHADOW;
+        if (p->pf[bpp]==PF_COUNT) p->pf[bpp] = pf;
         b->formats |= PF_BIT(pf);
         accepted |= bit;
         compatible &= mask;
     }
+    p->formats=b->formats;
     return accepted != 0;
 }
 
@@ -608,9 +624,10 @@ static BOOL attach_board(struct P96Priv *p, struct PrismBoard *b)
     }
     memset(b, 0, sizeof(*b));
     if (!select_formats(p, b)) {
-        puts("PrismD: P96 driver has no compatible linear pixel formats");
+        puts("PrismD: P96 driver has no compatible contiguous pixel formats");
         return FALSE;
     }
+    b->ops = &p96_ops;
     b->priv = p;
     b->name = bi->BoardName ? bi->BoardName : p->name;
     b->vram = bi->MemoryBase; b->vramSize = bi->MemorySize;
@@ -702,6 +719,11 @@ BOOL P96_Probe(struct PrismBoard *b, const char *card, const char *monitor)
         puts("PrismD: P96 card initialization failed");
         return FALSE;
     }
+    /* Same conservative UAE workaround as the native backend: some hosts
+     * silently ignore BLIT_SRC in BlitPlanar2Direct. Other card drivers
+     * keep their optional acceleration hook. */
+    if (p->card->lib_IdString && !strncmp(p->card->lib_IdString,"UAE Graphics Card",17))
+        p->bi.BlitPlanar2Direct = rtg_planar_direct;
     if (p->bi.SetInterrupt) p->bi.SetInterrupt(&p->bi, FALSE);
     return attach_board(p, b);
 

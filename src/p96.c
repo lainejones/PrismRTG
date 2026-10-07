@@ -694,11 +694,10 @@ static void fill_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
     /* on the card where it can: 8- and 16-bit fills, 32-bit on a blitter
      * that takes 4-byte pixels */
     put_pbm(p, px, c->rgb);
-    if (p->inVram && board.fillRect && (LONG)n * (by1 - by0 + 1) >= 12 &&
+    if (p->inVram && (board.fillRect || (board.ops && board.ops->fill)) && (LONG)n * (by1 - by0 + 1) >= 12 &&
         (p->bpp <= 2 || (p->bpp == 4 && (board.flags & PBF_BLIT_32)))) {
         ULONG v = p->bpp == 1 ? px[0] : p->bpp == 2 ? (((ULONG)px[0] << 8) | px[1]) : be32(px);
-        board.fillRect(&board, p->vramOff, p->bpr, p->bpp, bx0, by0, n, by1 - by0 + 1, v);
-        return;
+        if (pbm_hw_fill(p,p->bpp,bx0,by0,n,by1-by0+1,v) != PR_DECLINED) return;
     }
     if (n > 4096) n = 4096;
     for (x = 0; x < n; x++)

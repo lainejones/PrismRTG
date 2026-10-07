@@ -10,7 +10,7 @@
 #include <exec/semaphores.h>
 #include <graphics/gfx.h>
 #include <graphics/rastport.h>
-#include "prismboard.h"
+#include "boardops.h"
 
 /* Before the CPU reads or writes planar memory the Amiga's blitter may be
  * working on: wait until the blitter has finished everything queued, not
@@ -76,7 +76,7 @@ struct PBitMap *pbm_get(const struct BitMap *bm);
 /* prismd.c: the displayable bitmap of a screen Intuition is opening on a
  * Prism mode, or NULL */
 struct PBitMap *screen_bitmap_hook(ULONG w, ULONG h, ULONG depth, ULONG flags);
-struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE bpp, UWORD *penTab,
+struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE format, UWORD *penTab,
                         BOOL vram, BOOL clear);
 void            pbm_free(struct PBitMap *p);
 ULONG           pbm_count(void);
@@ -85,6 +85,14 @@ ULONG           pbm_count(void);
  * display or locked. */
 BOOL            pbm_to_vram(struct PBitMap *p);
 BOOL            pbm_to_fast(struct PBitMap *p);
+void pbm_surface(const struct PBitMap *, struct PrismSurface *);
+BOOL pbm_upload(struct PBitMap *);
+void pbm_flush_shown(void);
+enum PrismResult pbm_hw_fill(struct PBitMap *, UBYTE, UWORD, UWORD, UWORD, UWORD, ULONG);
+enum PrismResult pbm_hw_copy(struct PBitMap *, struct PBitMap *, UWORD, UWORD, UWORD, UWORD, UWORD, UWORD);
+enum PrismResult pbm_hw_expand(struct PBitMap *, UWORD, UWORD, UWORD, UWORD, const UBYTE *, ULONG, ULONG, ULONG, BOOL);
+enum PrismResult pbm_hw_line(struct PBitMap *, WORD, WORD, WORD, WORD, ULONG);
+enum PrismResult pbm_hw_planar(const struct PrismPlanar *, struct PBitMap *, UWORD, UWORD, UWORD, UWORD, UWORD, UWORD, UBYTE, UBYTE);
 /* prismd.c: is it the bitmap the card shows; a bitmap is going away */
 BOOL            pbm_is_shown(struct PBitMap *p);
 void            pbm_gone(struct PBitMap *p);

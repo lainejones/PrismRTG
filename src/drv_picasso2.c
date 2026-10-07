@@ -23,7 +23,7 @@
 #include <proto/exec.h>
 #include <proto/expansion.h>
 #include <string.h>
-#include "prismboard.h"
+#include "boardops.h"
 
 extern struct ExpansionBase *ExpansionBase;
 
@@ -68,6 +68,7 @@ struct P2Priv {
     struct ConfigDev *memDev;
     UBYTE  chip;              /* CR27                                     */
     BOOL   is5434;
+    BOOL   failed;
     UBYTE  aperture;          /* SR7 bits 7-4: linear window base (§1.3)  */
     UWORD  dacRI, dacD;       /* DAC read-index and data port offsets     */
     UBYTE  pass;              /* monitor switch: PASS_* below             */
@@ -465,6 +466,7 @@ static BOOL p2_SetMode(struct PrismBoard *b, struct PrismMode *m)
 
     whdr(b, p->hdr);
 
+    ((struct P2Priv *)b->priv)->failed = TRUE;
     wgrc(b, 0x31, 0x04);                          /* BLT reset            */
     wgrc(b, 0x31, 0x00);
 
@@ -545,21 +547,21 @@ static inline void gw(struct PrismBoard *b, struct P2Priv *p, UBYTE i, UBYTE v)
     }
 }
 
+static BOOL p2_WaitBlitFor(struct PrismBoard *b, ULONG n);
+
 static void p2_WaitBlit(struct PrismBoard *b)
 {
-    volatile UBYTE *d = b->regs + GRC_D;
-    ULONG n;
-    outb(b, GRC_I, 0x31);
-    for (n = 0; n < 1000000 && (*d & 0x01); n++) ;
+    if (!p2_WaitBlitFor(b, 1000000)) {
+        b->flags |= PBF_ACCEL_BROKEN;
+        b->faults++;
+    }
 }
 
 /* start the blit and wait for it */
 static inline void blt_run(struct PrismBoard *b, struct P2Priv *p)
 {
-    volatile UBYTE *d = b->regs + GRC_D;
-    ULONG n;
     gr_out(b, p, 0x31, 0x02);
-    for (n = 0; n < 1000000 && (*d & 0x01); n++) ;
+    if (!p2_WaitBlitFor(b, 1000000)) p->failed = TRUE;
 }
 
 static inline void blt_dst(struct PrismBoard *b, struct P2Priv *p, UWORD wbytes, UWORD h,
@@ -732,6 +734,7 @@ static BOOL p2_WaitBlitFor(struct PrismBoard *b, ULONG n)
     while (n-- && (*d & 0x01)) ;
     if (!(*d & 0x01))
         return TRUE;
+    ((struct P2Priv *)b->priv)->failed = TRUE;
     wgrc(b, 0x31, 0x04);                          /* BLT reset            */
     wgrc(b, 0x31, 0x00);
     gr_forget();
@@ -1300,6 +1303,75 @@ static const struct P2Board {
     { 2193,  1,  2, PASS_4F6F,    FALSE, TRUE,  "Spectrum 28/24" },
 };
 
+/* Reject an operation before writing registers if the chip cannot encode
+ * its geometry. CPU rendering remains available for larger bitmaps. */
+static BOOL p2_surface_ok(struct PrismBoard *b,const struct PrismSurface *s,
+                          UWORD w,UWORD h)
+{
+    struct P2Priv *p=b->priv;
+    ULONG end;
+    if (!s->allocation || s->offset>=b->vramSize ||
+        s->allocation>b->vramSize-s->offset) return FALSE;
+    end=s->offset+s->allocation;
+    return s->pitch<=(p->is5434 ? 8191UL : 4095UL) &&
+        (ULONG)w*s->bpp<=(p->is5434 ? 8192UL : 2048UL) &&
+        h<=(p->is5434 ? 2048 : 1024) && end<=0x200000UL &&
+        (s->format==PF_CLUT8 || (b->formats & PF_BIT(s->format)));
+}
+static enum PrismResult p2_fill_surface(struct PrismBoard *b,const struct PrismSurface *d,
+    UWORD x,UWORD y,UWORD w,UWORD h,ULONG c)
+{
+    struct P2Priv *p=b->priv;
+    if (!p2_surface_ok(b,d,w,h) || d->bpp==3 || (d->bpp==4 && !p->x32))
+        return PR_DECLINED;
+    p->failed=FALSE;
+    p2_FillRect(b,d->offset,d->pitch,d->bpp,x,y,w,h,c);
+    return p->failed ? PR_FAILED : PR_DONE;
+}
+static enum PrismResult p2_copy_surface(struct PrismBoard *b,const struct PrismSurface *s,
+    const struct PrismSurface *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h)
+{
+    struct P2Priv *p=b->priv;
+    if (!p2_surface_ok(b,s,w,h) || !p2_surface_ok(b,d,w,h)) return PR_DECLINED;
+    p->failed=FALSE;
+    if (s->offset==d->offset && s->pitch==d->pitch)
+        p2_CopyRect(b,s->offset,s->pitch,s->bpp,sx,sy,dx,dy,w,h);
+    else {
+        if (!(s->offset+s->allocation<=d->offset || d->offset+d->allocation<=s->offset))
+            return PR_DECLINED;
+        p2_CopyBetween(b,s->offset+(ULONG)sy*s->pitch+(ULONG)sx*s->bpp,s->pitch,
+            d->offset+(ULONG)dy*d->pitch+(ULONG)dx*d->bpp,d->pitch,w*d->bpp,h);
+    }
+    return p->failed ? PR_FAILED : PR_DONE;
+}
+static enum PrismResult p2_expand_surface(struct PrismBoard *b,const struct PrismSurface *d,
+    UWORD x,UWORD y,UWORD w,UWORD h,const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr)
+{
+    struct P2Priv *p=b->priv;
+    BOOL done;
+    if (!p2_surface_ok(b,d,w,h)) return PR_DECLINED;
+    p->failed=FALSE;
+    done=p2_ExpandRect(b,d->offset,d->pitch,d->bpp,x,y,w,h,src,mod,fg,bg,tr);
+    return p->failed ? PR_FAILED : done ? PR_DONE : PR_DECLINED;
+}
+static const struct PrismOps p2_ops = {
+    .fill=p2_fill_surface, .copy=p2_copy_surface, .expand=p2_expand_surface
+};
+
+static void p2_ready(struct PrismBoard *b)
+{
+    BOOL transparent;
+    UBYTE pad = Picasso2_TextExpand(b, &transparent);
+    if (pad == 0xff)
+        puts("PrismD: text on the CPU (blitter text expansion failed its self-test)");
+    else
+        printf("PrismD: text on the blitter (rows padded to %u byte%s, %s)\n", pad,
+               pad == 1 ? "" : "s", transparent ? "JAM1 + JAM2" : "JAM2 only");
+    if (b->formats & PF_BIT(PF_BGRA32))
+        puts((b->flags & PBF_BLIT_32) ? "PrismD: 32-bit fills and text on the blitter"
+                                     : "PrismD: no 32-bit blitter (self-test failed)");
+}
+
 BOOL Picasso2_Probe(struct PrismBoard *b)
 {
     struct ConfigDev *regs = NULL, *mem = NULL;
@@ -1394,6 +1466,8 @@ BOOL Picasso2_Probe(struct PrismBoard *b)
     b->restoreState    = p2_RestoreState;
     b->fillRect        = p2_FillRect;
     b->copyRect        = p2_CopyRect;
+    b->ops             = &p2_ops;
+    b->modeReady       = p2_ready;
     b->copyBetween     = p2_CopyBetween;
     b->expandRect      = p2_ExpandRect;
     b->waitBlit        = p2_WaitBlit;

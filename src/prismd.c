@@ -385,6 +385,7 @@ static BOOL show_pbm(struct PBitMap *p)
         dbg("show: %ux%u doesn't fit in VRAM\n", p->w, p->h);
         return FALSE;
     }
+    if (!pbm_upload(p)) return FALSE;
     board.setDisplayStart(&board, p->vramOff);
     shownPbm = p;
     p->lastShown = ++showStamp;
@@ -1065,7 +1066,7 @@ struct PBitMap *screen_bitmap_hook(ULONG w, ULONG h, ULONG depth, ULONG flags)
         return NULL;
     if (!(ps = AllocVec(sizeof(*ps), MEMF_PUBLIC | MEMF_CLEAR)))
         return NULL;
-    if (!(ps->pbm = pbm_new(w, h, depth ? depth : 1, mr->bpp,
+    if (!(ps->pbm = pbm_new(w, h, depth ? depth : 1, mr->m.format,
                             mr->bpp == 2 ? ps->penTab : NULL, TRUE, TRUE)) ||
         ps->pbm->bpr != mr->m.bytesPerRow) {
         pbm_free(ps->pbm);
@@ -1180,7 +1181,7 @@ static struct Screen *open_prism_screen(struct ModeRec *mr, struct NewScreen *ns
     /* the screen's chunky bitmap, cleared, in VRAM if it fits (else fast
      * RAM until it is shown); its row size must be the mode's (modes are
      * multiples of 8 pixels wide, so it is) */
-    if (!(ps->pbm = pbm_new(w, h, depth, mr->bpp, mr->bpp == 2 ? ps->penTab : NULL,
+    if (!(ps->pbm = pbm_new(w, h, depth, mr->m.format, mr->bpp == 2 ? ps->penTab : NULL,
                             TRUE, TRUE)) || ps->pbm->bpr != mr->m.bytesPerRow) {
         dbg("open: no memory for %lux%lu\n", w, h);
         pbm_free(ps->pbm);
@@ -1560,7 +1561,7 @@ static LONG test_begin(ULONG width, ULONG height, ULONG bits, ULONG hz, const ch
     testPen[1] = rgb16(fmt, 255, 255, 255);
     testRgb[0] = 0;
     testRgb[1] = 0xffffff;
-    if (!(p = pbm_new(width, height, 8, pf_bpp(fmt), testPen, TRUE, FALSE)))
+    if (!(p = pbm_new(width, height, 8, fmt, testPen, TRUE, FALSE)))
         return PRISM_TEST_NOMEM;
     p->fmt = fmt;
     p->rgbTab = testRgb;
@@ -1598,7 +1599,13 @@ static LONG test_begin(ULONG width, ULONG height, ULONG bits, ULONG hz, const ch
     FreeVec(buf);
 
     pointer_off();
-    board.setMode(&board, &m);
+    if (!board.setMode(&board, &m) || !pbm_upload(p)) {
+        p->locks--;
+        cardMode = NULL; shown = NULL; shownVP = NULL;
+        ReleaseSemaphore(&lock);
+        pbm_free(p); update_display();
+        return PRISM_TEST_NOMODE;
+    }
     cardMode = NULL;                     /* the next real screen sets its own */
     shown = NULL;
     shownVP = NULL;
@@ -2080,6 +2087,7 @@ int main(void)
     }
     Picasso2_ClutBGR = prefs.clutBGR;
     if (!prefs.blitter) {
+        board.flags |= PBF_SOFTWARE;
         board.fillRect = NULL;              /* render.c falls back to the CPU */
         board.copyRect = NULL;
         board.copyBetween = NULL;
@@ -2100,7 +2108,8 @@ int main(void)
      * window is set up, and screens are drawn before they are shown. */
     {
         struct PrismMode m = modes[0].m;
-        board.setMode(&board, &m);
+        if (!board.setMode(&board, &m)) { puts("PrismD: initial mode failed");goto out; }
+        if (prefs.blitter && board.modeReady) board.modeReady(&board);
         board.setSwitch(&board, FALSE);
         cardMode = &modes[0];
     }
@@ -2116,18 +2125,6 @@ int main(void)
                modes[i].m.refresh);
     if (!prefs.blitter)
         printf("PrismD: blitter off (PrismPrefs)\n");
-    else if (board.configDev && board.configDev->cd_Rom.er_Manufacturer != 0x6d6e) {   /* a Cirrus board */
-        BOOL tr;
-        UBYTE pad = Picasso2_TextExpand(&board, &tr);
-        if (pad == 0xff)
-            printf("PrismD: text on the CPU (blitter text expansion failed its self-test)\n");
-        else
-            printf("PrismD: text on the blitter (rows padded to %u byte%s, %s)\n", pad,
-                   pad == 1 ? "" : "s", tr ? "JAM1 + JAM2" : "JAM2 only");
-        if (board.formats & PF_BIT(PF_BGRA32))
-            puts((board.flags & PBF_BLIT_32) ? "PrismD: 32-bit fills and text on the blitter"
-                                             : "PrismD: no 32-bit blitter (self-test failed)");
-    }
 
     /* Planar bitmaps above chip RAM are Prism's to draw into (render.c) -
      * unless Picasso96 is running too. It can be, on another display: its
@@ -2192,6 +2189,7 @@ int main(void)
                 chipTop = 0xffffffffUL;       /* Picasso96 came up after us */
                 dbg("Picasso96 has started: its bitmaps are left to it from now on\n");
             }
+            pbm_flush_shown();
             pointer_tick();
             if (prefs.log || ++tick % 25 == 0)
                 dbg_flush();

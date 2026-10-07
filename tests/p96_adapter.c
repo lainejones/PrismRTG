@@ -112,7 +112,8 @@ static void setup(void)
     p.bi.SetDisplay = mock_display; p.bi.SetSwitch = mock_switch;
     p.bi.SetPanning = mock_pan; p.bi.SetColorArray = mock_palette;
     assert(attach_board(&p, &b));
-    assert(p.pf[2] == PF_RGB565LE); /* big-endian aperture excluded */
+    assert(p.pf[2] == PF_RGB565BE); /* displaced aperture uses a CPU shadow */
+    assert(b.flags & PBF_SHADOW);
 }
 
 static void test_fill(void)
@@ -214,6 +215,21 @@ static void test_modes(void)
     }
 }
 
+static void test_aperture(void)
+{
+    UBYTE source[128],target[128];
+    struct PrismSurface surface={NULL,64,128,32,16,4,PF_RGB565BE,2,PSF_VRAM};
+    ULONG i;
+    for(i=0;i<sizeof(source);i++)source[i]=i^0xab;
+    memset(pixels,0x55,sizeof(pixels));
+    assert(b.ops->write(&b,&surface,0,source,sizeof(source)));
+    assert(!memcmp(pixels+80,source,sizeof(source)));
+    assert(pixels[79]==0x55 && pixels[208]==0x55);
+    assert(b.ops->read(&b,&surface,0,target,sizeof(target)));
+    assert(!memcmp(source,target,sizeof(source)));
+    assert(!b.ops->read(&b,&surface,120,target,16));
+}
+
 int main(void)
 {
     setup();
@@ -221,6 +237,7 @@ int main(void)
     test_overlap();
     test_template();
     test_modes();
+    test_aperture();
     assert(waits != 0);
     puts("P96 adapter: ABI, formats, drawing fallbacks and mode setup passed");
     return 0;

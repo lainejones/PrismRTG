@@ -52,6 +52,7 @@ struct PrismMode {
 #define PBF_VBLANK_IRQ    (1UL << 4)
 #define PBF_BLIT_32       (1UL << 5)  /* fill + expand take 4-byte pixels */
 
+struct PrismOps;
 struct PrismBoard {
     const char       *name;          /* "ZZ9000", "Picasso II"           */
     struct ConfigDev *configDev;     /* the board's autoconfig node      */
@@ -120,6 +121,10 @@ struct PrismBoard {
     /* Optional bitmap row layout; NULL keeps the default 8-byte alignment.
      * Drivers using this offer one compatible format per byte depth. */
     ULONG (*bytesPerRow)(struct PrismBoard *b, UWORD w, UWORD h, UBYTE bpp);
+
+    const struct PrismOps *ops; /* surface-aware operations; prefer to legacy hooks */
+    void (*modeReady)(struct PrismBoard *); /* optional first-mode setup */
+    ULONG faults;              /* operations that failed after starting */
 };
 
 #define CURSOR_SIZE 64

@@ -18,7 +18,7 @@
 #include <libraries/configvars.h>
 #include <proto/exec.h>
 #include <proto/expansion.h>
-#include "prismboard.h"
+#include "boardops.h"
 
 extern struct ExpansionBase *ExpansionBase;
 
@@ -295,6 +295,54 @@ static void zz_WaitBlit(struct PrismBoard *b)
 {
     (void)R16(b, REG_DMA_OP);         /* commands are synchronous: a fence */
 }
+
+/* The old hooks remain for stand-alone tools. Core requests carry the exact
+ * format, so unsupported layouts and truncated mailbox fields decline before
+ * a command is submitted. 555 uses the CPU until its command mode is wired. */
+static BOOL zz_surface(struct PrismBoard *b,const struct PrismSurface *s)
+{
+    return ((struct ZZPriv *)b->priv)->z3 &&
+        (s->format==PF_CLUT8 || s->format==PF_RGB565BE || s->format==PF_BGRA32) &&
+        !(s->pitch & 3) && s->pitch/4<=65535 &&
+        s->offset<=b->vramSize && s->allocation<=b->vramSize-s->offset;
+}
+static enum PrismResult zz_fill(struct PrismBoard *b,const struct PrismSurface *d,
+    UWORD x,UWORD y,UWORD w,UWORD h,ULONG c)
+{
+    if(!zz_surface(b,d)) return PR_DECLINED;
+    zz_FillRect(b,d->offset,d->pitch,d->bpp,x,y,w,h,c);
+    zz_WaitBlit(b);return PR_DONE;
+}
+static enum PrismResult zz_copy(struct PrismBoard *b,const struct PrismSurface *s,
+    const struct PrismSurface *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h)
+{
+    if(!zz_surface(b,s) || !zz_surface(b,d)) return PR_DECLINED;
+    if(s->offset==d->offset && s->pitch==d->pitch)
+        zz_CopyRect(b,s->offset,s->pitch,s->bpp,sx,sy,dx,dy,w,h);
+    else if((ULONG)w*d->bpp<=65535 && (s->offset+s->allocation<=d->offset ||
+                                                    d->offset+d->allocation<=s->offset))
+        zz_CopyBetween(b,s->offset+(ULONG)sy*s->pitch+(ULONG)sx*s->bpp,s->pitch,
+            d->offset+(ULONG)dy*d->pitch+(ULONG)dx*d->bpp,d->pitch,w*d->bpp,h);
+    else return PR_DECLINED;
+    zz_WaitBlit(b);return PR_DONE;
+}
+static enum PrismResult zz_expand(struct PrismBoard *b,const struct PrismSurface *d,
+    UWORD x,UWORD y,UWORD w,UWORD h,const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr)
+{
+    if(!zz_surface(b,d) || d->pitch>65535) return PR_DECLINED;
+    if(!zz_ExpandRect(b,d->offset,d->pitch,d->bpp,x,y,w,h,src,mod,fg,bg,tr))
+        return PR_DECLINED;
+    zz_WaitBlit(b);return PR_DONE;
+}
+static enum PrismResult zz_line(struct PrismBoard *b,const struct PrismSurface *d,
+    WORD x,WORD y,WORD dx,WORD dy,ULONG c)
+{
+    if(!zz_surface(b,d)) return PR_DECLINED;
+    zz_DrawLine(b,d->offset,d->pitch,d->bpp,x,y,dx,dy,c);
+    zz_WaitBlit(b);return PR_DONE;
+}
+static const struct PrismOps zz_ops={.fill=zz_fill,.copy=zz_copy,
+    .expand=zz_expand,.line=zz_line};
 
 /* ---- hardware cursor (Zorro III) ------------------------------------
  * The firmware cursor is 32x48 true-colour pixels; the image Prism hands
@@ -584,6 +632,7 @@ BOOL ZZ9000_Probe(struct PrismBoard *b)
     b->waitVBlank      = zz_WaitVBlank;
     b->shutdown        = zz_Shutdown;
     if (p->z3) {
+        b->ops         = &zz_ops;
         b->flags       = PBF_BLIT_FILL | PBF_BLIT_COPY | PBF_BLIT_EXPAND | PBF_BLIT_32 |
                          PBF_HW_CURSOR;
         b->fillRect    = zz_FillRect;

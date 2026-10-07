@@ -75,7 +75,13 @@ BOOL pbm_to_fast(struct PBitMap *p)
 
     if (!p->inVram)
         return TRUE;
-    if (p->locks || !(mem = AllocVec(size, MEMF_ANY)))
+    if (p->locks) return FALSE;
+    if ((board.flags & PBF_SHADOW) && p->mem) {
+        vram_free(p->vramOff);
+        p->inVram = FALSE;
+        return TRUE;
+    }
+    if (!(mem = AllocVec(size, MEMF_ANY)))
         return FALSE;
     if (board.waitBlit)
         board.waitBlit(&board);
@@ -99,6 +105,11 @@ BOOL pbm_to_vram(struct PBitMap *p)
         return FALSE;
     if (board.waitBlit)
         board.waitBlit(&board);
+    if (board.flags & PBF_SHADOW) {
+        p->inVram = TRUE; p->vramOff = off;
+        if (pbm_upload(p)) return TRUE;
+        p->inVram = FALSE; vram_free(off); return FALSE;
+    }
     CopyMem(p->mem, board.vram + off, size);
     FreeVec(p->mem);
     p->mem = NULL;
@@ -109,29 +120,27 @@ BOOL pbm_to_vram(struct PBitMap *p)
     return TRUE;
 }
 
-struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE bpp, UWORD *penTab,
+struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE format, UWORD *penTab,
                         BOOL vram, BOOL clear)
 {
     struct PBitMap *p;
     ULONG size;
     UWORD i, slot = PBM_MAX;
 
-    if (!w || !h || !depth || depth > 8)
+    if (!w || !h || !depth || depth > 8 || format >= PF_COUNT)
         return NULL;
     if (!(p = AllocVec(sizeof(*p), MEMF_PUBLIC | MEMF_CLEAR)))
         return NULL;
     p->w = w;
     p->h = h;
     p->depth = depth;
-    p->bpp = bpp ? bpp : 1;
+    p->bpp = board_bpp(format);
+    p->fmt = format;
     p->penTab = penTab;
-    /* callers set the real format; this is only a sane default */
-    p->fmt = (p->bpp == 1) ? PF_CLUT8 : (p->bpp == 3) ? PF_BGR24 : (p->bpp == 4) ? PF_ARGB32 :
-             board.formats & PF_BIT(PF_RGB565BE) ? PF_RGB565BE :
-             board.formats & PF_BIT(PF_BGR565LE) ? PF_BGR565LE : PF_RGB565LE;
     p->bpr = ((ULONG)w * p->bpp + 7) & ~7UL; /* 8-byte rows suit both blitters */
-    if (board.bytesPerRow && vram) {
-        p->bpr = board.bytesPerRow(&board, w, h, p->bpp);
+    if (vram && ((board.ops && board.ops->pitch) || board.bytesPerRow)) {
+        p->bpr = board.ops && board.ops->pitch ? board.ops->pitch(&board,w,h,format) :
+                 board.bytesPerRow(&board, w, h, p->bpp);
         if (p->bpr < (ULONG)w * p->bpp) {
             FreeVec(p);
             return NULL;
@@ -165,7 +174,7 @@ struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE bpp, UWORD *penTab,
             p->pix = board.vram + off;
         }
     }
-    if (!p->inVram) {
+    if (!p->inVram || (board.flags & PBF_SHADOW)) {
         if (!(p->mem = AllocVec(size, MEMF_ANY | (clear ? MEMF_CLEAR : 0))))
             goto fail;
         p->pix = p->mem;
@@ -186,10 +195,7 @@ struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE bpp, UWORD *penTab,
 
     if (clear && p->inVram) {
         ObtainSemaphore(&lock);
-        if (board.fillRect) {
-            /* zero is zero at any depth: clear the rows as bytes */
-            board.fillRect(&board, p->vramOff, p->bpr, 1, 0, 0, p->bpr, h, 0);
-        } else {
+        if (pbm_hw_fill(p, 1, 0, 0, p->bpr, h, 0) == PR_DECLINED) {
             memset(p->pix, 0, size);
         }
         ReleaseSemaphore(&lock);
@@ -250,15 +256,14 @@ LONG h_AllocBitMap(struct Regs *r)
      * board's 16-bit format; anything else is graphics.library's answer. */
     if (r->d[3] & 0x80) {
         ULONG pf = (ULONG)r->d[3] >> 24;
-        UBYTE fmt = pf_from_pixfmt(pf), bpp;
+        UBYTE fmt = pf_from_pixfmt(pf);
         dbg("AllocBitMap special: %ldx%ld pixfmt %lu -> %s\n", r->d[0], r->d[1], pf,
             fmt != PF_COUNT ? "Prism" : "not ours");
         if (fmt == PF_COUNT)
             return 0;
-        bpp = pf_bpp(fmt);
         /* off-screen image buffers in any of these formats; blits to the
          * screen convert */
-        p = pbm_new(r->d[0], r->d[1], depth, bpp,
+        p = pbm_new(r->d[0], r->d[1], depth, fmt,
                     (f && f->fmt == fmt) ? f->penTab : NULL, FALSE, TRUE);
         if (p) {
             p->fmt = fmt;
@@ -302,7 +307,7 @@ LONG h_AllocBitMap(struct Regs *r)
                     r->d[0] == f->w && r->d[1] == f->h;
         /* other friends go to free VRAM if there is some: blits between
          * them and the screen then run on the card's blitter */
-        p = pbm_new(r->d[0], r->d[1], depth, f->bpp, f->penTab, disp ? 1 : 2, TRUE);
+        p = pbm_new(r->d[0], r->d[1], depth, f->fmt, f->penTab, disp ? 1 : 2, TRUE);
         if (p && disp)
             p->owner = f->owner;
     }
@@ -358,4 +363,86 @@ LONG h_GetBitMapAttr(struct Regs *r)
     default:         r->d[0] = 0; break;
     }
     return 1;
+}
+
+/* Stable CPU views make application locks independent of aperture changes.
+ * Linear boards retain their direct VRAM pointers and pay no copy cost. */
+void pbm_surface(const struct PBitMap *p, struct PrismSurface *s)
+{
+    s->memory=p->pix; s->offset=p->vramOff; s->allocation=p->bpr*p->h;
+    s->pitch=p->bpr; s->width=p->w; s->height=p->h;
+    s->format=p->fmt; s->bpp=p->bpp; s->flags=p->inVram ? PSF_VRAM : 0;
+}
+BOOL pbm_upload(struct PBitMap *p)
+{
+    struct PrismSurface s;
+    if (!p->inVram || !(board.flags & PBF_SHADOW)) return TRUE;
+    pbm_surface(p,&s);
+    return board.ops && board.ops->write && board.ops->write(&board,&s,0,p->pix,s.allocation);
+}
+static enum PrismResult pbm_result(struct PBitMap *p,enum PrismResult result)
+{
+    struct PrismSurface s;
+    if (result != PR_DECLINED && (board.flags & PBF_SHADOW)) {
+        pbm_surface(p,&s);
+        if (!board.ops->read || !board.ops->read(&board,&s,0,p->pix,s.allocation)) {
+            board.flags |= PBF_ACCEL_BROKEN; board.faults++; result=PR_FAILED;
+        }
+    }
+    if (result == PR_FAILED) dbg("driver: operation failed; acceleration disabled\n");
+    return result;
+}
+void pbm_flush_shown(void)
+{
+    UWORD i;
+    if (!(board.flags & PBF_SHADOW)) return;
+    ObtainSemaphore(&lock);
+    for (i=0;i<PBM_MAX;i++) if (table[i] && pbm_is_shown(table[i]))
+        if (!pbm_upload(table[i])) dbg("driver: aperture upload failed\n");
+    ReleaseSemaphore(&lock);
+}
+enum PrismResult pbm_hw_fill(struct PBitMap *p,UBYTE bpp,UWORD x,UWORD y,UWORD w,UWORD h,ULONG c)
+{
+    struct PrismSurface s;
+    if (!p->inVram || !pbm_upload(p)) return PR_DECLINED;
+    pbm_surface(p,&s);
+    if (bpp==1 && p->bpp!=1) {
+        if (board.flags & PBF_SHADOW) return PR_DECLINED;
+        s.format=PF_CLUT8; s.bpp=1; s.width=s.pitch;
+    }
+    else if (bpp!=p->bpp) return PR_DECLINED;
+    /* Byte clears include row padding. */
+    if (bpp==1) s.width=s.pitch;
+    return pbm_result(p,board_fill(&board,&s,x,y,w,h,c));
+}
+enum PrismResult pbm_hw_copy(struct PBitMap *s,struct PBitMap *d,UWORD sx,UWORD sy,
+    UWORD dx,UWORD dy,UWORD w,UWORD h)
+{
+    struct PrismSurface a,b;
+    if (!s->inVram || !d->inVram || !pbm_upload(s) || (s!=d && !pbm_upload(d))) return PR_DECLINED;
+    pbm_surface(s,&a); pbm_surface(d,&b);
+    return pbm_result(d,board_copy(&board,&a,&b,sx,sy,dx,dy,w,h));
+}
+enum PrismResult pbm_hw_expand(struct PBitMap *p,UWORD x,UWORD y,UWORD w,UWORD h,
+    const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr)
+{
+    struct PrismSurface s;
+    if (!p->inVram || !pbm_upload(p)) return PR_DECLINED;
+    pbm_surface(p,&s);
+    return pbm_result(p,board_expand(&board,&s,x,y,w,h,src,mod,fg,bg,tr));
+}
+enum PrismResult pbm_hw_line(struct PBitMap *p,WORD x,WORD y,WORD dx,WORD dy,ULONG c)
+{
+    struct PrismSurface s;
+    if (!p->inVram || !pbm_upload(p)) return PR_DECLINED;
+    pbm_surface(p,&s);
+    return pbm_result(p,board_line(&board,&s,x,y,dx,dy,c));
+}
+enum PrismResult pbm_hw_planar(const struct PrismPlanar *src,struct PBitMap *p,
+    UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h,UBYTE mt,UBYTE mask)
+{
+    struct PrismSurface d;
+    if (!p->inVram || !board.ops || !board.ops->planar || !pbm_upload(p)) return PR_DECLINED;
+    pbm_surface(p,&d);
+    return pbm_result(p,board_planar(&board,src,&d,sx,sy,dx,dy,w,h,mt,mask));
 }

@@ -18,11 +18,11 @@ mkdir -p out
 echo "== M0 tools =="
 $CC $CFLAGS -s -o out/PrismProbe tools/prismprobe.c
 if [ -f tools/prismtest.c ]; then
-  $CC $CFLAGS -s -o out/PrismTest tools/prismtest.c src/drv_picasso2.c src/drv_zz9000.c
+  $CC $CFLAGS -s -o out/PrismTest tools/prismtest.c src/boardops.c src/drv_picasso2.c src/drv_zz9000.c
 fi
 
 echo "== M1 =="
-$CC $CFLAGS -s -o out/PrismD src/prismd.c src/prefs.c src/bitmap.c src/render.c src/pointer.c src/cgx.c src/p96.c src/stubs.S src/p2c.S src/drv_picasso2.c src/drv_zz9000.c src/drv_p96.c src/drv_uaegfx.c
+$CC $CFLAGS -s -o out/PrismD src/prismd.c src/prefs.c src/bitmap.c src/render.c src/pointer.c src/cgx.c src/p96.c src/stubs.S src/p2c.S src/boardops.c src/drv_picasso2.c src/drv_zz9000.c src/drv_p96.c src/drv_uaegfx.c
 $CC $CFLAGS -s -o out/PrismScreen tools/prismscreen.c tools/m8tests.c
 $CC $CFLAGS -s -o out/PrismMouse tools/prismmouse.c
 $CC $CFLAGS -s -o out/PrismBench tools/prismbench.c -lm
