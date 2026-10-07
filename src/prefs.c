@@ -22,7 +22,7 @@ const UWORD prefs_sizes[PREFS_NSIZES][2] = {
 const UBYTE prefs_depths[PREFS_NDEPTHS] = { 8, 16, 24, 32 };
 const UBYTE prefs_rates[PREFS_NRATES] = { 0, 60, 70, 72, 75 };
 
-static const char *const boardNames[PB_COUNT] = { "AUTO", "PICASSO2", "ZZ9000" };
+static const char *const boardNames[PB_COUNT] = { "AUTO", "PICASSO2", "ZZ9000", "P96" };
 
 void prefs_default(struct PrismPrefs *p)
 {
@@ -70,7 +70,7 @@ static void parse_mode(struct PrismPrefs *p, char *v)
 BOOL prefs_load(struct PrismPrefs *p, const char *path)
 {
     FILE *f;
-    char line[96], *v, *e;
+    char line[288], *v, *e;
     int i;
 
     prefs_default(p);
@@ -86,6 +86,10 @@ BOOL prefs_load(struct PrismPrefs *p, const char *path)
             for (i = 0; i < PB_COUNT; i++)
                 if (same(v, boardNames[i]))
                     p->board = i;
+        } else if (same(line, "P96CARD") || same(line, "P96MONITOR")) {
+            char *dest = same(line, "P96CARD") ? p->p96card : p->p96monitor;
+            if (strlen(v) < sizeof(p->p96card))
+                strcpy(dest, v);
         } else if (same(line, "BLITTER")) {
             p->blitter = onoff(v);
         } else if (same(line, "LOG")) {
@@ -109,6 +113,8 @@ BOOL prefs_save(const struct PrismPrefs *p, const char *path)
         return FALSE;
     fprintf(f, "; Prism RTG settings - written by PrismPrefs\n");
     fprintf(f, "BOARD=%s\n", boardNames[p->board < PB_COUNT ? p->board : PB_AUTO]);
+    if (p->p96card[0]) fprintf(f, "P96CARD=%s\n", p->p96card);
+    if (p->p96monitor[0]) fprintf(f, "P96MONITOR=%s\n", p->p96monitor);
     fprintf(f, "BLITTER=%s\n", p->blitter ? "ON" : "OFF");
     fprintf(f, "LOG=%s\n", p->log ? "ON" : "OFF");
     if (p->clutBGR)

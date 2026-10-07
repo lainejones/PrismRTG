@@ -130,6 +130,13 @@ struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE bpp, UWORD *penTab,
              board.formats & PF_BIT(PF_RGB565BE) ? PF_RGB565BE :
              board.formats & PF_BIT(PF_BGR565LE) ? PF_BGR565LE : PF_RGB565LE;
     p->bpr = ((ULONG)w * p->bpp + 7) & ~7UL; /* 8-byte rows suit both blitters */
+    if (board.bytesPerRow && vram) {
+        p->bpr = board.bytesPerRow(&board, w, h, p->bpp);
+        if (p->bpr < (ULONG)w * p->bpp) {
+            FreeVec(p);
+            return NULL;
+        }
+    }
     size = p->bpr * h;
 
     ObtainSemaphore(&lock);

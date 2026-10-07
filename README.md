@@ -2,16 +2,16 @@
 
 Graphics card (RTG) software for AmigaOS 3.x, written from scratch. PrismRTG
 puts Workbench and programs on a graphics card in 256 colours, 16-bit and
-24/32-bit, drawn by the card's blitter, with a hardware mouse pointer and a
+24/32-bit, drawn by the card's blitter, with a hardware mouse pointer and
 its own built-in `cybergraphics.library` and `Picasso96API.library` for programs
-that ask for one (both written for PrismRTG: nothing of CyberGraphX or Picasso96
-is used or shipped).
+that ask for one (both implemented by PrismRTG).
 
 It was written so that its author has an RTG system he can maintain himself:
-when something is wrong it can be fixed the same day. It is standalone - it
-uses, needs and includes nothing of Picasso96 or CyberGraphX - and it is free
-software under the GPL. It takes the place of Picasso96 on the Amiga it runs
-on.
+when something is wrong it can be fixed the same day. Its native drivers
+need no Picasso96 or CyberGraphX installation, and it is free software
+under the GPL. It takes the place of Picasso96 on the Amiga it runs
+on. An optional P96 card-driver adapter can reuse existing `.card` libraries;
+the native drivers do not need them.
 
 ![PrismPrefs on a PrismRTG Workbench (A4000, ZZ9000)](docs/a4000-prismprefs.png)
 
@@ -28,6 +28,27 @@ on.
 | MNT ZZ9000, Zorro II mode | | none | Untested. No blitter or pointer support in this mode. |
 
 Needs AmigaOS 3.0 or newer and a 68020 or better.
+
+### Existing P96 card drivers
+
+The experimental `BOARD=P96` backend loads a P96 `.card` driver directly,
+without loading P96's `rtg.library` or monitor program. For example, UAE's
+resident driver can be selected with:
+
+```text
+Run >RAM:PrismD.log PrismD BOARD=P96 P96CARD=uaegfx.card
+```
+
+For boot-time use, set `BOARD=P96` and `P96CARD=uaegfx.card` in
+`ENVARC:Prism.prefs` and `ENV:Prism.prefs`. Physical-card drivers normally
+use a path such as `LIBS:Picasso96/CyberVision64.card`. Leave any required
+chip driver installed as well. The existing P96 monitor programs must
+remain disabled, as with native Prism drivers.
+
+See [P96 driver configuration and limits](docs/p96-drivers.md) before
+using this backend. It supports linear framebuffers, not every P96 memory
+model, and a claimed driver remains resident until reboot. This provides
+uaegfx through its P96 driver; there is no separate native uaegfx driver yet.
 
 ## What works
 
@@ -197,7 +218,7 @@ Output goes to `out/`, the release drawer to `out/pkg/PrismRTG`.
 
 | Tool | What it does |
 |---|---|
-| `PrismD` | The driver. `PrismD [BOARD=ZZ9000|PICASSO2] [PREFS=file] [LOG]`; Ctrl-C removes its patches when no PrismRTG screen is open. |
+| `PrismD` | The driver. `PrismD [BOARD=ZZ9000|PICASSO2|P96] [P96CARD=file] [P96MONITOR=icon] [PREFS=file] [LOG]`; Ctrl-C removes its patches when no PrismRTG screen is open. P96 card drivers remain resident until reboot. |
 | `PrismPrefs` | Settings editor. `FROM= USE SAVE TEST=<slot>` work without the window. |
 | `Prism` (`out/PrismMon`) | `DEVS:Monitors` launcher with the boot failsafe. |
 | `PrismSetup` | Installer helper: `DETECT`, `WBMODE=<slot>`. |

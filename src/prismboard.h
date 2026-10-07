@@ -7,8 +7,8 @@
  * screens, bitmaps or the OS display database. Everything a driver does not
  * accelerate, prism.library does on the CPU.
  *
- * In M0 the drivers are linked straight into PrismTest; from M1 on each one is
- * a small library in LIBS:Prism/ that returns a PrismBoard from its init call.
+ * Native drivers and the P96 adapter are linked into PrismD. The adapter
+ * loads external P96 card libraries and presents the same interface.
  */
 #ifndef PRISMBOARD_H
 #define PRISMBOARD_H
@@ -116,6 +116,10 @@ struct PrismBoard {
     void (*cursorImage)(struct PrismBoard *b, const UBYTE *img, const UBYTE *rgb);
     void (*cursorShow)(struct PrismBoard *b, BOOL on);
     void (*cursorMove)(struct PrismBoard *b, WORD x, WORD y);
+
+    /* Optional bitmap row layout; NULL keeps the native 8-byte alignment.
+     * The adapter offers one compatible pixel format per byte depth. */
+    ULONG (*bytesPerRow)(struct PrismBoard *b, UWORD w, UWORD h, UBYTE bpp);
 };
 
 #define CURSOR_SIZE 64
@@ -125,6 +129,10 @@ BOOL Picasso2_Probe(struct PrismBoard *b);
 /* after the first mode set: text expansion's row padding (0xff = off) */
 UBYTE Picasso2_TextExpand(struct PrismBoard *b, BOOL *transparent);
 BOOL ZZ9000_Probe(struct PrismBoard *b);
+BOOL P96_Probe(struct PrismBoard *b, const char *card, const char *monitor);
+/* After a P96 card was claimed, keep its callbacks and interrupt data alive.
+ * Returns only if no card was claimed during this invocation. */
+void P96_KeepResident(void);
 extern UBYTE Picasso2_ClutBGR;      /* PALETTE=BGR in the prefs (drv_picasso2.c) */
 
 #endif
