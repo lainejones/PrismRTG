@@ -1390,6 +1390,7 @@ BOOL Picasso2_Probe(struct PrismBoard *b)
     b->setSwitch       = p2_SetSwitch;
     b->waitVBlank      = p2_WaitVBlank;
     b->shutdown        = p2_Shutdown;
+    b->textExpand      = Picasso2_TextExpand;
     b->saveState       = p2_SaveState;
     b->restoreState    = p2_RestoreState;
     b->fillRect        = p2_FillRect;

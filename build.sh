@@ -21,8 +21,15 @@ if [ -f tools/prismtest.c ]; then
   $CC $CFLAGS -s -o out/PrismTest tools/prismtest.c src/drv_picasso2.c src/drv_zz9000.c
 fi
 
+echo "== Loadable board drivers =="
+mkdir -p out/Drivers
+$CC $CFLAGS -s -DPRISM_DRIVER_MODULE -DDRIVER_PICASSO2 -o out/Drivers/PICASSO2.driver src/driver_module.c src/drv_picasso2.c
+$CC $CFLAGS -s -DPRISM_DRIVER_MODULE -DDRIVER_ZZ9000 -o out/Drivers/ZZ9000.driver src/driver_module.c src/drv_zz9000.c
+$CC $CFLAGS -s -DPRISM_DRIVER_MODULE -DDRIVER_P96 -o out/Drivers/P96.driver src/driver_module.c src/drv_p96.c
+$CC $CFLAGS -s -DPRISM_DRIVER_MODULE -DDRIVER_UAEGFX -o out/Drivers/UAEGFX.driver src/driver_module.c src/drv_uaegfx.c
+
 echo "== M1 =="
-$CC $CFLAGS -s -o out/PrismD src/prismd.c src/prefs.c src/bitmap.c src/render.c src/pointer.c src/cgx.c src/p96.c src/stubs.S src/p2c.S src/drv_picasso2.c src/drv_zz9000.c src/drv_p96.c src/drv_uaegfx.c
+$CC $CFLAGS -s -o out/PrismD src/prismd.c src/prefs.c src/bitmap.c src/render.c src/pointer.c src/cgx.c src/p96.c src/stubs.S src/p2c.S src/driver_loader.c
 $CC $CFLAGS -s -o out/PrismScreen tools/prismscreen.c tools/m8tests.c
 $CC $CFLAGS -s -o out/PrismMouse tools/prismmouse.c
 $CC $CFLAGS -s -o out/PrismBench tools/prismbench.c -lm

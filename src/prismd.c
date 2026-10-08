@@ -49,6 +49,7 @@
 #include "prismboard.h"
 #include "prism.h"
 #include "prismint.h"
+#include "driver_module.h"
 #include "prefs.h"
 
 struct GfxBase       *GfxBase;
@@ -2064,21 +2065,27 @@ int main(void)
     if (args[2])
         prefs.log = 1;
     want = args[0] ? (const char *)args[0] : pbName[prefs.board < PB_COUNT ? prefs.board : 0];
-    if (!want || !Stricmp(want, "PICASSO2"))
-        found = Picasso2_Probe(&board);
-    if (!found && (!want || !Stricmp(want, "ZZ9000")))
-        found = ZZ9000_Probe(&board);
-    if (want && !Stricmp(want, "UAEGFX"))
-        found = UAEGFX_Probe(&board);
-    if (want && !Stricmp(want, "P96"))
-        found = P96_Probe(&board, args[3] ? (const char *)args[3] : prefs.p96card,
-                         args[4] ? (const char *)args[4] : prefs.p96monitor);
+    {
+        struct PrismDriverConfig config;
+        const char *card=args[3] ? (const char *)args[3] : prefs.p96card;
+        const char *monitor=args[4] ? (const char *)args[4] : prefs.p96monitor;
+        memset(&config,0,sizeof(config));
+        config.clutBGR=prefs.clutBGR;
+        if(strlen(card)>=sizeof(config.card) || strlen(monitor)>=sizeof(config.monitor)) {
+            puts("PrismD: driver path too long");goto out;
+        }
+        strcpy(config.card,card);strcpy(config.monitor,monitor);
+        if(want) found=driver_open(&board,want,&config);
+        else {
+            found=driver_open(&board,"PICASSO2",&config);
+            if(!found) found=driver_open(&board,"ZZ9000",&config);
+        }
+    }
     if (!found) {
         printf("PrismD: no supported board\n");
         rc = 5;
         goto out;
     }
-    Picasso2_ClutBGR = prefs.clutBGR;
     if (!prefs.blitter) {
         board.fillRect = NULL;              /* render.c falls back to the CPU */
         board.copyRect = NULL;
@@ -2116,9 +2123,9 @@ int main(void)
                modes[i].m.refresh);
     if (!prefs.blitter)
         printf("PrismD: blitter off (PrismPrefs)\n");
-    else if (board.configDev && board.configDev->cd_Rom.er_Manufacturer != 0x6d6e) {   /* a Cirrus board */
+    else if (board.textExpand) {
         BOOL tr;
-        UBYTE pad = Picasso2_TextExpand(&board, &tr);
+        UBYTE pad = board.textExpand(&board, &tr);
         if (pad == 0xff)
             printf("PrismD: text on the CPU (blitter text expansion failed its self-test)\n");
         else
@@ -2229,8 +2236,7 @@ int main(void)
     rc = 0;
 
 out:
-    UAEGFX_KeepResident();
-    P96_KeepResident();
+    driver_close();
     if (ExpansionBase) CloseLibrary((struct Library *)ExpansionBase);
     if (UtilityBase) CloseLibrary(UtilityBase);
     if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);

@@ -75,3 +75,13 @@ Credits
   driver headers, CC-BY). The README on GitHub has the full list.
 
 Licence: GNU General Public License version 3. (c) 2026 Laine Jones.
+
+Board modules
+-------------
+PrismD loads PICASSO2.driver, ZZ9000.driver, P96.driver or UAEGFX.driver
+from LIBS:Prism. Install_PrismRTG installs these with PrismD. For a build
+run in place, PROGDIR:Drivers is also searched. Use matching PrismD and
+modules; incompatible module layouts are rejected before probing hardware.
+Each module has a 16 KB stack. Driver diagnostics use PrismD's output,
+including redirected logs. Claimed P96/UAE contexts remain until reboot;
+PrismD can exit once its display patches and API users are gone.

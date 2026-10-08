@@ -723,5 +723,12 @@ void P96_KeepResident(void)
     quiesce(p);
     puts("PrismD: P96 driver remains resident; reboot to release or restart it");
     fflush(stdout);
+#ifdef PRISM_DRIVER_MODULE
+    /* The loader may release its output only after our last diagnostic. */
+    {
+        extern void driver_module_done(void);
+        driver_module_done();
+    }
+#endif
     for (;;) Wait(SIGBREAKF_CTRL_C);
 }

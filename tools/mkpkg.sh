@@ -10,7 +10,10 @@
 set -e
 P=out/pkg/PrismRTG
 rm -rf out/pkg
-mkdir -p $P
+mkdir -p $P/Drivers
+for driver in PICASSO2 ZZ9000 P96 UAEGFX; do
+    cp out/Drivers/$driver.driver $P/Drivers/
+done
 cp out/PrismD out/PrismPrefs out/PrismSetup out/PrismProbe out/Picasso96API.library $P/
 cp out/PrismMon $P/Prism
 cp dist/Install_PrismRTG dist/ReadMe LICENSE $P/

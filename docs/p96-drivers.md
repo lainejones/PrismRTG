@@ -103,3 +103,11 @@ fallback checks with amiga-gcc and vamos. `tests/p96_guest.c` is a separate
 Amiga guest exerciser for uaegfx; run it only in a dedicated boot because
 it claims the card and leaves the driver resident. It reports through the
 Amiga serial port. Neither tool is included in the release drawer.
+
+## Module packaging
+
+The adapter is `LIBS:Prism/P96.driver`; the existing `.card` file and its
+chip drivers remain in their usual locations. PrismD and the adapter must
+come from matching builds. The adapter uses PrismD's output for diagnostics
+and keeps a claimed card context resident independently after PrismD exits.
+See [the module protocol](driver-modules.md) for lifetime and ABI details.

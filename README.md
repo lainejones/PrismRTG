@@ -56,6 +56,20 @@ card, an 800x600 16-bit Workbench and its backdrop picture fill the card, so
 a second screen needs about 1 MB free in one piece; an 8-bit Workbench needs
 half of that.
 
+### Loadable board drivers
+
+PrismD loads the selected backend from `LIBS:Prism/<name>.driver`, with
+`PROGDIR:Drivers` as a fallback for running a build in place. The installer
+copies the supplied PICASSO2, ZZ9000, P96 and UAEGFX modules. Keep PrismD
+and its modules from the same build; an incompatible module is rejected
+with an ABI/version or layout diagnostic.
+
+Each loaded module uses its own 16 KB process stack and keeps its callbacks
+alive until PrismD stops. The memory measurements above describe the
+previous linked build. P96/UAE contexts still stay resident when their card
+requires it, while PrismD itself can exit. See
+[the module interface and lifetime](docs/driver-modules.md).
+
 ### Existing P96 card drivers
 
 The experimental `BOARD=P96` backend loads a P96 `.card` driver directly,
@@ -253,6 +267,7 @@ files keep their short names (`PrismD`, `PrismPrefs`, the monitor file
 | Installed file | What it is |
 |---|---|
 | `C:PrismD` | the driver, started at boot |
+| `LIBS:Prism/*.driver` | separately loaded board backends |
 | `DEVS:Monitors/Prism` | starts PrismD before Workbench opens |
 | `SYS:Prefs/PrismPrefs` | settings editor |
 | `C:PrismSetup`, `C:PrismProbe` | installer helper, board lister |
