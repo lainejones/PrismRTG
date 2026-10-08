@@ -45,13 +45,13 @@ New in 1.1 beta (experimental - please report how it goes)
                   with a real card's driver.
   Details: docs/uaegfx.md and docs/p96-drivers.md on GitHub.
 
-Presentation (draft)
-  Boards without a usable hardware sprite use a software pointer. Vertical
-  dragging between RTG screens and P96 RGB/CLUT memory-window PIPs are
-  composed in software. These features use extra RAM and CPU time.
-  Dragging defaults to OFF; opt in with DRAGGING=ON in ENV:Prism.prefs.
-  SOFTWAREPOINTER=ON overrides boards advertising a non-working sprite.
-  Low-VRAM scanout and damage-based composition remain unfinished.
+Presentation (experimental)
+  A software pointer (SOFTWAREPOINTER=ON in ENV:Prism.prefs, for boards
+  without a working hardware pointer), vertical dragging between RTG
+  screens (DRAGGING=ON) and P96 memory-window PIPs are composed in fast
+  RAM. They work, but slowly: with the software pointer on, drawing on a
+  68030 is 20 to 100 times slower. A faster pointer is being written.
+  Switched off (the default) they cost nothing.
 
 24-bit or 32-bit?
   Both are true colour. On the GBAPII++ the card's blitter can draw text
@@ -78,7 +78,7 @@ Reporting a problem
 Credits
   Laine Jones, with Claude (Anthropic). Thanks to Stefan Reinauer (P96
   card-driver adapter, native UAE driver, surface operations, driver
-  modules, P96 memory pools, build fixes),
+  modules, P96 memory pools, software pointer and PIPs, build fixes),
   Dimitris Panokostas (UAE driver review, Amiberry pointer default), polluks
   and yelworC (MiSTer test), and Individual Computers, A. Kneer, T. Abt and
   T. Richter (P96 driver headers, CC-BY). The README on GitHub has the full list.

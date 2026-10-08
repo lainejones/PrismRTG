@@ -1603,3 +1603,25 @@ speed unchanged from #6. P96 adapter on uaegfx.card (linear, so no shadow
 mode): unchanged, except planar blits 23/s -> 1432/s from the probe. Shadow
 mode itself has no test box yet - it needs a P96 card driver with a banked
 or displaced aperture.
+
+## Composition (#10, experimental, 2026-10-08)
+
+Stefan Reinauer's #10: software pointer, vertical screen dragging and
+Picasso96 PIP windows, composed into a frame in fast RAM and uploaded by
+changed spans. Merged as experimental, off by default. Changes on top: the
+frame buffer comes from the evicting allocation (hidden screens move to
+fast RAM), so on a 2 MB Picasso II+ the PIP checks pass (they failed for
+want of a second full-screen buffer); the direct fast paths stay off while
+the board shows a composed frame; p96test checks dragging only with
+DRAGGING=ON.
+
+Measured on the cycle-exact 68030 + Picasso II+ (2 MB): default settings
+within 3% of #9 on every PrismBench line; DRAGGING=ON: p96test 30 of 30.
+SOFTWAREPOINTER=ON: every drawing test passes, but RectFill 100x100 5046/s
+-> 31/s, ClipBlit 4743/s -> 16/s, even Move (not ours) -43%: every tick
+present_tick() clears and rebuilds the whole 800x600 frame, and the
+software pointer puts the board into shadow mode, so each drawing
+operation is copied to the card and back on the CPU. Next: a classic
+software sprite instead - drawn into the shown screen in VRAM with a
+save-under, hidden only while a drawing operation touches its rectangle -
+so the pointer needs no composition and no shadow mode.
