@@ -261,9 +261,8 @@ Needs amiga-gcc (Bebbo) under WSL or Linux:
 ```
 
 Output goes to `out/`, the release drawer to `out/pkg/PrismRTG`.
-Packaging also needs Python 3 (nothing beyond its standard library): the
-icons are made by the scripts in `tools/icons`. `./build.sh` packages last,
-after every program is built.
+`./build.sh` packages last, after every program is built. The icons are
+finished `.info` files in `dist/`.
 
 | Tool | What it does |
 |---|---|

@@ -2,33 +2,19 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Laine Jones
 # Stage the release drawer out/pkg/PrismRTG (+ PrismRTG.info) from out/ and
-# dist/. Run inside WSL after ./build.sh (which runs it last). The icon
-# writer is in tools/icons; TOOLS=<dir> uses another copy of it.
+# dist/. ./build.sh runs it last, after every program is built.
+#
+# The icons are finished .info files in dist/. They were drawn with
+# tools/mkicons.py (the prism and PrismPrefs icons) and the author's icon
+# writer; to change one, regenerate it there and commit the new .info.
 set -e
-T=${TOOLS:-tools/icons}
 P=out/pkg/PrismRTG
 rm -rf out/pkg
 mkdir -p $P
 cp out/PrismD out/PrismPrefs out/PrismSetup out/PrismProbe out/Picasso96API.library $P/
 cp out/PrismMon $P/Prism
 cp dist/Install_PrismRTG dist/ReadMe LICENSE $P/
-if [ -f "$T/iconlib.py" ]; then
-AMIGA_TOOLS="$T" python3 tools/mkicons.py prefs $P/PrismPrefs.info
-AMIGA_TOOLS="$T" python3 tools/mkicons.py prism $P/Prism.info
-python3 "$T/makeicon_doc.py" $P/ReadMe.info >/dev/null
-python3 "$T/makeicon_drawer.py" out/pkg/PrismRTG.info >/dev/null
-# Install_PrismRTG.info: a project icon for the standard Installer
-python3 - "$T" "$P/Install_PrismRTG.info" <<'PY'
-import sys
-sys.path.insert(0, sys.argv[1])
-import iconlib, makeicon_install as mi
-open(sys.argv[2], 'wb').write(
-    iconlib.build_info(mi.build_cidx(), mi.PALETTE, mi.PLANAR_MAP, mi.W, mi.H, mi.TRANSPARENT,
-                       icon_type=4, default_tool='Installer',
-                       tool_types=['APPNAME=PrismRTG', 'SCRIPT=Install_PrismRTG', 'DEFUSER=AVERAGE',
-                                   'MINUSER=AVERAGE', 'LOG=FALSE']))
-PY
-else
-echo "mkpkg: no icon tools in $T - all icons left out"
-fi
+cp dist/Install_PrismRTG.info dist/Prism.info dist/PrismPrefs.info dist/ReadMe.info $P/
+# the drawer's own icon goes BESIDE it, or Workbench doesn't show the drawer
+cp dist/PrismRTG.info out/pkg/
 ls -l $P
