@@ -13,6 +13,22 @@ struct ExpansionBase *ExpansionBase;
 /* UtilityBase is initialized by libnix before main. */
 static struct Message *acknowledgement;
 
+/* libnix gives each standard stream a 64 KB buffer at startup (about
+ * 190 KB per driver process); PrismD has the same line. */
+static unsigned long stdioBufSize = 1024;
+unsigned long *__BUFSIZE = &stdioBufSize;
+
+#if defined(DRIVER_P96)
+#define DRIVER_NAME "P96"
+#elif defined(DRIVER_UAEGFX)
+#define DRIVER_NAME "UAEGFX"
+#elif defined(DRIVER_PICASSO2)
+#define DRIVER_NAME "PICASSO2"
+#elif defined(DRIVER_ZZ9000)
+#define DRIVER_NAME "ZZ9000"
+#endif
+static const char version[] __attribute__((used)) = "$VER: " DRIVER_NAME ".driver 1.1b2 (08.10.2026)";
+
 void driver_module_done(void)
 {
     /* No module output follows this point, even for a retained context.
@@ -39,8 +55,13 @@ int main(void)
     struct MsgPort *control=NULL;
     BOOL found=FALSE;
     setvbuf(stdout,NULL,_IONBF,0);
-    if(!r || !TypeOfMem(r) || r->magic!=PRISM_DRIVER_MAGIC) return 20;
+    if(!r || !TypeOfMem(r)) return 20;
     acknowledgement=&r->message;
+    if(r->magic!=PRISM_DRIVER_MAGIC) {
+        /* Another version's request: answer it untouched - the loader
+         * preset its status to "ABI mismatch". */
+        driver_module_done();return 20;
+    }
     if(!driver_compatible(r)) {
         /* The loader initializes status to ABI_MISMATCH. Do not write any
          * version-dependent fields in an incompatible request. */

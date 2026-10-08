@@ -1,14 +1,33 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 #include <exec/memory.h>
+#include <exec/execbase.h>
 #include <dos/dostags.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <stdio.h>
 #include <string.h>
 #include "driver_module.h"
+extern struct ExecBase *SysBase;
 static struct PrismDriverRequest *active;
 static struct MsgPort *replies;
 static BOOL stalled;
+static struct Task *childTask;
+
+/* Is the driver process still there? One that ends without replying (its
+ * startup failed, or BOARD= named some other program) must not be waited
+ * for. */
+static BOOL child_alive(void)
+{
+    struct Node *n;
+    BOOL alive = FALSE;
+    Forbid();
+    for (n = SysBase->TaskReady.lh_Head; n->ln_Succ && !alive; n = n->ln_Succ)
+        alive = (struct Task *)n == childTask;
+    for (n = SysBase->TaskWait.lh_Head; n->ln_Succ && !alive; n = n->ln_Succ)
+        alive = (struct Task *)n == childTask;
+    Permit();
+    return alive;
+}
 
 BOOL driver_open(struct PrismBoard *b,const char *name,const struct PrismDriverConfig *config)
 {
@@ -19,9 +38,12 @@ BOOL driver_open(struct PrismBoard *b,const char *name,const struct PrismDriverC
     BPTR segment,input;
     ULONG ticks;
     if(active || stalled || !name || strlen(name)>32 || strpbrk(name,"/:\\")) return FALSE;
-    snprintf(path,sizeof(path),"LIBS:Prism/%s.driver",name);
+    /* Drivers next to the program first: a build run from its own drawer
+     * must not pick up the installed (older) modules. At boot PrismD is
+     * C:PrismD, so this finds nothing and LIBS:Prism is used. */
+    snprintf(path,sizeof(path),"PROGDIR:Drivers/%s.driver",name);
     segment=LoadSeg(path);
-    if(!segment) { snprintf(path,sizeof(path),"PROGDIR:Drivers/%s.driver",name);segment=LoadSeg(path); }
+    if(!segment) { snprintf(path,sizeof(path),"LIBS:Prism/%s.driver",name);segment=LoadSeg(path); }
     if(!segment) { printf("PrismD: cannot load %s driver\n",name);return FALSE; }
     r=AllocVec(sizeof(*r),MEMF_PUBLIC|MEMF_CLEAR);
     port=CreateMsgPort();input=Open("NIL:",MODE_OLDFILE);
@@ -50,8 +72,14 @@ BOOL driver_open(struct PrismBoard *b,const char *name,const struct PrismDriverC
     if(!child) {
         Close(input);DeleteMsgPort(port);FreeVec(r);UnLoadSeg(segment);return FALSE;
     }
+    childTask=&child->pr_Task;
     for(ticks=0;ticks<1500;ticks++) {
         if(GetMsg(port)) break;
+        if(!child_alive()) {
+            if(GetMsg(port)) break;
+            printf("PrismD: %s driver ended without answering\n",name);
+            DeleteMsgPort(port);FreeVec(r);return FALSE;
+        }
         Delay(1);
     }
     if(ticks==1500) {
@@ -81,7 +109,14 @@ void driver_close(void)
     if(stalled) {
         /* A READY reply can race the timeout. In that case the child is
          * waiting for STOP, rather than having acknowledged cancellation. */
-        WaitPort(replies);GetMsg(replies);
+        while(!GetMsg(replies)) {
+            if(!child_alive() && !GetMsg(replies)) {
+                /* it ended without a reply: nothing more will come */
+                DeleteMsgPort(replies);FreeVec(active);active=NULL;replies=NULL;stalled=FALSE;
+                return;
+            }
+            Delay(5);
+        }
     }
     if(!stalled || (active->status==PRD_READY && active->control)) {
         memset(&stop,0,sizeof(stop));stop.mn_Length=sizeof(stop);stop.mn_ReplyPort=replies;

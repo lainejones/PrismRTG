@@ -45,6 +45,12 @@ EndIf
 If EXISTS DEVS:Monitors/Prism
   Version >>RAM:PrismCheck-report.txt DEVS:Monitors/Prism
 EndIf
+If EXISTS LIBS:Prism
+  Echo >>RAM:PrismCheck-report.txt "Board drivers in LIBS:Prism:"
+  List >T:PrismCheck-drv LIBS:Prism PAT=#?.driver LFORMAT "Version >>RAM:PrismCheck-report.txt *"%p%n*""
+  Execute T:PrismCheck-drv
+  Delete >NIL: T:PrismCheck-drv QUIET
+EndIf
 Echo >>RAM:PrismCheck-report.txt "Monitor files:"
 List >>RAM:PrismCheck-report.txt DEVS:Monitors LFORMAT "  %n"
 Echo >>RAM:PrismCheck-report.txt "ENVARC:Prism.prefs:"

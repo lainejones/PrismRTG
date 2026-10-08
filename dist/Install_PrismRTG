@@ -21,7 +21,7 @@
 (set cpu (database "cpu"))
 (if (or (= cpu "68000") (= cpu "68010"))
     (abort "PrismRTG needs a 68020 or better processor (this Amiga has a " cpu ")."))
-(if (not (exists "PrismD"))
+(if (or (not (exists "PrismD")) (not (exists "Drivers/PICASSO2.driver")))
     (abort "Can't find PrismD next to this script.\n\n"
            "Run the installer from the drawer it came in."))
 
@@ -81,7 +81,7 @@
                   "\" \"" (tackon mon "Prism.info") "\" QUIET"))
         (run "Delete >NIL: LIBS:Prism/PICASSO2.driver LIBS:Prism/ZZ9000.driver LIBS:Prism/P96.driver LIBS:Prism/UAEGFX.driver QUIET")
         (run "Delete >NIL: LIBS:Prism QUIET")
-        (run "Delete >NIL: SYS:Prefs/PrismPrefs SYS:PrismPrefs.info QUIET")
+        (run "Delete >NIL: SYS:Prefs/PrismPrefs SYS:Prefs/PrismPrefs.info QUIET")
         (run "Delete >NIL: ENVARC:Prism.prefs ENV:Prism.prefs ENVARC:Prism.booting QUIET")
         (if (and (exists pkeep) (not (exists plib)))
             (run (cat "Rename >NIL: \"" pkeep "\" \"" plib "\"")))

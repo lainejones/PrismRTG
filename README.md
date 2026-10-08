@@ -33,7 +33,8 @@ better. No FPU needed. On Kickstart 3.0 PrismD does not start.
 ## How small a machine
 
 PrismD, the driver, takes about 330 KB, in fast RAM when there is any and
-none of it in chip RAM. Measured in WinUAE on an emulated Picasso II+ (2 MB
+none of it in chip RAM; since the board drivers became separate modules
+(after 1.1 beta 2) it is about 40 KB more. Measured in WinUAE on an emulated Picasso II+ (2 MB
 on the card), with Workbench 3.2 on a PrismRTG 800x600 16-bit screen and MUI
 and a TCP/IP stack loaded, each program started on a freshly booted machine:
 
@@ -335,7 +336,8 @@ PrismRTG is written by Laine Jones, with Claude (Anthropic) as co-author -
 noted in every commit. With thanks to:
 
 * **Stefan Reinauer** - the build fixes (#3), the P96 card-driver adapter
-  (#4) and the native UAE RTG driver (#5).
+  (#4), the native UAE RTG driver (#5) and the loadable board-driver modules
+  (#8).
 * **Dimitris Panokostas** (midwan, author of Amiberry) - reviewed the UAE
   driver and found its `SetPanning` / `BitMapExtra` bug (#5), and made
   Amiberry's RTG hardware pointer the default so PrismRTG shows a pointer
