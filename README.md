@@ -31,7 +31,7 @@ Needs AmigaOS 3.0 or newer and a 68020 or better. No FPU needed.
 
 ## How small a machine
 
-PrismD, the driver, takes about 310 KB, in fast RAM when there is any and
+PrismD, the driver, takes about 330 KB, in fast RAM when there is any and
 none of it in chip RAM. Measured in WinUAE on an emulated Picasso II+ (2 MB
 on the card), with Workbench 3.2 on a PrismRTG 800x600 16-bit screen and MUI
 and a TCP/IP stack loaded, each program started on a freshly booted machine:
@@ -76,6 +76,8 @@ See [P96 driver configuration and limits](docs/p96-drivers.md) before
 using this backend. It supports linear framebuffers, not every P96 memory
 model, and a claimed driver remains resident until reboot. This provides
 uaegfx through its P96 driver. A separate native candidate is available below.
+Tested so far with UAE's `uaegfx.card` in WinUAE 6.0.3 at 8, 16 and 32 bits
+(every PrismRTG test and `p96test`), not yet with a physical card's driver.
 
 ### Native UAE RTG candidate
 
@@ -89,6 +91,8 @@ Run >RAM:PrismD.log PrismD BOARD=UAEGFX
 
 Enable UAE RTG memory and its hardware cursor. This candidate is selected
 explicitly; see [native UAE configuration and limits](docs/uaegfx.md).
+Tested in WinUAE 6.0.3 at 8, 16 and 32 bits (every PrismRTG test and
+`p96test`).
 
 ## What works
 

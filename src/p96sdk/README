@@ -1,18 +1,26 @@
 P96 driver development headers, release 3.6.0
 
-These three headers are copied unchanged from the P96 driver SDK in
-https://github.com/mheyer32/p96drivers/tree/master/Picasso96Develop
+These three headers are copied unchanged from the P96 development files
+as kept in https://github.com/mheyer32/p96drivers/tree/master/Picasso96Develop
 Snapshot: e6fd03e87486fd3dc4f5ca41934a843b7911d0a1
 
 Sources:
-  PrivateInclude/boardinfo.h
-  PrivateInclude/settings.h
-  Include/libraries/Picasso96.h
+  PrivateInclude/boardinfo.h      P96 Driver Development Files (P96CardDevelop)
+  PrivateInclude/settings.h       P96 Driver Development Files (P96CardDevelop)
+  Include/libraries/Picasso96.h   P96 Development Files (P96Develop)
 
-Authors: Alexander Kneer, Tobias Abt, Thomas Richter and Individual
-Computers. See P96CardDevelop.readme for the SDK's CC-BY redistribution
-terms and attribution. These headers describe the driver ABI; no P96
-implementation or card-driver binary is included.
+Both archives are by Individual Computers (Jens Schoenfeld), uploaded to
+Aminet by Thomas Richter (dev/misc/P96CardDevelop.lha and
+dev/misc/P96Develop.lha); the headers' original authors are Alexander
+Kneer and Tobias Abt. Their readmes, included here as
+P96CardDevelop.readme and P96Develop.readme, say: "This archive is freely
+distributable under CC-BY conditions, that is, it can be copied provided
+you attribute its source correctly." Licence:
+https://creativecommons.org/licenses/by/4.0/
+
+The original copyright line in Picasso96.h is kept as it was. These
+headers describe the driver interface; no P96 implementation or card-driver
+binary is included in PrismRTG.
 
 Interface documentation:
 https://wiki.icomp.de/wiki/P96_Driver_Development
