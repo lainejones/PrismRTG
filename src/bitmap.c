@@ -80,6 +80,9 @@ BOOL pbm_to_fast(struct PBitMap *p)
     if ((board.flags & PBF_SHADOW) && p->mem) {
         vram_free(p->vramOff);
         p->inVram = FALSE;
+        if (p->uploaded) FreeVec(p->uploaded);
+        p->uploaded = NULL;
+        p->uploadValid = FALSE;
         return TRUE;
     }
     if (!(mem = AllocVec(size, MEMF_ANY)))
@@ -110,7 +113,8 @@ BOOL pbm_to_vram(struct PBitMap *p)
     if (board.flags & PBF_SHADOW) {
         p->inVram = TRUE; p->vramOff = off; p->uploadValid = FALSE;
         if (pbm_upload(p)) return TRUE;
-        p->inVram = FALSE; vram_free(off); return FALSE;
+        pbm_to_fast(p);
+        return FALSE;
     }
     CopyMem(p->mem, board.vram + off, size);
     FreeVec(p->mem);
@@ -404,20 +408,37 @@ BOOL pbm_upload(struct PBitMap *p)
     if (!p->inVram || !(board.flags & PBF_SHADOW)) return TRUE;
     pbm_surface(p,&s);
     if (!p->uploaded) p->uploaded = AllocVec(s.allocation, MEMF_ANY);
-    if (!p->uploaded || !p->uploadValid) {
-        if (!pbm_write(p,&s,0,p->pix,s.allocation)) return FALSE;
-        if (p->uploaded) {
-            CopyMem(p->pix,p->uploaded,s.allocation);
-            p->uploadValid = TRUE;
+    if (!p->uploaded) {
+        UBYTE snapshot[256];
+        ULONG off;
+        /* Low memory still permits presentation, without damage history.
+         * Never pass a buffer that clients can change during the transfer. */
+        p->uploadValid = FALSE;
+        for (off=0; off<s.allocation; off+=sizeof(snapshot)) {
+            ULONG count=s.allocation-off;
+            if (count>sizeof(snapshot)) count=sizeof(snapshot);
+            CopyMem(p->pix+off,snapshot,count);
+            if (!pbm_write(p,&s,off,snapshot,count)) return FALSE;
         }
+        return TRUE;
+    }
+    if (!p->uploadValid) {
+        CopyMem(p->pix,p->uploaded,s.allocation);
+        if (!pbm_write(p,&s,0,p->uploaded,s.allocation)) return FALSE;
+        p->uploadValid = TRUE;
         return TRUE;
     }
     for (y=0; y<p->h; y++) {
         ULONG first, count, off=y*p->bpr;
         if (changed_span(p->pix+off,p->uploaded+off,p->bpr,&first,&count)) {
             off += first;
-            if (!pbm_write(p,&s,off,p->pix+off,count)) return FALSE;
+            /* The history is also the transfer snapshot: a direct store
+             * into pix while the driver runs remains dirty next time. */
             CopyMem(p->pix+off,p->uploaded+off,count);
+            if (!pbm_write(p,&s,off,p->uploaded+off,count)) {
+                p->uploadValid = FALSE;
+                return FALSE;
+            }
         }
     }
     return TRUE;
@@ -431,16 +452,19 @@ static enum PrismResult pbm_result(struct PBitMap *p,enum PrismResult result,
         pbm_surface(p,&s);
         for (row=0; row<h; row++) {
             ULONG off=(ULONG)(y+row)*p->bpr+xbytes;
+            UBYTE *data=p->uploaded ? p->uploaded+off : p->pix+off;
             if (board.ops && board.ops->read ?
-                !board.ops->read(&board,&s,off,p->pix+off,rowbytes) :
+                !board.ops->read(&board,&s,off,data,rowbytes) :
                 (board.flags & PBF_BANKED) != 0) {
                 board.flags |= PBF_ACCEL_BROKEN; board.faults++; result=PR_FAILED;
                 p->uploadValid=FALSE;
                 break;
             }
             if (!board.ops || !board.ops->read)
-                CopyMem(board.vram+p->vramOff+off,p->pix+off,rowbytes);
-            if (p->uploadValid) CopyMem(p->pix+off,p->uploaded+off,rowbytes);
+                CopyMem(board.vram+p->vramOff+off,data,rowbytes);
+            /* As with uploads, history comes from the transfer itself,
+             * never a CPU view that an unlocked client may have changed. */
+            if (p->uploaded) CopyMem(data,p->pix+off,rowbytes);
         }
     }
     if (result == PR_FAILED) dbg("driver: operation failed; acceleration disabled\n");
