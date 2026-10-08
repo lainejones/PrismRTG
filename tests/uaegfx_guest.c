@@ -95,7 +95,7 @@ static void exercise(struct PrismBoard *b)
                 for(y=0;y<3;y++) for(x=0;x<11;x++) {
                     UBYTE bit=0x80>>((x+3)&7);
                     ULONG off=(y+1)*4+(x+3)/8;
-                    UBYTE index=!!(planes[off]&bit) | (!!(planes[off+2]&bit)<<1);
+                    UBYTE index=(!!(planes[off]&bit)) | (!!(planes[off+2]&bit)<<1);
                     ULONG c;
                     switch(m.format) {
                     case PF_CLUT8: c=index;break;

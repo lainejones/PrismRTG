@@ -5,8 +5,10 @@
 #include <graphics/gfx.h>
 
 /* DECLINED guarantees no writes. FAILED may have modified the destination;
- * the driver must stop its engine before returning. Never replay FAILED. */
-enum PrismResult { PR_DECLINED = 0, PR_DONE = 1, PR_FAILED = 2 };
+ * the driver must stop its engine before returning. PR_RETRY reports a
+ * recovered failure that disabled only the affected operation. Overwrites
+ * can replay either failure; overlapping copies and RMW operations cannot. */
+enum PrismResult { PR_DECLINED = 0, PR_DONE = 1, PR_FAILED = 2, PR_RETRY = 3 };
 #define PSF_VRAM 1
 struct PrismSurface {
     UBYTE *memory;               /* stable CPU view, possibly a shadow */
@@ -39,6 +41,9 @@ struct PrismOps {
     BOOL (*read)(struct PrismBoard *, const struct PrismSurface *, ULONG, APTR, ULONG);
     BOOL (*write)(struct PrismBoard *, const struct PrismSurface *, ULONG, const void *, ULONG);
 };
+#define PRISM_OPS_ABI 1
+#define PRISM_OPS_SIZE sizeof(struct PrismOps)
+
 #define PBF_SHADOW (1UL << 6)     /* CPU access goes through read/write */
 #define PBF_SOFTWARE (1UL << 8)
 #define PBF_ACCEL_BROKEN (1UL << 7)

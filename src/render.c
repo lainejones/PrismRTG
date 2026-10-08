@@ -699,17 +699,19 @@ static void fill(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1,
                     pf_put(p->fmt, pf_get(p->fmt, r) ^ 0xffffff, r);
             return;
         }
+        /* These fills overwrite their pixels, so a stopped partial blit
+         * can finish on the CPU. The same applies to the solid row below. */
         /* a blitter that takes 4-byte pixels (ZZ9000) */
         if (b == 4 && p->inVram && (board.fillRect || (board.ops && board.ops->fill)) && (board.flags & PBF_BLIT_32) &&
             w * (y1 - y0 + 1) >= 12) {
             if (pbm_hw_fill(p, 4, x0, y0, w, y1 - y0 + 1,
                            ((ULONG)px[0] << 24) | ((ULONG)px[1] << 16) | ((ULONG)px[2] << 8) |
-                           px[3]) != PR_DECLINED) return;
+                           px[3]) == PR_DONE) return;
         }
         /* a grey (all bytes equal) fills as bytes on the blitter */
         if (px[0] == px[1] && px[1] == px[2] && (b == 3 || px[2] == px[3]) &&
             p->inVram && (board.fillRect || (board.ops && board.ops->fill)) && w * (y1 - y0 + 1) > 64) {
-            if (pbm_hw_fill(p, 1, x0 * b, y0, w * b, y1 - y0 + 1, px[0]) != PR_DECLINED) return;
+            if (pbm_hw_fill(p, 1, x0 * b, y0, w * b, y1 - y0 + 1, px[0]) == PR_DONE) return;
         }
         for (x = 0, r = rowW; x < w; x++, r += b) {
             r[0] = px[0]; r[1] = px[1]; r[2] = px[2];
@@ -724,8 +726,7 @@ static void fill(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1,
             while (done < h) {
                 k = (done < h - done) ? done : h - done;
                 enum PrismResult result = pbm_hw_copy(p,p,x0,y0,x0,y0+done,w,k);
-                if (result == PR_FAILED) return;
-                if (result == PR_DECLINED) {
+                if (result != PR_DONE) {
                     WORD row;
                     for (row=0; row<k; row++)
                         vcopy(p->pix+(ULONG)(y0+done+row)*p->bpr+(ULONG)x0*b,
@@ -742,7 +743,7 @@ static void fill(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1,
     if (!xor && (mask == 0xff || p->bpp == 2) && p->inVram && (board.fillRect || (board.ops && board.ops->fill)) &&
         w * (y1 - y0 + 1) >= 12) {
         if (pbm_hw_fill(p, p->bpp, x0, y0, w, y1 - y0 + 1,
-                       pixval(p, pen)) != PR_DECLINED) return;
+                       pixval(p, pen)) == PR_DONE) return;
     }
     if (p->bpp == 2) {
         UWORD v = pixval(p, pen);
@@ -850,7 +851,7 @@ static LONG foreign(LONG (*h)(struct Regs *), struct Regs *r, struct RastPort *r
     if (!shadow || shadow->w != w || shadow->h != hgt) {
         if (shadow)
             pbm_free(shadow);
-        shadow = pbm_new(w, hgt, 8, 1, NULL, FALSE, FALSE);
+        shadow = pbm_new(w, hgt, 8, PF_CLUT8, NULL, FALSE, FALSE);
     }
     if (!shadow) {
         ReleaseSemaphore(&lock);
@@ -1533,7 +1534,7 @@ static void line_solid(struct PBitMap *p, struct LineCtx *l, WORD bx0, WORD by0,
                 pf_put(p->fmt, pen_rgb(p->rgbTab, pen), px);
                 c = ((ULONG)px[0] << 24) | ((ULONG)px[1] << 16) | ((ULONG)px[2] << 8) | px[3];
             }
-            if (pbm_hw_line(p,x,y,x1-x,y1-y,c) != PR_DECLINED) return;
+            if (pbm_hw_line(p,x,y,x1-x,y1-y,c) == PR_DONE) return;
         }
         line_fast(p, l, ox, oy, pen);
         return;
@@ -1977,7 +1978,7 @@ static void tmpl_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
             const UBYTE *src = t->src + (LONG)(by0 - oy - t->ty) * t->srcMod + (sbit0 >> 3);
             if (pbm_hw_expand(p, bx0, by0, w, h, src,
                                  t->srcMod, fgv, bgv,
-                                 !(dm & JAM2)) != PR_DECLINED)
+                                 !(dm & JAM2)) == PR_DONE)
                 return;
         } else if (rb * h <= sizeof(xtmpl)) {
             UBYTE *o = xtmpl;
@@ -1988,7 +1989,7 @@ static void tmpl_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
                     *o++ = get8(src, sbit + (LONG)k * 8) ^ invb;
             }
             if (pbm_hw_expand(p, bx0, by0, w, h, xtmpl, rb,
-                                 fgv, bgv, !(dm & JAM2)) != PR_DECLINED)
+                                 fgv, bgv, !(dm & JAM2)) == PR_DONE)
                 return;
         }
     }

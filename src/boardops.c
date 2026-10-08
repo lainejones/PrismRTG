@@ -16,6 +16,10 @@ BOOL board_rect(const struct PrismSurface *s, UWORD x, UWORD y, UWORD w, UWORD h
 }
 static enum PrismResult finish(struct PrismBoard *b, enum PrismResult r)
 {
+    if (r == PR_RETRY) {
+        b->faults++;
+        return r;
+    }
     if (r != PR_DONE && r != PR_DECLINED) {
         b->flags |= PBF_ACCEL_BROKEN;
         b->faults++;

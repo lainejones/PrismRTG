@@ -12,6 +12,7 @@
  */
 #ifndef PRISMBOARD_H
 #define PRISMBOARD_H
+#define PRISM_BOARD_HAS_OPS 1
 
 #include <exec/types.h>
 #include <libraries/configvars.h>

@@ -159,14 +159,14 @@ static UBYTE zz_cm(UBYTE bpp)
     return bpp == 4 ? CM_32BIT : bpp == 2 ? CM_565 : CM_8BIT;
 }
 
-static void zz_FillRect(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
-                        UWORD x, UWORD y, UWORD w, UWORD h, ULONG colour)
+static void zz_FillRectMode(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
+                        UWORD x, UWORD y, UWORD w, UWORD h, ULONG colour, UBYTE cm)
 {
     struct ZZPriv *p = b->priv;
     Forbid();
     GD32(p, GD_OFFSET0, dst);
     GD16(p, GD_PITCH0, pitch >> 2);
-    GD8(p, GD_U8USER0, zz_cm(bpp));
+    GD8(p, GD_U8USER0, cm);
     GD8(p, GD_MASK, 0xff);
     GD32(p, GD_RGB0, zz_colour(bpp, colour));
     GD16(p, GD_X0, x);
@@ -175,6 +175,12 @@ static void zz_FillRect(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
     GD16(p, GD_Y1, h);
     W16(b, REG_DMA_OP, OP_FILLRECT);
     Permit();
+}
+
+static void zz_FillRect(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
+                        UWORD x, UWORD y, UWORD w, UWORD h, ULONG colour)
+{
+    zz_FillRectMode(b,dst,pitch,bpp,x,y,w,h,colour,zz_cm(bpp));
 }
 
 static void zz_CopyRect(struct PrismBoard *b, ULONG base, ULONG pitch, UBYTE bpp,
@@ -220,9 +226,9 @@ static void zz_CopyBetween(struct PrismBoard *b, ULONG src, ULONG spitch, ULONG 
     Permit();
 }
 
-static BOOL zz_ExpandRect(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
+static BOOL zz_ExpandRectMode(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
                           UWORD x, UWORD y, UWORD w, UWORD h, const UBYTE *tmpl, ULONG mod,
-                          ULONG fg, ULONG bg, BOOL transparent)
+                          ULONG fg, ULONG bg, BOOL transparent, UBYTE cm)
 {
     struct ZZPriv *p = b->priv;
     ULONG rb = ((ULONG)w + 7) >> 3, n;
@@ -251,7 +257,7 @@ static BOOL zz_ExpandRect(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bp
     GD16(p, GD_PITCH1, rb);
     GD32(p, GD_RGB0, zz_colour(bpp, fg));
     GD32(p, GD_RGB1, zz_colour(bpp, bg));
-    GD8(p, GD_U8USER0, zz_cm(bpp));
+    GD8(p, GD_U8USER0, cm);
     GD8(p, GD_U8USER1, transparent ? 0 : 1);      /* JAM1 : JAM2 */
     GD8(p, GD_MASK, 0xff);
     W16(b, REG_DMA_OP, OP_TEMPLATE);
@@ -259,12 +265,19 @@ static BOOL zz_ExpandRect(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bp
     return TRUE;
 }
 
+static BOOL zz_ExpandRect(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
+                          UWORD x, UWORD y, UWORD w, UWORD h, const UBYTE *tmpl, ULONG mod,
+                          ULONG fg, ULONG bg, BOOL transparent)
+{
+    return zz_ExpandRectMode(b,dst,pitch,bpp,x,y,w,h,tmpl,mod,fg,bg,transparent,zz_cm(bpp));
+}
+
 /* The firmware's line: e starts at the seed, each step along the longer
  * axis adds S, and when e reaches L it takes L off and steps the shorter
  * axis. Seeded with L/2 that is round(i * S / L) with halves rounded up -
  * the native rule, and Prism's (see line_solid in render.c). */
-static void zz_DrawLine(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
-                        WORD x, WORD y, WORD dx, WORD dy, ULONG colour)
+static void zz_DrawLineMode(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
+                        WORD x, WORD y, WORD dx, WORD dy, ULONG colour, UBYTE cm)
 {
     struct ZZPriv *p = b->priv;
     UWORD ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
@@ -273,7 +286,7 @@ static void zz_DrawLine(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
     Forbid();
     GD32(p, GD_OFFSET0, dst);
     GD16(p, GD_PITCH0, pitch >> 2);
-    GD8(p, GD_U8USER0, zz_cm(bpp));
+    GD8(p, GD_U8USER0, cm);
     GD8(p, GD_U8USER1, 0);                        /* JAM1 */
     GD8(p, GD_U8USER2, 0);
     GD8(p, GD_U8USER3, 0);
@@ -291,34 +304,48 @@ static void zz_DrawLine(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
     Permit();
 }
 
+static void zz_DrawLine(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
+                        WORD x, WORD y, WORD dx, WORD dy, ULONG colour)
+{
+    zz_DrawLineMode(b,dst,pitch,bpp,x,y,dx,dy,colour,zz_cm(bpp));
+}
+
 static void zz_WaitBlit(struct PrismBoard *b)
 {
     (void)R16(b, REG_DMA_OP);         /* commands are synchronous: a fence */
 }
 
-/* The old hooks remain for stand-alone tools. Core requests carry the exact
- * format, so unsupported layouts and truncated mailbox fields decline before
- * a command is submitted. 555 uses the CPU until its command mode is wired. */
-static BOOL zz_surface(struct PrismBoard *b,const struct PrismSurface *s)
+/* Storage limits apply to byte copies regardless of the pixel layout. */
+static BOOL zz_storage(struct PrismBoard *b,const struct PrismSurface *s)
 {
     return ((struct ZZPriv *)b->priv)->z3 &&
-        (s->format==PF_CLUT8 || s->format==PF_RGB565BE || s->format==PF_BGRA32) &&
         !(s->pitch & 3) && s->pitch/4<=65535 &&
         s->offset<=b->vramSize && s->allocation<=b->vramSize-s->offset;
+}
+static BOOL zz_surface(struct PrismBoard *b,const struct PrismSurface *s)
+{
+    return zz_storage(b,s) && (s->format==PF_CLUT8 ||
+        s->format==PF_RGB565BE || s->format==PF_RGB555BE || s->format==PF_BGRA32);
+}
+static UBYTE zz_surface_cm(const struct PrismSurface *s)
+{
+    return s->format==PF_RGB555BE ? CM_555 : zz_cm(s->bpp);
 }
 static enum PrismResult zz_fill(struct PrismBoard *b,const struct PrismSurface *d,
     UWORD x,UWORD y,UWORD w,UWORD h,ULONG c)
 {
     if(!zz_surface(b,d)) return PR_DECLINED;
-    zz_FillRect(b,d->offset,d->pitch,d->bpp,x,y,w,h,c);
+    zz_FillRectMode(b,d->offset,d->pitch,d->bpp,x,y,w,h,c,zz_surface_cm(d));
     zz_WaitBlit(b);return PR_DONE;
 }
 static enum PrismResult zz_copy(struct PrismBoard *b,const struct PrismSurface *s,
     const struct PrismSurface *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h)
 {
-    if(!zz_surface(b,s) || !zz_surface(b,d)) return PR_DECLINED;
+    if(!zz_storage(b,s) || !zz_storage(b,d) ||
+        ((ULONG)sx+w)*s->bpp>65535 || ((ULONG)dx+w)*d->bpp>65535)
+        return PR_DECLINED;
     if(s->offset==d->offset && s->pitch==d->pitch)
-        zz_CopyRect(b,s->offset,s->pitch,s->bpp,sx,sy,dx,dy,w,h);
+        zz_CopyRect(b,s->offset,s->pitch,1,sx*s->bpp,sy,dx*d->bpp,dy,w*d->bpp,h);
     else if((ULONG)w*d->bpp<=65535 && (s->offset+s->allocation<=d->offset ||
                                                     d->offset+d->allocation<=s->offset))
         zz_CopyBetween(b,s->offset+(ULONG)sy*s->pitch+(ULONG)sx*s->bpp,s->pitch,
@@ -330,7 +357,7 @@ static enum PrismResult zz_expand(struct PrismBoard *b,const struct PrismSurface
     UWORD x,UWORD y,UWORD w,UWORD h,const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr)
 {
     if(!zz_surface(b,d) || d->pitch>65535) return PR_DECLINED;
-    if(!zz_ExpandRect(b,d->offset,d->pitch,d->bpp,x,y,w,h,src,mod,fg,bg,tr))
+    if(!zz_ExpandRectMode(b,d->offset,d->pitch,d->bpp,x,y,w,h,src,mod,fg,bg,tr,zz_surface_cm(d)))
         return PR_DECLINED;
     zz_WaitBlit(b);return PR_DONE;
 }
@@ -338,7 +365,7 @@ static enum PrismResult zz_line(struct PrismBoard *b,const struct PrismSurface *
     WORD x,WORD y,WORD dx,WORD dy,ULONG c)
 {
     if(!zz_surface(b,d)) return PR_DECLINED;
-    zz_DrawLine(b,d->offset,d->pitch,d->bpp,x,y,dx,dy,c);
+    zz_DrawLineMode(b,d->offset,d->pitch,d->bpp,x,y,dx,dy,c,zz_surface_cm(d));
     zz_WaitBlit(b);return PR_DONE;
 }
 static const struct PrismOps zz_ops={.fill=zz_fill,.copy=zz_copy,

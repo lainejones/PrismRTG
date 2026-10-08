@@ -38,10 +38,15 @@ int main(void)
     d=s;d.allocation=1;
     assert(board_line(&b,&d,0,0,1,1,0)==PR_DECLINED);
     assert(board_line(&b,NULL,0,0,1,1,0)==PR_DECLINED);
+    result=PR_RETRY;
+    assert(board_fill(&b,&s,0,0,32,16,0)==PR_RETRY && calls==4);
+    assert(b.faults==1 && !(b.flags & PBF_ACCEL_BROKEN));
+    result=PR_DONE;
+    assert(board_fill(&b,&s,0,0,32,16,0)==PR_DONE && calls==5);
     result=PR_FAILED;
-    assert(board_fill(&b,&s,0,0,32,16,0)==PR_FAILED && calls==4);
-    assert(b.faults==1 && (b.flags & PBF_ACCEL_BROKEN));
-    assert(board_fill(&b,&s,0,0,32,16,0)==PR_DECLINED && calls==4);
+    assert(board_fill(&b,&s,0,0,32,16,0)==PR_FAILED && calls==6);
+    assert(b.faults==2 && (b.flags & PBF_ACCEL_BROKEN));
+    assert(board_fill(&b,&s,0,0,32,16,0)==PR_DECLINED && calls==6);
     puts("board operation contracts passed");
     return 0;
 }

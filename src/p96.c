@@ -697,7 +697,7 @@ static void fill_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
     if (p->inVram && (board.fillRect || (board.ops && board.ops->fill)) && (LONG)n * (by1 - by0 + 1) >= 12 &&
         (p->bpp <= 2 || (p->bpp == 4 && (board.flags & PBF_BLIT_32)))) {
         ULONG v = p->bpp == 1 ? px[0] : p->bpp == 2 ? (((ULONG)px[0] << 8) | px[1]) : be32(px);
-        if (pbm_hw_fill(p,p->bpp,bx0,by0,n,by1-by0+1,v) != PR_DECLINED) return;
+        if (pbm_hw_fill(p,p->bpp,bx0,by0,n,by1-by0+1,v) == PR_DONE) return;
     }
     if (n > 4096) n = 4096;
     for (x = 0; x < n; x++)

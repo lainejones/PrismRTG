@@ -195,7 +195,7 @@ struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE format, UWORD *penT
 
     if (clear && p->inVram) {
         ObtainSemaphore(&lock);
-        if (pbm_hw_fill(p, 1, 0, 0, p->bpr, h, 0) == PR_DECLINED) {
+        if (pbm_hw_fill(p, 1, 0, 0, p->bpr, h, 0) != PR_DONE) {
             memset(p->pix, 0, size);
         }
         ReleaseSemaphore(&lock);

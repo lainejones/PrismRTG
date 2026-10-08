@@ -1352,7 +1352,9 @@ static enum PrismResult p2_expand_surface(struct PrismBoard *b,const struct Pris
     if (!p2_surface_ok(b,d,w,h)) return PR_DECLINED;
     p->failed=FALSE;
     done=p2_ExpandRect(b,d->offset,d->pitch,d->bpp,x,y,w,h,src,mod,fg,bg,tr);
-    return p->failed ? PR_FAILED : done ? PR_DONE : PR_DECLINED;
+    /* A reset after a text timeout disables only CPU-fed expansion.
+     * Fills and VRAM copies still work; overwrite text can run on the CPU. */
+    return p->failed ? PR_RETRY : done ? PR_DONE : PR_DECLINED;
 }
 static const struct PrismOps p2_ops = {
     .fill=p2_fill_surface, .copy=p2_copy_surface, .expand=p2_expand_surface
