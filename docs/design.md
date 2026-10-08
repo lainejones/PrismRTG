@@ -1625,3 +1625,30 @@ operation is copied to the card and back on the CPU. Next: a classic
 software sprite instead - drawn into the shown screen in VRAM with a
 save-under, hidden only while a drawing operation touches its rectangle -
 so the pointer needs no composition and no shadow mode.
+
+## Software pointer as a sprite (2026-10-08)
+
+The software pointer no longer goes through the compositor. pointer.c draws
+it straight into the shown bitmap from PrismD's tick, keeping what was under
+it (only the image's own extent), once a tick has passed without drawing
+over it. Drawing code takes the lock with LOCK() (puts the saved pixels back
+first) or, in render.c's clip_rp_q and the quick pixel paths, through
+draw_lock() with the target rectangle: the pointer is taken out only when
+the drawing touches it (sw_clear), and only if it is drawn at all, so the
+cost with a hardware pointer is nil. Bitmaps locked by cgx/P96 clients are
+left alone. The compositor still runs for dragging and PIPs and draws the
+pointer into its frame then. Board in shadow mode: not any more for the
+pointer.
+
+Two traps found on the way: the Forbid quick paths in render.c draw without
+the lock, so they need the same check; and checking the rectangle on every
+call (pbm_get + a call) cost 6-12% until it was guarded by `swOn`.
+
+68030 + Picasso II+, SOFTWAREPOINTER=ON vs the hardware pointer: RectFill
+-4/-5%, text -5%, ClipBlit +1%, WritePixel -13/-14% (was 31/s vs 5046/s
+through the compositor). Hardware pointer: unchanged. Tested: tmpltest and
+p96test both ways; the pointer follows the mouse, leaves no trail, stays
+visible while another program draws elsewhere, and a fill area it was
+parked in holds only fill colours afterwards (prismgrab); a UAE RTG board
+with WinUAE's hardware sprite off (the MiSTer / RetroArch case) gets the
+pointer by itself.

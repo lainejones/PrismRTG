@@ -900,17 +900,24 @@ static inline BOOL sem_ours(const struct SignalSemaphore *s, const struct Task *
         if (--SysBase->TDNestCnt < 0 && SysBase->IDNestCnt < 0 && \
             (SysBase->SysFlags & 0x8000)) { Forbid(); Permit(); } } while (0)
 
-static inline BOOL draw_lock(struct Layer *L, BOOL quick)
+/* The drawing will touch p (bitmap coordinates, inclusive; p NULL: who
+ * knows): the software pointer leaves only if it is in the way, so drawing
+ * elsewhere on the screen does not make it disappear. */
+static inline BOOL draw_lock(struct Layer *L, BOOL quick, struct PBitMap *p,
+                             WORD x0, WORD y0, WORD x1, WORD y1)
 {
     if (quick) {
         const struct Task *me = SysBase->ThisTask;
         QUICK_FORBID();
-        if ((!L || sem_ours(&L->Lock, me)) && sem_ours(&lock, me))
+        if ((!L || sem_ours(&L->Lock, me)) && sem_ours(&lock, me)) {
+            if (swOn) sw_clear(p, x0, y0, x1, y1);
             return TRUE;
+        }
         QUICK_PERMIT();
     }
     if (L) LockLayerRom(L);
-    LOCK();
+    ObtainSemaphore(&lock);
+    if (swOn) sw_clear(p, x0, y0, x1, y1);
     return FALSE;
 }
 
@@ -949,7 +956,7 @@ void clip_rp_q(struct RastPort *rp, WORD x0, WORD y0, WORD x1, WORD y1,
         if (x1 >= p->w) x1 = p->w - 1;
         if (y1 >= p->h) y1 = p->h - 1;
         if (x0 <= x1 && y0 <= y1) {
-            fb = draw_lock(NULL, quick);
+            fb = draw_lock(NULL, quick, p, x0, y0, x1, y1);
             shadow_load(p, y0, y1);
             cb(p, x0, y0, x1, y1, 0, 0, ctx);
             draw_unlock(NULL, fb);
@@ -957,9 +964,9 @@ void clip_rp_q(struct RastPort *rp, WORD x0, WORD y0, WORD x1, WORD y1,
         return;
     }
 
-    fb = draw_lock(L, quick);
     lx = L->bounds.MinX - L->Scroll_X;
     ly = L->bounds.MinY - L->Scroll_Y;
+    fb = draw_lock(L, quick, swOn ? pbm_get(rp->BitMap) : NULL, x0 + lx, y0 + ly, x1 + lx, y1 + ly);
     for (cr = L->ClipRect; cr; cr = cr->Next) {
         WORD sx0 = x0 + lx, sy0 = y0 + ly, sx1 = x1 + lx, sy1 = y1 + ly;
         WORD ox, oy;
@@ -1261,7 +1268,12 @@ static BOOL pixel_op(struct RastPort *rp, WORD x, WORD y, rect_cb cb, struct Pix
     struct PBitMap *p = pbm_get(rp->BitMap);
     BOOL fb, done = TRUE;
 
-    fb = draw_lock(L, TRUE);
+    if (swOn) {
+        WORD px = x + (L ? L->bounds.MinX - L->Scroll_X : 0);
+        WORD py = y + (L ? L->bounds.MinY - L->Scroll_Y : 0);
+        fb = draw_lock(L, TRUE, p, px, py, px, py);
+    } else
+        fb = draw_lock(L, TRUE, NULL, 0, 0, 0, 0);
     if (L) {
         struct ClipRect *cr;
         WORD lx = L->bounds.MinX - L->Scroll_X, ly = L->bounds.MinY - L->Scroll_Y;
@@ -1321,6 +1333,7 @@ LONG f_WritePixel(struct RastPort *rp, LONG ax, LONG ay)
     } else if (x < 0 || y < 0 || x >= p->w || y >= p->h) {
         goto out;
     }
+    if (swOn) sw_clear(p, x, y, x, y);
     {
         UBYTE *row = p->pix + (ULONG)y * p->bpr;
         if (p->bpp == 1)

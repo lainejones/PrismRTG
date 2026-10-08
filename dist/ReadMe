@@ -45,13 +45,15 @@ New in 1.1 beta (experimental - please report how it goes)
                   with a real card's driver.
   Details: docs/uaegfx.md and docs/p96-drivers.md on GitHub.
 
-Presentation (experimental)
-  A software pointer (SOFTWAREPOINTER=ON in ENV:Prism.prefs, for boards
-  without a working hardware pointer), vertical dragging between RTG
-  screens (DRAGGING=ON) and P96 memory-window PIPs are composed in fast
-  RAM. They work, but slowly: with the software pointer on, drawing on a
-  68030 is 20 to 100 times slower. A faster pointer is being written.
-  Switched off (the default) they cost nothing.
+Software pointer
+  Boards without a working hardware pointer get a pointer drawn into the
+  screen; SOFTWAREPOINTER=ON in ENV:Prism.prefs forces it (e.g. a MiSTer).
+  It costs a few percent of drawing speed.
+
+Dragging and PIP windows (experimental)
+  Vertical dragging between RTG screens (DRAGGING=ON) and P96 memory-window
+  PIPs are composed in fast RAM, which is slow on a 68030. Switched off
+  (the default) they cost nothing.
 
 24-bit or 32-bit?
   Both are true colour. On the GBAPII++ the card's blitter can draw text

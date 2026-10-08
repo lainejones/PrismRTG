@@ -117,9 +117,9 @@ Tested in WinUAE 6.0.3 at 8, 16 and 32 bits (every PrismRTG test and
 | WinUAE, Picasso II / II+, Piccolo, Piccolo SD64, Spectrum | Auto | Tested: every PrismRTG test passes |
 | WinUAE 6.0.3, UAE RTG Zorro III or Zorro II | UAE (native), or P96 driver with `P96CARD=uaegfx.card` | Tested at 8, 16 and 32 bits: every test passes |
 | Amiberry 8.3.0 (Linux), UAE RTG | UAE (native) | With Amiberry's defaults every test passes at 8, 16 and 32 bits. With `rtg_nocustom=false` and ZeroCopy on, 32-bit screens lose some of what is drawn ([amiberry#2392](https://github.com/BlitterStudio/amiberry/issues/2392)) - keep `rtg_nocustom` at its default (true) or turn ZeroCopy off |
-| Amiberry inside RetroArch (libretro) | UAE (native) | Not tested. No mouse pointer: the libretro build has no RTG hardware pointer; PrismRTG's software pointer (`SOFTWAREPOINTER=ON`) is still experimental and slow |
+| Amiberry inside RetroArch (libretro) | UAE (native) | Not tested. The libretro build has no RTG hardware pointer, so PrismRTG draws its software pointer (tested with WinUAE's hardware sprite turned off) |
 | FS-UAE 3.1.66 (Linux), UAE RTG | UAE (native), or P96 driver with `P96CARD=uaegfx.card` | Tested at 8, 16 and 32 bits: every test passes, both ways. FS-UAE 3.1 cannot open files that are read-only on the host, so a system folder shared from Windows with read-only files will not boot until the attribute is cleared |
-| MiSTer (FPGA), ZZ9000 core | Auto (ZZ9000) | Reported working with no pointer and garbled text in the Shell (issue #2); `SOFTWAREPOINTER=ON` gives a pointer, slowly for now |
+| MiSTer (FPGA), ZZ9000 core | Auto (ZZ9000) | Reported working with no pointer and garbled text in the Shell (issue #2); `SOFTWAREPOINTER=ON` in `ENV:Prism.prefs` should give a pointer (not tested on a MiSTer yet) |
 
 UAE's RTG card needs its hardware pointer ("Hardware sprite emulation" in the
 RTG settings): PrismRTG draws no pointer of its own. WinUAE has it on by
@@ -282,12 +282,14 @@ blitter off.
 ## Known limits
 
 * Tested on two machines by one person. Treat it as early software.
-* **Experimental, off unless switched on in `ENV:Prism.prefs`:** a software
-  mouse pointer (`SOFTWAREPOINTER=ON`, for boards without a working hardware
-  pointer), screen dragging (`DRAGGING=ON`) and Picasso96 PIP windows. They
-  work, but the screen is composed again in fast RAM many times a second:
-  with the software pointer on, drawing on a 68030 is 20 to 100 times slower.
-  A faster software pointer is being written. Off, they cost nothing.
+* **Software pointer:** boards without a working hardware pointer get one
+  drawn into the screen; `SOFTWAREPOINTER=ON` in `ENV:Prism.prefs` forces it.
+  It costs a few percent of drawing speed (WritePixel about 14%), and while a
+  program draws over the pointer itself it is taken away and comes back a
+  moment later.
+* **Experimental, off unless switched on:** screen dragging (`DRAGGING=ON`)
+  and Picasso96 PIP windows compose the screen again in fast RAM many times
+  a second, which is slow on a 68030. Off, they cost nothing.
 * Vertical dragging composes the front and next RTG screen; native-chipset
   screens cannot be mixed into the split. No monitor detection (see above).
 * The Picasso II, Piccolo, Piccolo SD64 and Spectrum have only run in WinUAE.

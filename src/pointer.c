@@ -121,6 +121,16 @@ void sw_hide(void)
         CopyMem(swSave + r * n, p->pix + (ULONG)(swY + r) * p->bpr + (ULONG)swX * p->bpp, n);
 }
 
+void sw_clear(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1)
+{
+    if (!swOn)
+        return;
+    if (p && (p != swOn || x1 < swX || x0 >= swX + swW || y1 < swY || y0 >= swY + swH))
+        return;
+    prismActivity++;
+    sw_hide();
+}
+
 /* Draw the software pointer into the shown bitmap at the sprite position,
  * keeping what was under it (lock held, not drawn now). */
 static void sw_draw(struct PBitMap *p)

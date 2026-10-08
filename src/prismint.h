@@ -27,6 +27,9 @@ struct PBitMap;
 extern struct PBitMap *swOn;           /* bitmap the software pointer is drawn into */
 extern volatile ULONG prismActivity;
 void sw_hide(void);
+/* Drawing into `p` (bitmap coordinates, inclusive): take the pointer out
+ * if it is in the way; p == NULL: always. Caller holds the lock or Forbid. */
+void sw_clear(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1);
 #define LOCK() do { ObtainSemaphore(&lock); prismActivity++; \
                     if (swOn) sw_hide(); } while (0)
 extern struct SignalSemaphore lock;     /* card registers, VRAM allocator,
