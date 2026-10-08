@@ -97,8 +97,11 @@ static void apply(void)
 /* A Prism screen came to the front (lock held). */
 void pointer_on(struct ViewPort *vp)
 {
-    if (!board.cursorImage)
+    if (!(board.flags & PBF_HW_CURSOR) || !board.cursorImage ||
+        !board.cursorMove || !board.cursorShow) {
+        pointer_off();
         return;
+    }
     vpOn = vp;
     load_colours(vp);
     dirtyImage = TRUE;

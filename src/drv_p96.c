@@ -493,8 +493,8 @@ static BOOL p96_mode(struct PrismBoard *b, struct PrismMode *m)
     bi->RGBFormat = rgbformat[m->format];
     bi->Depth = mi.Depth;
     bi->Border = TRUE;
-    if (b->cursorImage && bi->EnableSoftSprite &&
-        !bi->EnableSoftSprite(bi,1UL<<bi->RGBFormat,&p->mode)) b->flags |= PBF_HW_CURSOR;
+    if (b->cursorImage && (!bi->EnableSoftSprite ||
+        !bi->EnableSoftSprite(bi,1UL<<bi->RGBFormat,&p->mode))) b->flags |= PBF_HW_CURSOR;
     else b->flags &= ~PBF_HW_CURSOR;
     if (bi->SetMemoryMode) bi->SetMemoryMode(bi, bi->RGBFormat);
     bi->SetGC(bi, &p->mode, TRUE);

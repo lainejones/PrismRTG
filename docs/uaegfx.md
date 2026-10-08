@@ -39,7 +39,9 @@ Host refresh and presentation remain emulator settings.
 
 Palette changes, display switching, panning, fills, overlapping copies
 and hardware sprites use UAE host operations. Fill and copy have CPU
-fallbacks if UAE declines an operation. Other drawing uses Prism's core.
+fallbacks if UAE declines an operation. Plain planar copies use the host
+hook when a startup probe confirms its output in each direct-colour format;
+missing or broken hooks use a CPU fallback. Other drawing uses Prism's core.
 Host blits complete synchronously. Vblank waits use graphics.library's
 WaitTOF; UAE's card WaitVerticalSync entry point is a no-op.
 

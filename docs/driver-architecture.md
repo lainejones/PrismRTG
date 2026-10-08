@@ -31,9 +31,9 @@ Drivers may decline layouts or geometry their commands cannot represent.
 The optional planar operation receives the source BitMap and palette plus
 the destination surface. P96 and UAE implement plain copies with a full
 plane mask through their chunky/direct hooks. UAE probes each enabled
-direct-colour format with a saved VRAM scratch region before scanout starts. A working host hook stays enabled; missing
-or silently broken copies select the CPU default. Firmware versions alone
-cannot distinguish affected hosts.
+direct-colour format with a saved VRAM scratch region before scanout starts.
+A working host hook stays enabled; missing or silently broken copies select
+the CPU default. Firmware versions alone cannot distinguish affected hosts.
 Other minterms and masks fall back to Prism's renderer. The CPU defaults
 support interleaved planes and the null/all-ones plane sentinels.
 
@@ -49,9 +49,11 @@ Displayed shadows are compared byte-for-byte against the last successful
 upload. Only the changed span of each row crosses the bus. This detects
 writes through retained application pointers without requiring new lock
 rules or relying on hashes. If the comparison buffer cannot be allocated,
-uploads fall back to the full bitmap. Accelerated operations read back only
-the destination rectangle and update the comparison buffer. Each resident
-shadow can therefore use two full CPU buffers: pixels and upload history.
+uploads fall back to full-bitmap transfers through a bounded snapshot.
+Each upload uses an immutable snapshot, so application writes during an
+upload remain dirty. Accelerated operations read back only the destination
+rectangle and update the comparison buffer. Each resident shadow can use two
+full CPU buffers: pixels and upload history. Eviction frees the history.
 
 The P96 backend accepts displaced apertures and memory modes selected by
 `SetMemoryMode`. Non-contiguous `CalculateMemory` mappings use a conservative
@@ -79,6 +81,6 @@ reboot, including after a failed startup.
 ## Development fixtures
 
 `sh tests/architecture.sh` runs the operation-contract, Cirrus-limit,
-ZZ9000 surface, replay, damage and P96 ABI fixtures using amiga-gcc and
+ZZ9000 surface, replay, shadow damage and P96 ABI fixtures using amiga-gcc and
 vamos. The P96 and UAE guest exercisers run in an isolated Amiga boot;
 all guest fixtures claim the virtual card until reset.
