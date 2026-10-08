@@ -29,7 +29,7 @@ static enum PrismResult finish(struct PrismBoard *b, enum PrismResult r)
 }
 static BOOL ready(struct PrismBoard *b, const struct PrismSurface *s)
 {
-    return !(b->flags & (PBF_ACCEL_BROKEN | PBF_SOFTWARE)) && (s->flags & PSF_VRAM);
+    return !(b->flags & (PBF_ACCEL_BROKEN | PBF_SOFTWARE | PBF_PRESENT)) && (s->flags & PSF_VRAM);
 }
 enum PrismResult board_fill(struct PrismBoard *b, const struct PrismSurface *s,
     UWORD x, UWORD y, UWORD w, UWORD h, ULONG c)

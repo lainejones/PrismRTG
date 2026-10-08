@@ -10,8 +10,7 @@
  * (tools/p96stub.S) that refuses to open when PrismD isn't running.
  *
  * Everything is implemented on Prism's own bitmaps, modes and clipper.
- * Not available: picture-in-picture windows (no board Prism drives has a
- * video overlay) - p96PIP_OpenTagList fails with PIPERR_NOTAVAILABLE.
+ * Memory-window PIPs are composed into private scanout storage.
  */
 #include <exec/types.h>
 #include <exec/memory.h>
@@ -35,6 +34,7 @@
 #include "prism.h"
 #include "prismint.h"
 #include "p96api.h"
+#include "composite.h"
 
 extern struct ExecBase *SysBase;
 extern struct Library *UtilityBase;
@@ -757,14 +757,242 @@ static ULONG P_EncodeColor(ULONG fmt __asm("d0"), ULONG colour __asm("d1"))
     return be32(px);
 }
 
-/* ---- picture-in-picture: not on these boards ------------------------- */
+/* ---- picture-in-picture memory windows ------------------------------- */
+struct PrismPIP {
+    struct PrismPIP *next;
+    struct Window *window;
+    struct PBitMap *source;
+    struct RastPort rp;
+    ULONG palette[256];
+    LONG left,top,width,height,rel,brightness;
+    LONG clipleft,cliptop,clipwidth,clipheight;
+};
+static struct PrismPIP *pips;
 
+static struct PrismPIP *pip_find(struct Window *w)
+{
+    struct PrismPIP *p;
+    for(p=pips;p;p=p->next) if(p->window==w) return p;
+    return NULL;
+}
+static LONG pip_set(struct PrismPIP *p,struct TagItem *tags)
+{
+    struct TagItem *ti,*next=tags;
+    LONG count=0;
+    while((ti=NextTagItem(&next))) {
+        LONG v=ti->ti_Data;
+        LONG geometry=v < -32768 ? -32768 : v > 32767 ? 32767 : v;
+        switch(ti->ti_Tag) {
+        case P96PIP_Brightness: p->brightness=v<-255 ? -255 : v>255 ? 255 : v;break;
+        case P96PIP_Left:p->left=geometry;break;
+        case P96PIP_Top:p->top=geometry;break;
+        case P96PIP_Width:p->width=geometry;break;
+        case P96PIP_Height:p->height=geometry;break;
+        case P96PIP_Relativity:p->rel=v;break;
+        case P96PIP_ClipLeft:p->clipleft=geometry;break;
+        case P96PIP_ClipTop:p->cliptop=geometry;break;
+        case P96PIP_ClipWidth:p->clipwidth=geometry;break;
+        case P96PIP_ClipHeight:p->clipheight=geometry;break;
+        case P96PIP_Colors: {
+            struct ColorSpec *cs=(APTR)v; UWORD n;
+            for(n=0;cs && n<256 && cs[n].ColorIndex>=0;n++) {
+                UWORD index=cs[n].ColorIndex;
+                if(index<256) p->palette[index]=((cs[n].Red&15)*17UL<<16)|
+                    ((cs[n].Green&15)*17UL<<8)|(cs[n].Blue&15)*17UL;
+            }
+            break;
+        }
+        case P96PIP_Colors32: break; /* applied after every Colors tag */
+        default:continue;
+        }
+        count++;
+    }
+    /* The P96 API gives Colors32 precedence independent of tag order. */
+    next=tags;
+    while((ti=NextTagItem(&next))) if(ti->ti_Tag==P96PIP_Colors32) {
+        ULONG *cs=(APTR)ti->ti_Data; UWORD runs;
+        for(runs=0;cs && *cs && runs<256;runs++) {
+            ULONG n=*cs>>16,index=*cs++&65535,i;
+            if(n>256 || index+n>256) break;
+            for(i=0;i<n;i++,cs+=3)
+                p->palette[index+i]=((cs[0]>>8)&0xff0000)|((cs[1]>>16)&0xff00)|(cs[2]>>24);
+        }
+    }
+    return count;
+}
 static struct Window *P_PIP_OpenTagList(struct TagItem *tags __asm("a0"))
 {
-    ULONG *err = (ULONG *)GetTagData(P96PIP_ErrorCode, 0, tags);
-    if (err)
-        *err = PIPERR_NOTAVAILABLE;
+    ULONG *err=(APTR)GetTagData(P96PIP_ErrorCode,0,tags);
+    ULONG sw=GetTagData(P96PIP_SourceWidth,0,tags),sh=GetTagData(P96PIP_SourceHeight,0,tags);
+    ULONG format=GetTagData(P96PIP_SourceFormat,RGBFB_R5G6B5PC,tags);
+    struct PrismPIP *p=NULL;
+    struct PBitMap *screen;
+    ULONG error=PIPERR_BADDIMENSIONS;
+    UWORD i;
+    if(!sw || !sh || sw>4096 || sh>4096 || format>=RGBFB_MaxFormats || rgbf2pf[format]==PF_COUNT)
+        goto fail;
+    error=PIPERR_NOTAVAILABLE;
+    if(GetTagData(P96PIP_Type,PIPT_MemoryWindow,tags)!=PIPT_MemoryWindow ||
+       GetTagData(P96PIP_NoMemory,0,tags) || GetTagData(P96PIP_RenderFunc,0,tags) ||
+       GetTagData(P96PIP_SaveFunc,0,tags)) goto fail;
+    error=PIPERR_NOMEMORY;
+    p=AllocVec(sizeof(*p),MEMF_PUBLIC|MEMF_CLEAR);
+    if(!p) goto fail;
+    p->source=pbm_new(sw,sh,8,rgbf2pf[format],NULL,FALSE,TRUE);
+    if(!p->source) goto fail;
+    p->source->rgbTab=p->palette;
+    for(i=0;i<256;i++)p->palette[i]=i*0x010101UL;
+    InitRastPort(&p->rp);p->rp.BitMap=p->source->bm;
+    p->rel=PIPRel_Width|PIPRel_Height;
+    p->clipwidth=sw;p->clipheight=sh;
+    pip_set(p,tags);
+    error=PIPERR_NOWINDOW;
+    p->window=OpenWindowTagList(NULL,tags);
+    if(!p->window) goto fail;
+    error=PIPERR_ATTACHFAIL;
+    screen=pbm_get(p->window->WScreen->RastPort.BitMap);
+    if(!screen)goto fail;
+    ObtainSemaphore(&lock);
+    if (!present_reserve(p->window->WScreen)) {
+        ReleaseSemaphore(&lock);error=PIPERR_NOMEMORY;goto fail;
+    }
+    p->next=pips;pips=p;
+    ReleaseSemaphore(&lock);
+    if(err)*err=0;
+    return p->window;
+fail:
+    if(p) {
+        if(p->window)CloseWindow(p->window);
+        if(p->source)pbm_free(p->source);
+        FreeVec(p);
+    }
+    if(err)*err=error;
     return NULL;
+}
+static BOOL P_PIP_Close(struct Window *w __asm("a0"))
+{
+    struct PrismPIP **link,*p;
+    ObtainSemaphore(&lock);
+    for(link=&pips;*link && (*link)->window!=w;link=&(*link)->next);
+    p=*link;
+    if(!p || p->source->locks) { ReleaseSemaphore(&lock);return FALSE; }
+    *link=p->next;
+    ReleaseSemaphore(&lock);
+    CloseWindow(w);pbm_free(p->source);FreeVec(p);
+    return TRUE;
+}
+static LONG P_PIP_SetTagList(struct Window *w __asm("a0"),struct TagItem *tags __asm("a1"))
+{
+    struct PrismPIP *p;LONG n=0;
+    ObtainSemaphore(&lock);p=pip_find(w);if(p)n=pip_set(p,tags);ReleaseSemaphore(&lock);
+    return n;
+}
+static LONG P_PIP_GetTagList(struct Window *w __asm("a0"),struct TagItem *tags __asm("a1"))
+{
+    struct PrismPIP *p;struct TagItem *ti,*next=tags;LONG n=0;
+    ObtainSemaphore(&lock);p=pip_find(w);
+    while(p && (ti=NextTagItem(&next))) {
+        ULONG value,*dest=(APTR)ti->ti_Data;
+        if(!dest)continue;
+        switch(ti->ti_Tag) {
+        case P96PIP_SourceFormat:value=pf2rgbf(p->source->fmt);break;
+        case P96PIP_SourceBitMap:value=(ULONG)p->source->bm;break;
+        case P96PIP_SourceRPort:value=(ULONG)&p->rp;break;
+        case P96PIP_SourceWidth:value=p->source->w;break;
+        case P96PIP_SourceHeight:value=p->source->h;break;
+        case P96PIP_Brightness:value=p->brightness;break;
+        case P96PIP_Left:value=p->left;break;
+        case P96PIP_Top:value=p->top;break;
+        case P96PIP_Width:value=p->width;break;
+        case P96PIP_Height:value=p->height;break;
+        case P96PIP_Relativity:value=p->rel;break;
+        case P96PIP_ClipLeft:value=p->clipleft;break;
+        case P96PIP_ClipTop:value=p->cliptop;break;
+        case P96PIP_ClipWidth:value=p->clipwidth;break;
+        case P96PIP_ClipHeight:value=p->clipheight;break;
+        default:continue;
+        }
+        *dest=value;n++;
+    }
+    ReleaseSemaphore(&lock);return n;
+}
+static struct IntuiMessage *P_PIP_GetIMsg(struct MsgPort *port __asm("a0"))
+{ return (struct IntuiMessage *)GetMsg(port); }
+static void P_PIP_ReplyIMsg(struct IntuiMessage *msg __asm("a1"))
+{ if(msg)ReplyMsg((struct Message *)msg); }
+
+BOOL p96_pip_active(struct Screen *s)
+{
+    struct PrismPIP *p;
+    for(p=pips;p;p=p->next)if(p->window->WScreen==s)return TRUE;
+    return FALSE;
+}
+static ULONG pip_bright(ULONG rgb,LONG change)
+{
+    UBYTE result[3];UWORD i;
+    for(i=0;i<3;i++) {
+        LONG v=((rgb>>(16-8*i))&255)+change;
+        result[i]=v<0 ? 0 : v>255 ? 255 : v;
+    }
+    return ((ULONG)result[0]<<16)|((ULONG)result[1]<<8)|result[2];
+}
+/* Layer locks are attempted, never waited on while holding the board lock. */
+void p96_pip_compose(struct PBitMap *dst,struct Screen *screen,WORD screenTop)
+{
+    struct PrismPIP *p;
+    struct PBitMap *base=pbm_get(screen->RastPort.BitMap);
+    for(p=pips;p;p=p->next) {
+        struct Window *w=p->window;
+        struct ClipRect *cr;
+        LONG iw,ih,left,top,width,height,x,y,cw,ch;
+        ULONG lastRGB=~0UL;
+        UBYTE lastPixel[4];
+        if(w->WScreen!=screen || !w->WLayer || !AttemptSemaphore(&w->WLayer->Lock))continue;
+        iw=w->Width-w->BorderLeft-w->BorderRight;ih=w->Height-w->BorderTop-w->BorderBottom;
+        left=w->LeftEdge+w->BorderLeft+p->left+((p->rel&PIPRel_Right)?iw:0);
+        top=w->TopEdge+w->BorderTop+p->top+((p->rel&PIPRel_Bottom)?ih:0);
+        width=p->width+((p->rel&PIPRel_Width)?iw:0);
+        height=p->height+((p->rel&PIPRel_Height)?ih:0);
+        cw=p->clipwidth;ch=p->clipheight;
+        if(width<=0 || height<=0 || width>32767 || height>32767 || cw<=0 || ch<=0 ||
+           p->clipleft<0 || p->cliptop<0 || cw>p->source->w-p->clipleft || ch>p->source->h-p->cliptop)
+            goto unlock;
+        for(cr=w->WLayer->ClipRect;cr;cr=cr->Next) {
+            LONG x0=left,y0=top,x1=left+width,y1=top+height;
+            if(cr->obscured)continue;
+            if(x0<w->LeftEdge+w->BorderLeft)x0=w->LeftEdge+w->BorderLeft;
+            if(y0<w->TopEdge+w->BorderTop)y0=w->TopEdge+w->BorderTop;
+            if(x1>w->LeftEdge+w->Width-w->BorderRight)x1=w->LeftEdge+w->Width-w->BorderRight;
+            if(y1>w->TopEdge+w->Height-w->BorderBottom)y1=w->TopEdge+w->Height-w->BorderBottom;
+            if(x0<cr->bounds.MinX)x0=cr->bounds.MinX;
+            if(y0<cr->bounds.MinY)y0=cr->bounds.MinY;
+            if(x1>cr->bounds.MaxX+1)x1=cr->bounds.MaxX+1;
+            if(y1>cr->bounds.MaxY+1)y1=cr->bounds.MaxY+1;
+            if(x0<0)x0=0;
+            if(y0+screenTop<0)y0=-screenTop;
+            if(x1>dst->w)x1=dst->w;
+            if(y1+screenTop>dst->h)y1=dst->h-screenTop;
+            for(y=y0;y<y1;y++)for(x=x0;x<x1;x++) {
+                LONG sx=p->clipleft+(x-left)*cw/width,sy=p->cliptop+(y-top)*ch/height;
+                const UBYTE *src=p->source->pix+sy*p->source->bpr+sx*p->source->bpp;
+                UBYTE *d=dst->pix+(y+screenTop)*dst->bpr+x*dst->bpp;
+                struct PBitMap *colours=p->source;
+                if(p->source->fmt==PF_CLUT8 && base && base->fmt==PF_CLUT8)
+                    colours=base;
+                if(colours->fmt==PF_CLUT8 && dst->fmt==PF_CLUT8 &&
+                   colours->rgbTab==dst->rgbTab && !p->brightness)*d=*src;
+                else {
+                    ULONG rgb=pip_bright(composite_rgb(colours,src),p->brightness);
+                    UBYTE k;
+                    /* Scaled pixels and flat runs share their quantization. */
+                    if(rgb!=lastRGB) { composite_put(dst,lastPixel,rgb);lastRGB=rgb; }
+                    for(k=0;k<dst->bpp;k++)d[k]=lastPixel[k];
+                }
+            }
+        }
+unlock:
+        ReleaseSemaphore(&w->WLayer->Lock);
+    }
 }
 
 /* ---- the system and the board --------------------------------------- */
@@ -841,11 +1069,11 @@ static const APTR funcs[] = {
     (APTR)P_WriteTrueColorData,
     (APTR)P_ReadTrueColorData,
     (APTR)P_PIP_OpenTagList,
-    (APTR)L_Null,                      /* -150 p96PIP_Close       */
-    (APTR)L_Null,                      /*      p96PIP_SetTagList  */
-    (APTR)L_Null,                      /*      p96PIP_GetTagList  */
-    (APTR)L_Null,                      /*      p96PIP_GetIMsg     */
-    (APTR)L_Null,                      /*      p96PIP_ReplyIMsg   */
+    (APTR)P_PIP_Close,
+    (APTR)P_PIP_SetTagList,
+    (APTR)P_PIP_GetTagList,
+    (APTR)P_PIP_GetIMsg,
+    (APTR)P_PIP_ReplyIMsg,
     (APTR)P_GetRTGDataTagList,         /* -180 */
     (APTR)P_GetBoardDataTagList,
     (APTR)P_EncodeColor,
@@ -880,7 +1108,7 @@ BOOL p96_remove(void)
     if (!p96Base)
         return TRUE;
     Forbid();
-    if (p96Base->lib_OpenCnt) {
+    if (p96Base->lib_OpenCnt || pips) {
         Permit();
         return FALSE;
     }

@@ -742,7 +742,7 @@ static BOOL attach_board(struct P96Priv *p, struct PrismBoard *b)
         b->cursorMove = p96_cursor_move;
         b->flags |= PBF_HW_CURSOR;
     } else {
-        puts("PrismD: P96 driver has no usable hardware cursor; RTG pointer unavailable");
+        puts("PrismD: P96 driver has no usable hardware cursor");
     }
     return TRUE;
 }

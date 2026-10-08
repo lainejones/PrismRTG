@@ -29,7 +29,7 @@ $CC $CFLAGS -s -DPRISM_DRIVER_MODULE -DDRIVER_P96 -o out/Drivers/P96.driver src/
 $CC $CFLAGS -s -DPRISM_DRIVER_MODULE -DDRIVER_UAEGFX -o out/Drivers/UAEGFX.driver src/driver_module.c src/drv_uaegfx.c src/boardops.c src/rtg_ops.c
 
 echo "== M1 =="
-$CC $CFLAGS -s -o out/PrismD src/prismd.c src/prefs.c src/bitmap.c src/render.c src/pointer.c src/cgx.c src/p96.c src/stubs.S src/p2c.S src/boardops.c src/driver_loader.c
+$CC $CFLAGS -s -o out/PrismD src/prismd.c src/prefs.c src/bitmap.c src/present.c src/render.c src/pointer.c src/cgx.c src/p96.c src/stubs.S src/p2c.S src/boardops.c src/driver_loader.c
 $CC $CFLAGS -s -o out/PrismScreen tools/prismscreen.c tools/m8tests.c
 $CC $CFLAGS -s -o out/PrismMouse tools/prismmouse.c
 $CC $CFLAGS -s -o out/PrismBench tools/prismbench.c -lm

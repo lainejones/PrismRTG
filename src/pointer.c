@@ -20,6 +20,7 @@
 #include <proto/graphics.h>
 #include <string.h>
 #include "prismint.h"
+#include "composite.h"
 
 extern struct IntuitionBase *IntuitionBase;
 LONG call_regs(APTR fn, struct Regs *r);
@@ -69,12 +70,58 @@ static void load_colours(struct ViewPort *vp)
         colours[i] = t[i] >> 24;
 }
 
+BOOL pointer_software(void)
+{
+    struct PBitMap *front,*back; WORD top,backTop; UWORD w,h;
+    if (!on) return FALSE;
+    prism_display_layers(&front,&back,&top,&backTop,&w,&h);
+    return prism_software_pointer() || (prism_dragging() && top) || !(board.flags & PBF_HW_CURSOR) ||
+        !board.cursorImage || !board.cursorShow || !board.cursorMove;
+}
+/* Until a composed frame exists, retain a usable hardware pointer. */
+static BOOL hardware_pointer(void)
+{
+    return (board.flags & PBF_HW_CURSOR) && board.cursorImage &&
+        board.cursorShow && board.cursorMove &&
+        (!pointer_software() || !present_ready());
+}
+
+void pointer_compose(struct PBitMap *dst,WORD top)
+{
+    UBYTE pixels[4][4];
+    WORD x,y;UBYTE pen,k;
+    if (!haveImage || !pointer_software()) return;
+    /* Quantize the three sprite colours once, rather than once per pixel. */
+    for(pen=1;pen<4;pen++) {
+        ULONG rgb=((ULONG)colours[(pen-1)*3]<<16)|
+            ((ULONG)colours[(pen-1)*3+1]<<8)|colours[(pen-1)*3+2];
+        composite_put(dst,pixels[pen],rgb);
+    }
+    for(y=0;y<CURSOR_SIZE;y++) for(x=0;x<CURSOR_SIZE;x++) {
+        LONG dx=(LONG)posX+x,dy=(LONG)posY+y+top;
+        UBYTE *d;
+        pen=image[y*CURSOR_SIZE+x];
+        if(!pen || dx<0 || dy<0 || dx>=dst->w || dy>=dst->h) continue;
+        d=dst->pix+dy*dst->bpr+dx*dst->bpp;
+        for(k=0;k<dst->bpp;k++)d[k]=pixels[pen][k];
+    }
+}
 /* Push image (shifted for a negative position) and position. Caller holds
  * the lock and the cursor is on. */
 static void apply(void)
 {
     WORD x = posX, y = posY, dx = 0, dy = 0;
+    if (!hardware_pointer()) {
+        if (board.cursorShow) board.cursorShow(&board,FALSE);
+        dirtyPos=FALSE;dirtyImage=TRUE;
+        return;
+    }
 
+    if (pointer_software() && prism_dragging()) {
+        struct PBitMap *front,*back; WORD top,backTop; UWORD w,h;
+        prism_display_layers(&front,&back,&top,&backTop,&w,&h);
+        y += top;
+    }
     if (x < 0) { dx = -x; x = 0; }
     if (y < 0) { dy = -y; y = 0; }
     if (dx >= CURSOR_SIZE) dx = CURSOR_SIZE - 1;
@@ -97,18 +144,13 @@ static void apply(void)
 /* A Prism screen came to the front (lock held). */
 void pointer_on(struct ViewPort *vp)
 {
-    if (!(board.flags & PBF_HW_CURSOR) || !board.cursorImage ||
-        !board.cursorMove || !board.cursorShow) {
-        pointer_off();
-        return;
-    }
     vpOn = vp;
     load_colours(vp);
     dirtyImage = TRUE;
     on = TRUE;
     if (haveImage) {
         apply();
-        board.cursorShow(&board, TRUE);
+        if (hardware_pointer()) board.cursorShow(&board, TRUE);
     }
 }
 
@@ -119,6 +161,7 @@ void pointer_off(void)
         board.cursorShow(&board, FALSE);
     on = FALSE;
     vpOn = NULL;
+    present_stop();
 }
 
 /* Palette of the screen on the card changed (lock held). */
@@ -134,11 +177,11 @@ void pointer_colours(struct ViewPort *vp)
 /* PrismD's main loop, every tick. */
 void pointer_tick(void)
 {
-    if (on && (dirtyPos || dirtyImage)) {
+    if (on && (dirtyPos || dirtyImage || pointer_software())) {
         ObtainSemaphore(&lock);
         if (on && haveImage) {
             apply();
-            board.cursorShow(&board, TRUE);
+            if (hardware_pointer()) board.cursorShow(&board, TRUE);
         }
         ReleaseSemaphore(&lock);
     }
@@ -148,7 +191,7 @@ static void try_apply(void)
 {
     if (on && haveImage && AttemptSemaphore(&lock)) {
         apply();
-        board.cursorShow(&board, TRUE);
+        if (hardware_pointer()) board.cursorShow(&board, TRUE);
         ReleaseSemaphore(&lock);
     }
 }
