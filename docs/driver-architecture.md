@@ -73,7 +73,36 @@ releases device allocations before setting another mode, allowing the
 driver's `ReInitMemory` hook to rebuild its pool for an incompatible format.
 Application pointers remain stable throughout.
 
-## Presentation
+## Presentation (draft)
+
+This follow-up is held separately from the driver foundations. It is not
+ready to land on memory-constrained physical boards. `DRAGGING=OFF` is the
+default; `DRAGGING=ON` in `ENV:Prism.prefs` opts in to screen splits.
+`SOFTWAREPOINTER=ON` forces software sprites even when a board advertises
+hardware support, including MiSTer configurations without a working sprite.
+Both preferences survive a save through PrismPrefs.
+
+A working hardware pointer remains visible until the first composed frame
+has been uploaded. Failed buffer allocation is retried after a cooldown,
+or immediately for an explicit new PIP request.
+
+The remaining work before this compositor can land is:
+
+- Allocate scanout through an evicting allocator while protecting the front
+  screen. If a second frame still cannot fit, retain the front's application
+  pixels in fast RAM and reuse its VRAM without moving locked/direct pointers
+  or allowing overlays into the application image. The two-screen 2 MB PIP
+  case must work without another full-screen VRAM allocation.
+- Keep composition inputs in fast RAM with explicit ownership and damage
+  tracking. Dragging must not read a full frame over Zorro II on every tick.
+- Compose only changed regions. Pointer movement must restore and update the
+  old/new pointer rectangles, without rebuilding or scanning the whole
+  frame under the board lock. Retained application pointers still need a
+  coherent route for detecting their writes.
+- Preserve the last working frame while replacing storage, restoring source
+  scanout, or waiting for a busy PIP layer. Scope acceleration restrictions
+  to affected surfaces instead of disabling all bitmap acceleration.
+
 
 A shared compositor supplies software cursors, vertical RTG screen splits
 and P96 memory-window PIPs. It copies the front screen at its dragged origin,

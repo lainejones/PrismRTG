@@ -11,11 +11,16 @@ static struct PBitMap frame;
 static UBYTE *previous;
 static BOOL allocated, valid, owned;
 static struct PBitMap *input;
+static struct PBitMap *failedInput;
+static UWORD failedWidth,failedHeight,retryTicks;
+
+BOOL present_ready(void) { return allocated && valid; }
 
 /* Caller holds the board lock. Switch away before releasing scanout VRAM. */
 void present_stop(void)
 {
     struct PBitMap *front=prism_display_bitmap();
+    retryTicks=0;failedInput=NULL;
     if (!allocated) return;
     if (front && front->inVram) board.setDisplayStart(&board,front->vramOff);
     board.flags &= ~PBF_PRESENT;
@@ -31,6 +36,8 @@ static BOOL prepare(struct PBitMap *front,UWORD width,UWORD height)
 {
     ULONG size,pitch; LONG off;
     if (allocated && frame.w==width && frame.h==height && frame.fmt==front->fmt && input==front) return TRUE;
+    if (front==failedInput && width==failedWidth && height==failedHeight &&
+        retryTicks) { retryTicks--;return FALSE; }
     present_stop();
     pitch=board.ops && board.ops->pitch ? board.ops->pitch(&board,width,height,front->fmt) :
         board.bytesPerRow ? board.bytesPerRow(&board,width,height,front->bpp) :
@@ -57,6 +64,7 @@ fail:
     if(frame.pix)FreeVec(frame.pix);
     if(previous)FreeVec(previous);
     memset(&frame,0,sizeof(frame));previous=NULL;
+    failedInput=front;failedWidth=width;failedHeight=height;retryTicks=50;
     return FALSE;
 }
 
@@ -66,6 +74,7 @@ BOOL present_reserve(struct Screen *screen)
 {
     struct PBitMap *front,*back;WORD top,backTop;UWORD width,height;
     if (screen!=prism_display_layers(&front,&back,&top,&backTop,&width,&height)) return TRUE;
+    retryTicks=0; /* An explicit new PIP request may retry immediately. */
     return prepare(front,width,height);
 }
 
@@ -80,6 +89,7 @@ void present_tick(void)
     const UBYTE *map=NULL;
     ObtainSemaphore(&lock);
     screen=prism_display_layers(&front,&back,&top,&backTop,&width,&height);
+    if (!prism_dragging()) top=0;
     if (!screen || (!top && !pointer_software() && !p96_pip_active(screen))) {
         present_stop(); ReleaseSemaphore(&lock); return;
     }

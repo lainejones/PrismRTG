@@ -73,6 +73,9 @@ unsigned long *__BUFSIZE = &stdioBufSize;
 /* Patches run in other tasks and must not call dos.library: they log into
  * this ring and the main loop prints it. */
 static struct PrismPrefs prefs;
+
+BOOL prism_dragging(void) { return prefs.dragging; }
+BOOL prism_software_pointer(void) { return prefs.softwarePointer; }
 static char dbgRing[8192];
 static volatile UWORD dbgHead, dbgTail;
 static struct Task *dbgMain;
@@ -821,7 +824,8 @@ static ULONG P_GetDisplayInfoData(APTR h __asm("a0"), APTR buf __asm("a1"),
     case DTAG_DISP:
         len = sizeof(u.di);
         qhdr(&u.di.Header, tag, r->id, len);
-        u.di.PropertyFlags = DIPF_IS_WB | DIPF_IS_FOREIGN | DIPF_IS_DRAGGABLE;
+        u.di.PropertyFlags = DIPF_IS_WB | DIPF_IS_FOREIGN;
+        if (prefs.dragging) u.di.PropertyFlags |= DIPF_IS_DRAGGABLE;
         u.di.Resolution.x = 22;
         u.di.Resolution.y = 22;
         u.di.PixelSpeed = 35;
@@ -2142,7 +2146,7 @@ int main(void)
         goto out;
     }
     Picasso2_ClutBGR = prefs.clutBGR;
-    if (!(board.flags & PBF_HW_CURSOR) || !board.cursorImage ||
+    if (prefs.softwarePointer || !(board.flags & PBF_HW_CURSOR) || !board.cursorImage ||
         !board.cursorShow || !board.cursorMove) board.flags |= PBF_SHADOW;
     if (!prefs.blitter) {
         board.flags |= PBF_SOFTWARE;
@@ -2248,8 +2252,8 @@ int main(void)
                 dbg("Picasso96 has started: its bitmaps are left to it from now on\n");
             }
             pbm_flush_shown();
-            pointer_tick();
             present_tick();
+            pointer_tick();
             if (prefs.log || ++tick % 25 == 0)
                 dbg_flush();
             /* up for a minute (3600 vertical blanks): this start is a good

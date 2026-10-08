@@ -75,9 +75,17 @@ BOOL pointer_software(void)
     struct PBitMap *front,*back; WORD top,backTop; UWORD w,h;
     if (!on) return FALSE;
     prism_display_layers(&front,&back,&top,&backTop,&w,&h);
-    return top || !(board.flags & PBF_HW_CURSOR) ||
+    return prism_software_pointer() || (prism_dragging() && top) || !(board.flags & PBF_HW_CURSOR) ||
         !board.cursorImage || !board.cursorShow || !board.cursorMove;
 }
+/* Until a composed frame exists, retain a usable hardware pointer. */
+static BOOL hardware_pointer(void)
+{
+    return (board.flags & PBF_HW_CURSOR) && board.cursorImage &&
+        board.cursorShow && board.cursorMove &&
+        (!pointer_software() || !present_ready());
+}
+
 void pointer_compose(struct PBitMap *dst,WORD top)
 {
     UBYTE pixels[4][4];
@@ -103,12 +111,17 @@ void pointer_compose(struct PBitMap *dst,WORD top)
 static void apply(void)
 {
     WORD x = posX, y = posY, dx = 0, dy = 0;
-    if (pointer_software()) {
+    if (!hardware_pointer()) {
         if (board.cursorShow) board.cursorShow(&board,FALSE);
         dirtyPos=FALSE;dirtyImage=TRUE;
         return;
     }
 
+    if (pointer_software() && prism_dragging()) {
+        struct PBitMap *front,*back; WORD top,backTop; UWORD w,h;
+        prism_display_layers(&front,&back,&top,&backTop,&w,&h);
+        y += top;
+    }
     if (x < 0) { dx = -x; x = 0; }
     if (y < 0) { dy = -y; y = 0; }
     if (dx >= CURSOR_SIZE) dx = CURSOR_SIZE - 1;
@@ -137,7 +150,7 @@ void pointer_on(struct ViewPort *vp)
     on = TRUE;
     if (haveImage) {
         apply();
-        if (!pointer_software() && board.cursorShow) board.cursorShow(&board, TRUE);
+        if (hardware_pointer()) board.cursorShow(&board, TRUE);
     }
 }
 
@@ -168,7 +181,7 @@ void pointer_tick(void)
         ObtainSemaphore(&lock);
         if (on && haveImage) {
             apply();
-            if (!pointer_software() && board.cursorShow) board.cursorShow(&board, TRUE);
+            if (hardware_pointer()) board.cursorShow(&board, TRUE);
         }
         ReleaseSemaphore(&lock);
     }
@@ -178,7 +191,7 @@ static void try_apply(void)
 {
     if (on && haveImage && AttemptSemaphore(&lock)) {
         apply();
-        if (!pointer_software() && board.cursorShow) board.cursorShow(&board, TRUE);
+        if (hardware_pointer()) board.cursorShow(&board, TRUE);
         ReleaseSemaphore(&lock);
     }
 }

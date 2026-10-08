@@ -124,6 +124,9 @@ void pointer_colours(struct ViewPort *vp);   /* lock held                 */
 BOOL pointer_software(void);
 void pointer_compose(struct PBitMap *, WORD);
 void present_tick(void);
+BOOL present_ready(void);
+BOOL prism_dragging(void);
+BOOL prism_software_pointer(void);
 void present_stop(void);
 struct Screen;
 BOOL present_reserve(struct Screen *);

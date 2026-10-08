@@ -15,8 +15,13 @@ static struct PBitMap front,back;
 static UBYTE video[256],source[16],background[16];
 static WORD screenTop,backTop;
 static BOOL nativeBehind;
-static ULONG display,writes,frees;
+static ULONG display,writes,frees,allocations;
+static BOOL failAllocate,hwVisible;
+static WORD hardwareY;
 static BOOL overlay,backOverlay,failWrite;
+static BOOL dragEnabled=TRUE,forceSoftware;
+BOOL prism_dragging(void) { return dragEnabled; }
+BOOL prism_software_pointer(void) { return forceSoftware; }
 void dbg(const char *fmt,...) { (void)fmt; }
 LONG call_regs(APTR fn,struct Regs *r) { (void)fn;(void)r;return 0; }
 struct PBitMap *prism_display_bitmap(void) { return &front; }
@@ -34,7 +39,7 @@ void p96_pip_compose(struct PBitMap *p,struct Screen *s,WORD top)
     }
 }
 LONG vram_alloc(ULONG size,UBYTE fmt,ULONG pitch,UWORD w,UWORD h)
-{ (void)fmt;(void)pitch;(void)w;(void)h;assert(size==16);return 128; }
+{ (void)fmt;(void)pitch;(void)w;(void)h;assert(size==16);allocations++;return failAllocate ? -1 : 128; }
 void vram_free(ULONG off) { assert(off==128);frees++; }
 void pbm_surface(const struct PBitMap *p,struct PrismSurface *s)
 { s->offset=p->vramOff;s->allocation=p->bpr*p->h; }
@@ -44,6 +49,12 @@ static void pan(struct PrismBoard *b,ULONG off) { (void)b;display=off; }
 static BOOL write_pixels(struct PrismBoard *b,const struct PrismSurface *s,
     ULONG off,const void *data,ULONG count)
 { (void)b;if(failWrite)return FALSE;memcpy(video+s->offset+off,data,count);writes+=count;return TRUE; }
+static void cursor_show(struct PrismBoard *b,BOOL visible)
+{ (void)b;hwVisible=visible; }
+static void cursor_move(struct PrismBoard *b,WORD x,WORD y)
+{ (void)b;(void)x;hardwareY=y; }
+static void cursor_image(struct PrismBoard *b,const UBYTE *pixels,const UBYTE *rgb)
+{ (void)b;(void)pixels;(void)rgb; }
 int main(void)
 {
     struct PrismOps ops={.write=write_pixels};
@@ -106,6 +117,23 @@ int main(void)
         composite_row_mapped(&dst,0,&src,0,map);
         assert(dstPixels[0]==3 && dstPixels[1]==0 && srcPixels[0]==1);
     }
+    /* A failed allocation or first upload must not hide a working sprite.
+     * Retry allocation after a cooldown, or for an explicit new PIP. */
+    board.flags=PBF_HW_CURSOR;board.cursorShow=cursor_show;
+    board.cursorMove=cursor_move;board.cursorImage=cursor_image;
+    on=haveImage=TRUE;posX=posY=0;screenTop=1;failAllocate=TRUE;
+    n=allocations;present_tick();pointer_tick();
+    assert(!present_ready() && hwVisible && hardwareY==1);
+    present_tick();assert(allocations==n+1);
+    failAllocate=FALSE;assert(present_reserve(&screen));
+    failWrite=TRUE;present_tick();pointer_tick();
+    assert(!present_ready() && hwVisible);
+    failWrite=FALSE;present_tick();pointer_tick();
+    assert(present_ready() && !hwVisible);
+    pointer_off();screenTop=0;on=TRUE;dragEnabled=FALSE;
+    screenTop=1;present_tick();assert(!allocated && !pointer_software());
+    forceSoftware=TRUE;assert(pointer_software());
+    pointer_off();
     puts("presentation: cursor, split, damage and scanout lifetime passed");
     return 0;
 }

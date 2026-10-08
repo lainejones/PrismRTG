@@ -82,6 +82,10 @@ files and arbitrary user-defined timings are not imported. External
 drivers must provide a pixel-clock resolver; large clock deviations are
 rejected.
 
+The presentation follow-up is a draft. Dragging is opt-in through
+`DRAGGING=ON`; `SOFTWAREPOINTER=ON` overrides a non-working hardware sprite.
+Low-VRAM scanout and damage-based composition still need work.
+
 Hardware cursor input is limited to 32x48 pixels. The core supplies a
 software cursor when the board or mode requires one, vertical dragging
 between RTG screens, and software P96 RGB/CLUT memory-window PIPs. PIPs

@@ -9,6 +9,8 @@
  *   BOARD=AUTO|PICASSO2|ZZ9000|P96|UAEGFX
  *   P96CARD=LIBS:Picasso96/uaegfx.card
  *   P96MONITOR=SYS:Storage/Monitors/UAEgfx  (optional icon tooltypes)
+ *   SOFTWAREPOINTER=ON|OFF      (force the software sprite path)
+ *   DRAGGING=ON|OFF             (experimental, defaults to OFF)
  *   BLITTER=ON|OFF
  *   LOG=ON|OFF
  *   PALETTE=RGB|BGR             (Piccolo/Spectrum only, see drv_picasso2.c)
@@ -47,6 +49,8 @@ struct PrismPrefs {
     UBYTE board;                     /* PB_*                               */
     UBYTE blitter;                   /* use the card's blitter             */
     UBYTE log;                       /* PrismD prints its debug log        */
+    UBYTE softwarePointer;          /* override advertised hardware sprite */
+    UBYTE dragging;                 /* opt in to software screen splits   */
     UBYTE clutBGR;                   /* PALETTE=BGR: load palettes blue first */
     UBYTE on[PREFS_NMODES];          /* mode offered                       */
     UBYTE hz[PREFS_NMODES];          /* refresh wanted, 0 = default        */
