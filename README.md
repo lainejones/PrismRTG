@@ -100,7 +100,7 @@ Tested in WinUAE 6.0.3 at 8, 16 and 32 bits (every PrismRTG test and
 |---|---|---|
 | WinUAE, Picasso II / II+, Piccolo, Piccolo SD64, Spectrum | Auto | Tested: every PrismRTG test passes |
 | WinUAE 6.0.3, UAE RTG Zorro III or Zorro II | UAE (native), or P96 driver with `P96CARD=uaegfx.card` | Tested at 8, 16 and 32 bits: every test passes |
-| Amiberry 8.3.0 (Linux), UAE RTG | UAE (native) | 8 and 16 bits pass every test. **32 bits is not usable yet**: parts of the screen go back to older contents - an emulator-side problem (see docs/design.md, "Other emulators"); use 16 bits for now |
+| Amiberry 8.3.0 (Linux), UAE RTG | UAE (native) | 8 and 16 bits pass every test. **32 bits is not usable yet**: parts of the screen go back to older contents - an emulator-side problem, reported as [amiberry#2392](https://github.com/BlitterStudio/amiberry/issues/2392); use 16 bits for now |
 | Amiberry inside RetroArch (libretro) | UAE (native) | Not tested. No mouse pointer: the libretro build has no RTG hardware pointer and PrismRTG has no software pointer yet |
 | FS-UAE 3.1 | UAE (native) | Not working yet in a first try (the test machine did not get past booting); not investigated |
 | MiSTer (FPGA), ZZ9000 core | Auto (ZZ9000) | Reported working with no pointer and garbled text in the Shell (issue #2) |
