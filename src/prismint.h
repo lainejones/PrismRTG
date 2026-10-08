@@ -18,6 +18,17 @@
 void blit_settle(void);
 
 extern struct PrismBoard board;
+
+/* The drawing lock. Drawing code takes it with LOCK(), which also takes the
+ * software pointer out of the shown bitmap (pointer.c puts it back once a
+ * tick has passed without drawing), so nothing draws over it, reads it or
+ * moves it. PrismD's own per-tick paths use ObtainSemaphore directly. */
+struct PBitMap;
+extern struct PBitMap *swOn;           /* bitmap the software pointer is drawn into */
+extern volatile ULONG prismActivity;
+void sw_hide(void);
+#define LOCK() do { ObtainSemaphore(&lock); prismActivity++; \
+                    if (swOn) sw_hide(); } while (0)
 extern struct SignalSemaphore lock;     /* card registers, VRAM allocator,
                                            render buffers, bitmap table */
 

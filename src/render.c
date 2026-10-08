@@ -843,7 +843,7 @@ static LONG foreign(LONG (*h)(struct Regs *), struct Regs *r, struct RastPort *r
     LONG res;
     WORD y;
 
-    ObtainSemaphore(&lock);
+    LOCK();
     if (shadowOf) {                      /* a handler calling a handler */
         ReleaseSemaphore(&lock);
         return 0;
@@ -910,7 +910,7 @@ static inline BOOL draw_lock(struct Layer *L, BOOL quick)
         QUICK_PERMIT();
     }
     if (L) LockLayerRom(L);
-    ObtainSemaphore(&lock);
+    LOCK();
     return FALSE;
 }
 
@@ -1222,7 +1222,7 @@ LONG h_SetRast(struct Regs *r)
                 L->Scroll_Y + (L->bounds.MaxY - L->bounds.MinY), pen_cb, &c);
         return 1;
     }
-    ObtainSemaphore(&lock);
+    LOCK();
     shadow_load(p, 0, p->h - 1);
     fill(p, 0, 0, p->w - 1, p->h - 1, (UBYTE)r->d[0], 0xff, FALSE);
     ReleaseSemaphore(&lock);
@@ -2196,7 +2196,7 @@ LONG h_BltBitMap(struct Regs *r)
         (LONG)RW(4), (LONG)RW(5), (ULONG)(UBYTE)r->d[6], (ULONG)(UBYTE)r->d[7]);
     if (!s.pix || !d.pix)
         blit_settle();                       /* a planar side: let the blitter finish with it */
-    ObtainSemaphore(&lock);
+    LOCK();
     blit(&s, RW(0), RW(1), &d, RW(2), RW(3), RW(4), RW(5), (UBYTE)r->d[6], (UBYTE)r->d[7]);
     ReleaseSemaphore(&lock);
     r->d[0] = 8;
@@ -2253,7 +2253,7 @@ LONG h_BitMapScale(struct Regs *r)
     }
     if (!s.pix || !d.pix)
         blit_settle();                       /* a planar side: let the blitter finish with it */
-    ObtainSemaphore(&lock);
+    LOCK();
     if (s.p && s.p->inVram && board.waitBlit)
         board.waitBlit(&board);
     if (d.p && d.p->inVram && board.waitBlit)
@@ -2500,7 +2500,7 @@ LONG h_ClipBlit(struct Regs *r)
         if (direct) {
             struct Surf s;
             surf_of(srp->BitMap, &s);
-            ObtainSemaphore(&lock);
+            LOCK();
             blit(&s, sx + ox, sy + oy, &s, dx + ox, dy + oy, w, h, (UBYTE)r->d[6], drp->Mask);
             ReleaseSemaphore(&lock);
         }

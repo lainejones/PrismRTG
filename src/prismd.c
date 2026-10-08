@@ -586,7 +586,7 @@ static void update_display(void)
     struct Screen *s = IntuitionBase->FirstScreen;
     struct PScreen *ps;
 
-    ObtainSemaphore(&lock);
+    LOCK();
     ps = ps_by_screen(s);
     dbg("LoadView: front %lx %s\n", (ULONG)s, ps ? "PRISM" : "native");
     if (ps) {
@@ -988,7 +988,7 @@ static void palette_one(struct ViewPort *vp, ULONG n, ULONG r, ULONG g, ULONG b)
 {
     struct PScreen *ps;
 
-    ObtainSemaphore(&lock);
+    LOCK();
     ps = ps_by_vp(vp);
     if (ps && n < 256 && vp->ColorMap && n < vp->ColorMap->Count) {
         if (ps->mode->bpp >= 2 && !ps->painted) {
@@ -1012,14 +1012,14 @@ static void palette_one(struct ViewPort *vp, ULONG n, ULONG r, ULONG g, ULONG b)
 
 static void palette_changed(struct ViewPort *vp)
 {
-    ObtainSemaphore(&lock);
+    LOCK();
     palette_update(vp);
     ReleaseSemaphore(&lock);
 }
 
 static void record_vp(struct ViewPort *vp, ULONG n, ULONG r, ULONG g, ULONG b)
 {
-    ObtainSemaphore(&lock);
+    LOCK();
     ps_record(ps_by_vp(vp), n, r, g, b);
     ReleaseSemaphore(&lock);
 }
@@ -1049,7 +1049,7 @@ static void P_LoadRGB32(struct ViewPort *vp __asm("a0"), const ULONG *t __asm("a
     if (t) {
         /* (count << 16 | first), count * 3 ULONGs, ..., 0 */
         const ULONG *q = t;
-        ObtainSemaphore(&lock);
+        LOCK();
         {
             struct PScreen *ps = ps_by_vp(vp);
             while (ps && *q) {
@@ -1139,7 +1139,7 @@ struct PBitMap *screen_bitmap_hook(ULONG w, ULONG h, ULONG depth, ULONG flags)
     ps->mode = mr;
     ps->depth = depth;
     ps->intuitionOwns = TRUE;
-    ObtainSemaphore(&lock);
+    LOCK();
     ps->next = pscreens;
     pscreens = ps;
     ReleaseSemaphore(&lock);
@@ -1170,7 +1170,7 @@ static void pending_end(struct Screen *s)
     if (ps) {
         if (s) {
             ps->screen = s;
-            ObtainSemaphore(&lock);
+            LOCK();
             palette_update(&s->ViewPort);       /* fill a 16-bit pen table */
             ReleaseSemaphore(&lock);
             dbg("  screen %lx opened by Intuition on %s, %s\n", (ULONG)s,
@@ -1188,7 +1188,7 @@ static void pending_end(struct Screen *s)
 
 static void free_ps(struct PScreen *ps)
 {
-    ObtainSemaphore(&lock);
+    LOCK();
     if (pscreens == ps) {
         pscreens = ps->next;
     } else {
@@ -1253,7 +1253,7 @@ static struct Screen *open_prism_screen(struct ModeRec *mr, struct NewScreen *ns
     ps->pbm->rgbTab = ps->rgbTab;
     ps->pbm->owner = ps;
 
-    ObtainSemaphore(&lock);
+    LOCK();
     ps->next = pscreens;
     pscreens = ps;
     ReleaseSemaphore(&lock);
@@ -1305,7 +1305,7 @@ tags:
     dbg("  screen %lx: rp.bm=%lx ours=%lx %s\n", (ULONG)s, (ULONG)s->RastPort.BitMap,
         (ULONG)ps->pbm->bm, ps->pbm->inVram ? "in VRAM" : "in fast RAM");
     ps->screen = s;
-    ObtainSemaphore(&lock);
+    LOCK();
     palette_update(&s->ViewPort);               /* fill a 16-bit pen table */
     ReleaseSemaphore(&lock);
     return s;
@@ -1369,7 +1369,7 @@ static BOOL P_CloseScreen(struct Screen *s __asm("a0"))
     BOOL r;
 
     ENTER();
-    ObtainSemaphore(&lock);
+    LOCK();
     ps = ps_by_screen(s);
     ReleaseSemaphore(&lock);
     r = c_a0(o_CloseScreen, IntuitionBase, s);
@@ -1394,7 +1394,7 @@ LONG h_ChangeVPBitMap(struct Regs *r)
     struct PScreen *ps;
     struct PBitMap *p;
 
-    ObtainSemaphore(&lock);
+    LOCK();
     ps = ps_by_vp(vp);
     p = pbm_get(bm);
     if (!ps || !p || (p != ps->pbm && p->owner != ps)) {
@@ -1423,7 +1423,7 @@ static BOOL screen_info(struct Screen *s, struct PrismScreenInfo *info)
     struct PScreen *ps;
     BOOL ok = FALSE;
 
-    ObtainSemaphore(&lock);
+    LOCK();
     if ((ps = ps_by_screen(s))) {
         info->vram = (ps->front ? ps->front : ps->pbm)->pix;
         info->bytesPerRow = ps->mode->m.bytesPerRow;
@@ -1479,7 +1479,7 @@ static void cm_one(struct ColorMap *cm, ULONG pen)
     if (!cm || !cm->cm_vp || pen >= cm->Count || pen > 255)
         return;
     GetRGB32(cm, pen, 1, c);
-    ObtainSemaphore(&lock);
+    LOCK();
     if ((ps = ps_by_vp(cm->cm_vp)) && ps->palKnown[pen] &&
         !((ps->pal32[pen][0] ^ c[0]) & 0xf0000000UL) &&
         !((ps->pal32[pen][1] ^ c[1]) & 0xf0000000UL) &&
@@ -1527,7 +1527,7 @@ LONG h_ObtainBestPenA(struct Regs *r)
      * that only came close keeps what it had */
     if (cm && cm->cm_vp && r->d[0] != -1) {
         struct PScreen *ps;
-        ObtainSemaphore(&lock);
+        LOCK();
         if ((ps = ps_by_vp(cm->cm_vp)) && (ULONG)r->d[0] < 256 && !ps->palKnown[r->d[0]])
             ps_record(ps, r->d[0], cr, cg, cb);
         ReleaseSemaphore(&lock);
@@ -1628,7 +1628,7 @@ static LONG test_begin(ULONG width, ULONG height, ULONG bits, ULONG hz, const ch
     p->rgbTab = testRgb;
     buf = AllocVec(p->bpr, MEMF_ANY | MEMF_CLEAR);
 
-    ObtainSemaphore(&lock);
+    LOCK();
     /* The screen on display may have to leave VRAM to make room (a 2 MB
      * card can't hold an 800x600 16-bit Workbench and a 1024x768 16-bit
      * test picture): let it be paged out like any other bitmap. It comes
@@ -1706,7 +1706,7 @@ static void test_end(void)
 {
     struct PBitMap *p;
 
-    ObtainSemaphore(&lock);
+    LOCK();
     if ((p = testPbm)) {
         testPbm = NULL;
         p->locks--;
@@ -2155,8 +2155,6 @@ int main(void)
         rc = 5;
         goto out;
     }
-    if (prefs.softwarePointer || !(board.flags & PBF_HW_CURSOR) || !board.cursorImage ||
-        !board.cursorShow || !board.cursorMove) board.flags |= PBF_SHADOW;
     if (!prefs.blitter) {
         board.flags |= PBF_SOFTWARE;
         board.fillRect = NULL;              /* render.c falls back to the CPU */

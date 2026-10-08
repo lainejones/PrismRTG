@@ -34,6 +34,15 @@ static volatile BOOL dirtyImage, dirtyPos;
 static volatile WORD posX, posY;                 /* sprite position        */
 static WORD loadedDX = -1, loadedDY = -1;        /* clip shift now loaded  */
 static struct ViewPort *vpOn;
+static WORD  imgW, imgH;                         /* extent of the image    */
+
+/* Software sprite: drawn into the shown bitmap, with what was under it. */
+struct PBitMap *swOn;
+volatile ULONG prismActivity;
+static WORD  swX, swY, swW, swH;                 /* drawn rectangle        */
+static ULONG swSeen;
+static BOOL  swDirty;
+static UBYTE swSave[CURSOR_SIZE * CURSOR_SIZE * 4];
 
 /* Decode Amiga sprite data: control words, then per line ww words of
  * plane 0 and ww words of plane 1 (ww = 1, 2 or 4 for 16/32/64 wide). */
@@ -54,8 +63,17 @@ static void decode(const UWORD *posctl, UWORD height, UWORD ww)
                 UBYTE v = ((d[w] >> (15 - x)) & 1) | (((d[ww + w] >> (15 - x)) & 1) << 1);
                 image[y * CURSOR_SIZE + w * 16 + x] = v;
             }
+    /* the part of the 64x64 box the image uses: all the save-under needs */
+    imgW = imgH = 0;
+    for (y = 0; y < CURSOR_SIZE; y++)
+        for (x = 0; x < CURSOR_SIZE; x++)
+            if (image[y * CURSOR_SIZE + x]) {
+                if (x >= imgW) imgW = x + 1;
+                if (y >= imgH) imgH = y + 1;
+            }
     haveImage = TRUE;
     dirtyImage = TRUE;
+    swDirty = TRUE;
 }
 
 /* Sprite colours 17-19 of the screen on the card. */
@@ -78,12 +96,84 @@ BOOL pointer_software(void)
     return prism_software_pointer() || (prism_dragging() && top) || !(board.flags & PBF_HW_CURSOR) ||
         !board.cursorImage || !board.cursorShow || !board.cursorMove;
 }
-/* Until a composed frame exists, retain a usable hardware pointer. */
+/* The board's cursor, unless PrismPrefs asks for the software pointer or
+ * a composed frame (dragging, PIPs) carries the pointer. */
 static BOOL hardware_pointer(void)
 {
     return (board.flags & PBF_HW_CURSOR) && board.cursorImage &&
-        board.cursorShow && board.cursorMove &&
+        board.cursorShow && board.cursorMove && !prism_software_pointer() &&
         (!pointer_software() || !present_ready());
+}
+
+/* Take the software pointer out again (lock held). */
+void sw_hide(void)
+{
+    struct PBitMap *p = swOn;
+    WORD r;
+    ULONG n;
+    if (!p)
+        return;
+    swOn = NULL;
+    if (board.waitBlit)
+        board.waitBlit(&board);
+    n = (ULONG)swW * p->bpp;
+    for (r = 0; r < swH; r++)
+        CopyMem(swSave + r * n, p->pix + (ULONG)(swY + r) * p->bpr + (ULONG)swX * p->bpp, n);
+}
+
+/* Draw the software pointer into the shown bitmap at the sprite position,
+ * keeping what was under it (lock held, not drawn now). */
+static void sw_draw(struct PBitMap *p)
+{
+    UBYTE pixels[4][4];
+    WORD x0 = posX, y0 = posY, x1 = posX + imgW, y1 = posY + imgH, x, y;
+    UBYTE pen, k, bpp = p->bpp;
+    ULONG n;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > (WORD)p->w) x1 = p->w;
+    if (y1 > (WORD)p->h) y1 = p->h;
+    if (x0 >= x1 || y0 >= y1)
+        return;
+    for (pen = 1; pen < 4; pen++)
+        composite_put(p, pixels[pen], ((ULONG)colours[(pen - 1) * 3] << 16) |
+                      ((ULONG)colours[(pen - 1) * 3 + 1] << 8) | colours[(pen - 1) * 3 + 2]);
+    if (board.waitBlit)
+        board.waitBlit(&board);
+    swX = x0; swY = y0; swW = x1 - x0; swH = y1 - y0;
+    n = (ULONG)swW * bpp;
+    for (y = y0; y < y1; y++) {
+        UBYTE *row = p->pix + (ULONG)y * p->bpr + (ULONG)x0 * bpp;
+        const UBYTE *img = image + (y - posY) * CURSOR_SIZE + (x0 - posX);
+        CopyMem(row, swSave + (y - y0) * n, n);
+        for (x = 0; x < swW; x++)
+            if ((pen = img[x]))
+                for (k = 0; k < bpp; k++)
+                    row[x * bpp + k] = pixels[pen][k];
+    }
+    swOn = p;
+    swDirty = FALSE;
+}
+
+/* PrismD's tick: is the software sprite wanted, and where? (lock held) */
+static void sw_tick(void)
+{
+    struct PBitMap *p = prism_display_bitmap();
+    BOOL want = on && haveImage && !hardware_pointer() && !present_ready() &&
+        p && !p->locks && !(board.flags & PBF_PRESENT);
+    if (!want) {
+        sw_hide();
+        return;
+    }
+    if (prismActivity != swSeen) {     /* drawn into lately: wait for quiet */
+        swSeen = prismActivity;
+        return;
+    }
+    if (swOn && !swDirty && swOn == p && swX == (posX < 0 ? 0 : posX) &&
+        swY == (posY < 0 ? 0 : posY))
+        return;
+    sw_hide();
+    sw_draw(p);
 }
 
 void pointer_compose(struct PBitMap *dst,WORD top)
@@ -147,6 +237,7 @@ void pointer_on(struct ViewPort *vp)
     vpOn = vp;
     load_colours(vp);
     dirtyImage = TRUE;
+    swDirty = TRUE;
     on = TRUE;
     if (haveImage) {
         apply();
@@ -157,6 +248,7 @@ void pointer_on(struct ViewPort *vp)
 /* The native display took over (lock held). */
 void pointer_off(void)
 {
+    sw_hide();
     if (on && board.cursorShow)
         board.cursorShow(&board, FALSE);
     on = FALSE;
@@ -170,6 +262,7 @@ void pointer_colours(struct ViewPort *vp)
     if (on && vp == vpOn) {
         load_colours(vp);
         dirtyImage = TRUE;
+        swDirty = TRUE;
         apply();
     }
 }
@@ -177,12 +270,13 @@ void pointer_colours(struct ViewPort *vp)
 /* PrismD's main loop, every tick. */
 void pointer_tick(void)
 {
-    if (on && (dirtyPos || dirtyImage || pointer_software())) {
+    if ((on && (dirtyPos || dirtyImage || pointer_software())) || swOn) {
         ObtainSemaphore(&lock);
         if (on && haveImage) {
             apply();
             if (hardware_pointer()) board.cursorShow(&board, TRUE);
         }
+        sw_tick();
         ReleaseSemaphore(&lock);
     }
 }
@@ -223,6 +317,7 @@ LONG h_MoveSprite(struct Regs *r)
         posX = x;
         posY = y;
         dirtyPos = TRUE;
+        swDirty = TRUE;
         try_apply();
     }
     return 1;

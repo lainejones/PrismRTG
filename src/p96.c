@@ -260,7 +260,7 @@ static LONG P_LockBitMap(struct BitMap *bm __asm("a0"), UBYTE *buf __asm("a1"),
     LOG("LockBitMap %lx -> %s\n", (ULONG)bm, p ? "ours" : "not ours");
     if (!p)
         return 0;
-    ObtainSemaphore(&lock);
+    LOCK();
     p->locks++;
     if (p->inVram && board.waitBlit)
         board.waitBlit(&board);
@@ -277,7 +277,7 @@ static LONG P_LockBitMap(struct BitMap *bm __asm("a0"), UBYTE *buf __asm("a1"),
 static void P_UnlockBitMap(struct BitMap *bm __asm("a0"), LONG handle __asm("d0"))
 {
     struct PBitMap *p = (struct PBitMap *)handle;
-    ObtainSemaphore(&lock);
+    LOCK();
     if (p && pbm_get(bm) == p && p->locks)
         p->locks--;
     ReleaseSemaphore(&lock);
@@ -852,7 +852,7 @@ static struct Window *P_PIP_OpenTagList(struct TagItem *tags __asm("a0"))
     error=PIPERR_ATTACHFAIL;
     screen=pbm_get(p->window->WScreen->RastPort.BitMap);
     if(!screen)goto fail;
-    ObtainSemaphore(&lock);
+    LOCK();
     if (!present_reserve(p->window->WScreen)) {
         ReleaseSemaphore(&lock);error=PIPERR_NOMEMORY;goto fail;
     }
@@ -872,7 +872,7 @@ fail:
 static BOOL P_PIP_Close(struct Window *w __asm("a0"))
 {
     struct PrismPIP **link,*p;
-    ObtainSemaphore(&lock);
+    LOCK();
     for(link=&pips;*link && (*link)->window!=w;link=&(*link)->next);
     p=*link;
     if(!p || p->source->locks) { ReleaseSemaphore(&lock);return FALSE; }
@@ -884,13 +884,13 @@ static BOOL P_PIP_Close(struct Window *w __asm("a0"))
 static LONG P_PIP_SetTagList(struct Window *w __asm("a0"),struct TagItem *tags __asm("a1"))
 {
     struct PrismPIP *p;LONG n=0;
-    ObtainSemaphore(&lock);p=pip_find(w);if(p)n=pip_set(p,tags);ReleaseSemaphore(&lock);
+    LOCK();p=pip_find(w);if(p)n=pip_set(p,tags);ReleaseSemaphore(&lock);
     return n;
 }
 static LONG P_PIP_GetTagList(struct Window *w __asm("a0"),struct TagItem *tags __asm("a1"))
 {
     struct PrismPIP *p;struct TagItem *ti,*next=tags;LONG n=0;
-    ObtainSemaphore(&lock);p=pip_find(w);
+    LOCK();p=pip_find(w);
     while(p && (ti=NextTagItem(&next))) {
         ULONG value,*dest=(APTR)ti->ti_Data;
         if(!dest)continue;
@@ -1019,7 +1019,7 @@ static LONG P_GetBoardDataTagList(ULONG boardNo __asm("d0"), struct TagItem *tag
 
     if (boardNo != 0)
         return 0;
-    ObtainSemaphore(&lock);
+    LOCK();
     freeBytes = vram_free_bytes(&largest);
     ReleaseSemaphore(&lock);
     for (i = 1; i < RGBFB_MaxFormats; i++)

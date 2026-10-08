@@ -92,7 +92,9 @@ void present_tick(void)
     ObtainSemaphore(&lock);
     screen=prism_display_layers(&front,&back,&top,&backTop,&width,&height);
     if (!prism_dragging()) top=0;
-    if (!screen || (!top && !pointer_software() && !p96_pip_active(screen))) {
+    /* The pointer alone is a software sprite (pointer.c), not a reason
+     * to compose; while composing, pointer_compose draws it. */
+    if (!screen || (!top && !p96_pip_active(screen))) {
         present_stop(); ReleaseSemaphore(&lock); return;
     }
     if (!prepare(front,width,height)) { ReleaseSemaphore(&lock);return; }
