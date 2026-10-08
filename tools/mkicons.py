@@ -9,13 +9,14 @@ Prism's own icons: a glass prism splitting a white beam into a spectrum.
     mkicons.py prefs --png preview.png                # enlarged colour preview
 
 Colour (OS 3.5+) icons with a 4-colour classic image as the fallback, built
-with the shared icon writer in C:/projects/tools (iconlib.py).
+with the icon writer in tools/icons (iconlib.py); AMIGA_TOOLS=<dir> uses
+another copy.
 """
 import os
 import sys
 
-sys.path.insert(0, os.environ.get('AMIGA_TOOLS', '/mnt/c/projects/tools'))
-sys.path.insert(0, 'C:/projects/tools')
+sys.path.insert(0, os.environ.get('AMIGA_TOOLS') or
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), 'icons'))
 import iconlib  # noqa: E402
 
 W, H = 48, 40

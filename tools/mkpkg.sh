@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Laine Jones
 # Stage the release drawer out/pkg/PrismRTG (+ PrismRTG.info) from out/ and
-# dist/. Run inside WSL after ./build.sh. The icon tools are in a separate
-# directory (TOOLS=...); without them the drawer is staged without icons.
+# dist/. Run inside WSL after ./build.sh (which runs it last). The icon
+# writer is in tools/icons; TOOLS=<dir> uses another copy of it.
 set -e
-T=${TOOLS:-/mnt/c/projects/tools}
+T=${TOOLS:-tools/icons}
 P=out/pkg/PrismRTG
 rm -rf out/pkg
 mkdir -p $P
