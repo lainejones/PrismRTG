@@ -117,6 +117,11 @@ typedef void (*rect_cb)(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by
 void clip_rp_q(struct RastPort *rp, WORD x0, WORD y0, WORD x1, WORD y1,
                rect_cb cb, void *ctx, BOOL quick);
 void clip_rp(struct RastPort *rp, WORD x0, WORD y0, WORD x1, WORD y1, rect_cb cb, void *ctx);
+/* 4096 longs of row space, render.c's. The cgx.c and p96.c callbacks
+ * borrow it: every rect_cb runs with `lock` held, so only one at a time
+ * (two private 16 KB copies were a tenth of PrismD's memory). */
+extern ULONG rgbRow[4096];
+#define PRISM_ROWBUF ((UBYTE *)rgbRow)
 
 /* 16-bit pixel for an 8-bit R,G,B, as the 68k stores it. */
 static inline UWORD rgb16(UBYTE fmt, UBYTE r, UBYTE g, UBYTE b)

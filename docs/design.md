@@ -1411,3 +1411,51 @@ native screens 50 a second - one extra frame per flip, not the 5 a second
 P96Speed measured on the cycle-exact emulated 68030. DrawEllipse: 477 a
 second on a PrismRTG screen against 124 on a native one. Neither needs
 work; the emulator's numbers were the emulator's speed.
+
+## Small machines (2026-10-06/07)
+
+Ten WinUAE configurations made from the Picasso II+ test box (`prism low
+<tag>.uae`): 68030 at 28 MHz with 20, 4, 2, 1 and no MB of fast RAM, 1 MB of
+chip RAM, a 68020 and a 68EC020 at 14 MHz with 4 MB and with none, and a
+68020 without an FPU. Workbench 3.2 at 800x600 16-bit on the card, MUI and a
+TCP/IP stack loaded. On each: boot time, `Avail`, `tmpltest`, PrismBench, then
+eleven programs each on a freshly booted machine (MysticView, Personal Paint,
+Directory Opus 4, AmigaAMP, YAM, IBrowse, AWeb, NetSurf, ADoom, ScummVM,
+OpenTTD) with `Avail`, screens, windows, the last alert and a picture.
+
+First run, with 1.0.1:
+
+- Workbench came up on the card on every machine down to 2 MB chip and no
+  fast RAM. With 1 MB of chip RAM and no fast RAM, it opened on a native
+  screen instead: the Prism screen could not be had, and Intuition fell back.
+- 4 MB of fast RAM: every test passed, light programs ran, big ones said
+  there was too little memory. 2 MB: nothing beside Workbench. With 1 MB of
+  fast RAM more ran than with 2 MB: the Workbench backdrop (an 800x600
+  16-bit bitmap) went to chip RAM rather than taking the last of fast RAM.
+- 68020 / 68EC020 at 14 MHz: same programs as the 68030, fills and copies
+  about half as fast.
+- 68020 with no fast RAM, ~120 KB left: two "Software Failure" requesters
+  (error 80000004) and two hangs. `trapwatch` caught one: in IPrefs, running
+  in its own data, while NetSurf had closed Workbench and RAM: was full. Not
+  seen again in 13 more tries. `trapwatch` now also lists where each
+  process's code and each library's functions are, so the next one can be
+  put to a program.
+- No FPU: AmigaAMP, MysticView, NetSurf (ixemul) and OpenTTD need one.
+  PrismRTG doesn't.
+
+PrismD took 555 KB, all of it fast RAM: 310 KB loaded (138 KB code, 171 KB of
+buffers) and 245 KB once running. The 245 KB was libnix: it gives every
+stdio stream a 64 KB buffer (`__BUFSIZE`), and PrismD has stdin, stdout and
+stderr, and opened the prefs with `fopen` - whose buffer stayed with
+malloc after `fclose`. A program that only waits takes 21 KB; with one
+`printf`, 180 KB. 1.0.2: `__BUFSIZE` points at 1 KB, `prefs_load` reads
+with `Open`/`FGets`, and the cgx and Picasso96 row callbacks borrow
+render.c's `rgbRow` (every `rect_cb` runs with `lock` held) instead of a
+16 KB buffer each. PrismD now takes 314 KB.
+
+Second run, with that PrismD: 2 MB fast now runs MysticView and Directory
+Opus with 440 KB left after booting (205 KB before); no fast RAM leaves
+365 KB of chip RAM (146 KB); the 68020 with no fast RAM had no Software
+Failure, one hang (IBrowse, as before). A second Prism screen next to an
+800x600 16-bit Workbench on a 2 MB card still needs ~1 MB in one piece to
+move a screen off the card; the README says so.

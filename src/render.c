@@ -42,7 +42,8 @@ static ULONG rowAbuf[MAXW / 4 + 2];
 #define rowA ((UBYTE *)rowAbuf)
 static UBYTE rowB[MAXW], rowC[MAXW], rowT[MAXW];
 static UWORD wA[MAXW], wB[MAXW];
-static ULONG rgbRow[MAXW];
+/* also the row buffer of the cgx and Picasso96 callbacks (prismint.h) */
+ULONG rgbRow[MAXW];
 /* rowW is long-aligned with room for a whole last group of 8 pixels */
 static ULONG rowWbuf[MAXW + 8];
 #define rowW ((UBYTE *)rowWbuf)

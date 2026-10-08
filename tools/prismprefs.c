@@ -30,19 +30,21 @@ struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *GadToolsBase;
 
-static const char version[] __attribute__((used)) = "$VER: PrismPrefs 1.0.1 (05.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: PrismPrefs 1.0.2 (07.10.2026)";
 
 enum { GAD_LIST = 1, GAD_ON, GAD_HZ, GAD_BOARD, GAD_BLIT, GAD_LOG,
-       GAD_SAVE, GAD_USE, GAD_DEFAULTS, GAD_CANCEL, GAD_STATUS, GAD_TEST };
+       GAD_SAVE, GAD_USE, GAD_DEFAULTS, GAD_CANCEL, GAD_STATUS, GAD_TEST, GAD_BGR };
 
 static STRPTR hzLabels[] = { "Default", "60 Hz", "70 Hz", "72 Hz", "75 Hz", NULL };
 static STRPTR boardLabels[] = { "Auto", "Picasso II", "ZZ9000", NULL };
+/* LOG=OFF / ON / SYNC, in that order (prefs.log 0, 1, 2) */
+static STRPTR logLabels[] = { "Off", "On", "Sync", NULL };
 
 struct Gui {
     struct Screen *scr;
     APTR vi;
     struct Window *win;
-    struct Gadget *glist, *gList, *gOn, *gHz, *gBoard, *gBlit, *gLog, *gStatus;
+    struct Gadget *glist, *gList, *gOn, *gHz, *gBoard, *gBlit, *gLog, *gBgr, *gStatus;
     struct List modes;
     struct Node node[PREFS_NMODES];
     char text[PREFS_NMODES][48];
@@ -120,7 +122,8 @@ static void show_settings(struct Gui *g)
     GT_SetGadgetAttrs(g->gHz, g->win, NULL, GTCY_Active, (ULONG)rate_index(p->hz[g->sel]), TAG_END);
     GT_SetGadgetAttrs(g->gBoard, g->win, NULL, GTCY_Active, (ULONG)p->board, TAG_END);
     GT_SetGadgetAttrs(g->gBlit, g->win, NULL, GTCB_Checked, (ULONG)p->blitter, TAG_END);
-    GT_SetGadgetAttrs(g->gLog, g->win, NULL, GTCB_Checked, (ULONG)p->log, TAG_END);
+    GT_SetGadgetAttrs(g->gLog, g->win, NULL, GTCY_Active, (ULONG)(p->log <= 2 ? p->log : 1), TAG_END);
+    GT_SetGadgetAttrs(g->gBgr, g->win, NULL, GTCB_Checked, (ULONG)p->clutBGR, TAG_END);
 }
 
 static void running_status(struct Gui *g)
@@ -236,7 +239,7 @@ static BOOL make_gadgets(struct Gui *g, WORD *innerW, WORD *innerH)
     struct TextFont *tf = g->scr->RastPort.Font;
     WORD fw = tf->tf_XSize, fh = tf->tf_YSize, gh = fh + 6, row = gh + 4;
     WORD cl = g->scr->WBorLeft + 8, ct = g->scr->WBorTop + fh + 1 + 6;
-    WORD listW = 38 * fw + 24, listH = 12 * fh + 4;
+    WORD listW = 38 * fw + 24, listH;
     WORD rx, rw, y, bw, by;
 
     if (!(gad = CreateContext(&g->glist)))
@@ -247,7 +250,7 @@ static BOOL make_gadgets(struct Gui *g, WORD *innerW, WORD *innerH)
 
     /* right column: label width + gadgets */
     rx = cl + listW + 16 + 8 * fw;
-    rw = 12 * fw + 28;
+    rw = 14 * fw + 28;                  /* "Swap red/blue" beside its box */
 
     y = ct + fh + 2;
     ng.ng_LeftEdge = rx; ng.ng_TopEdge = y;
@@ -276,9 +279,20 @@ static BOOL make_gadgets(struct Gui *g, WORD *innerW, WORD *innerH)
 
     y += row;
     ng.ng_TopEdge = y;
-    ng.ng_GadgetText = "Debug log"; ng.ng_GadgetID = GAD_LOG;
-    gad = g->gLog = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
-                                 GTCB_Checked, (ULONG)g->prefs.log, TAG_END);
+    ng.ng_GadgetText = "Swap red/blue"; ng.ng_GadgetID = GAD_BGR;
+    gad = g->gBgr = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
+                                 GTCB_Checked, (ULONG)g->prefs.clutBGR, TAG_END);
+
+    y += row;
+    ng.ng_TopEdge = y; ng.ng_Width = rw; ng.ng_Height = gh;
+    ng.ng_GadgetText = "Log"; ng.ng_Flags = PLACETEXT_LEFT; ng.ng_GadgetID = GAD_LOG;
+    gad = g->gLog = CreateGadget(CYCLE_KIND, gad, &ng, GTCY_Labels, (ULONG)logLabels,
+                                 GTCY_Active, (ULONG)(g->prefs.log <= 2 ? g->prefs.log : 1), TAG_END);
+
+    /* the mode list at least 12 lines, and as tall as the column beside it */
+    listH = y + gh - (ct + fh + 2);
+    if (listH < 12 * fh + 4)
+        listH = 12 * fh + 4;
 
     /* status line, then the Save / Use / Defaults / Cancel row */
     by = ct + fh + 2 + listH + 6;
@@ -391,7 +405,16 @@ static void event_loop(struct Gui *g)
                     g->prefs.blitter = (gad->Flags & GFLG_SELECTED) ? 1 : 0;
                     break;
                 case GAD_LOG:
-                    g->prefs.log = (gad->Flags & GFLG_SELECTED) ? 1 : 0;
+                    g->prefs.log = code <= 2 ? code : 1;
+                    set_status(g, code == 2 ? "Sync: log written to SYS:PrismD.log at once (slow)"
+                                  : code ? "On: PrismD writes its log to T:PrismD.log"
+                                         : "Log off");
+                    break;
+                case GAD_BGR:
+                    g->prefs.clutBGR = (gad->Flags & GFLG_SELECTED) ? 1 : 0;
+                    set_status(g, g->prefs.clutBGR
+                                  ? "For a board whose 256-colour screens show red as blue"
+                                  : "256-colour palettes loaded red first (normal)");
                     break;
                 case GAD_TEST:
                     test_mode(g, g->sel, TRUE);

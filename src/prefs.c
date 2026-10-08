@@ -5,6 +5,8 @@
  */
 #include <exec/types.h>
 #include <stdio.h>
+#include <dos/dos.h>
+#include <proto/dos.h>
 #include <string.h>
 #include <stdlib.h>
 #include "prefs.h"
@@ -67,16 +69,18 @@ static void parse_mode(struct PrismPrefs *p, char *v)
         }
 }
 
+/* Read with dos.library, not stdio: libnix keeps what fopen allocated
+ * after fclose, 54 KB of a daemon that never quits (PrismD, 2026-10-07). */
 BOOL prefs_load(struct PrismPrefs *p, const char *path)
 {
-    FILE *f;
+    BPTR f;
     char line[96], *v, *e;
     int i;
 
     prefs_default(p);
-    if (!(f = fopen(path, "r")))
+    if (!(f = Open((STRPTR)path, MODE_OLDFILE)))
         return FALSE;
-    while (fgets(line, sizeof(line), f)) {
+    while (FGets(f, (STRPTR)line, sizeof(line))) {
         if ((e = strpbrk(line, "\r\n")))
             *e = 0;
         if (line[0] == ';' || line[0] == '#' || !(v = strchr(line, '=')))
@@ -96,7 +100,7 @@ BOOL prefs_load(struct PrismPrefs *p, const char *path)
             parse_mode(p, v);
         }
     }
-    fclose(f);
+    Close(f);
     return TRUE;
 }
 
@@ -110,7 +114,7 @@ BOOL prefs_save(const struct PrismPrefs *p, const char *path)
     fprintf(f, "; Prism RTG settings - written by PrismPrefs\n");
     fprintf(f, "BOARD=%s\n", boardNames[p->board < PB_COUNT ? p->board : PB_AUTO]);
     fprintf(f, "BLITTER=%s\n", p->blitter ? "ON" : "OFF");
-    fprintf(f, "LOG=%s\n", p->log ? "ON" : "OFF");
+    fprintf(f, "LOG=%s\n", p->log == 2 ? "SYNC" : p->log ? "ON" : "OFF");
     if (p->clutBGR)
         fprintf(f, "PALETTE=BGR\n");
     for (i = 0; i < PREFS_NMODES; i++)

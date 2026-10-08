@@ -62,6 +62,13 @@ struct PrismBoard board;
  * PrismD must see Ctrl-C itself and take its patches out first. */
 void __chkabort(void) { }
 
+/* libnix gives every stdio stream a 64 KB buffer: stdin, stdout, stderr and
+ * the prefs file came to 190 KB of a daemon that stays in memory for good,
+ * a third of what PrismD took on a 68030 (2026-10-07). It prints a few
+ * lines at start and the debug log; 1 KB buffers are plenty. */
+static unsigned long stdioBufSize = 1024;
+unsigned long *__BUFSIZE = &stdioBufSize;
+
 /* Patches run in other tasks and must not call dos.library: they log into
  * this ring and the main loop prints it. */
 static struct PrismPrefs prefs;
@@ -161,7 +168,7 @@ struct ModeRec {
     UBYTE pad[128];
 };
 
-static const char version[] __attribute__((used)) = "$VER: PrismD 1.0.1 (05.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: PrismD 1.0.2 (07.10.2026)";
 
 #define MAX_MODES 32
 static struct ModeRec modes[MAX_MODES];

@@ -137,7 +137,7 @@ struct ArrayCtx {
     UBYTE *dst;
 };
 
-static UBYTE rowbuf[4096 * 4];
+#define rowbuf PRISM_ROWBUF        /* 4096 * 4 bytes, see prismint.h */
 
 /* One row of source pixels into a row of the bitmap's format. The source
  * is RGB bytes (red at s[ro], green at s[go], blue at s[bo], sb bytes a

@@ -530,7 +530,7 @@ struct ArrCtx {
     const struct P96TrueColorInfo *tci;
 };
 
-static UBYTE rowbuf[4096 * 4];
+#define rowbuf PRISM_ROWBUF        /* 4096 * 4 bytes, see prismint.h */
 
 static void wr_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
                   WORD ox, WORD oy, void *ctx)

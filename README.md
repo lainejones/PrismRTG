@@ -27,7 +27,34 @@ on.
 | GVP Spectrum 28/24, Zorro II | Cirrus GD5428 | WinUAE only | Emulation only. 8/16-bit, 24-bit 640x480. |
 | MNT ZZ9000, Zorro II mode | | none | Untested. No blitter or pointer support in this mode. |
 
-Needs AmigaOS 3.0 or newer and a 68020 or better.
+Needs AmigaOS 3.0 or newer and a 68020 or better. No FPU needed.
+
+## How small a machine
+
+PrismD, the driver, takes about 310 KB, in fast RAM when there is any and
+none of it in chip RAM. Measured in WinUAE on an emulated Picasso II+ (2 MB
+on the card), with Workbench 3.2 on a PrismRTG 800x600 16-bit screen and MUI
+and a TCP/IP stack loaded, each program started on a freshly booted machine:
+
+| Machine | Free after booting | What ran |
+|---|---|---|
+| 68030 28 MHz, 2 MB chip + 20 MB fast | 18 MB fast | Everything tried, apart from ScummVM and OpenTTD (want more memory) |
+| 68030, 2 MB chip + 4 MB fast | 2.4 MB fast | MysticView, Personal Paint, Directory Opus, IBrowse, AmigaAMP; YAM, AWeb, NetSurf and ADoom found too little memory and said so |
+| 68030, 2 MB chip + 2 MB fast | 440 KB fast | MysticView, Directory Opus |
+| 68030, 2 MB chip + 1 MB fast | 1.4 MB chip | MysticView, Directory Opus; drawing half as fast (screens that don't fit on the card are kept in chip RAM) |
+| 68030, 2 MB chip, no fast RAM | 365 KB chip | Workbench, nothing beside it |
+| 68020 or 68EC020 14 MHz, 2 MB chip + 4 MB fast | 2.4 MB fast | The same as the 68030 with 4 MB; drawing about half as fast |
+
+Every PrismRTG test passed on each machine that had room to run it. Short of
+memory, programs refused or stopped with a message. The one exception was a
+68020 with no fast RAM, where with about 120 KB left a program hung now and
+then; nothing pointed at PrismRTG.
+
+Screens that don't fit on the card are kept in RAM, and moving one there
+needs RAM for all of it: about 940 KB for 800x600 at 16 bits. With a 2 MB
+card, an 800x600 16-bit Workbench and its backdrop picture fill the card, so
+a second screen needs about 1 MB free in one piece; an 8-bit Workbench needs
+half of that.
 
 ## What works
 
@@ -48,8 +75,10 @@ Needs AmigaOS 3.0 or newer and a 68020 or better.
 * Screens that don't fit in video memory page out to fast RAM; double
   buffering through `AllocScreenBuffer` / `ChangeScreenBuffer`.
 * `Prefs/PrismPrefs`: which modes are offered, refresh rates, board,
-  blitter on/off, and a **Test** button that shows a mode for ten seconds
-  and comes back by itself.
+  blitter on/off, red and blue swapped in 256-colour palettes, the debug
+  log (off, on, or written at once for a machine that dies while starting),
+  and a **Test** button that shows a mode for ten seconds and comes back by
+  itself.
 * Boot failsafe: hold the left mouse button while booting and PrismRTG does
   not start; a start that hangs is skipped automatically on the next boot.
 
@@ -179,7 +208,7 @@ blitter off.
 * The Picasso II, Piccolo, Piccolo SD64 and Spectrum have only run in WinUAE.
   A real card can differ from its emulation (the GBAPII++ did, in three
   places). If 256-colour screens on a real Piccolo or Spectrum show red and
-  blue exchanged, add the line `PALETTE=BGR` to `ENVARC:Prism.prefs`.
+  blue exchanged, tick **Swap red/blue** in PrismPrefs.
 * The installer's Remove path has been run in the emulator, not yet on a
   real machine.
 * On the A2000 one unexplained crash was seen shortly after a cold boot;
