@@ -2,6 +2,7 @@
 #include <exec/memory.h>
 #include <graphics/rastport.h>
 #include <proto/exec.h>
+#include <string.h>
 #include "rtg_ops.h"
 
 /* Preserve BoardInfo in a0 across indirect register-ABI calls. */
@@ -78,11 +79,53 @@ void rtg_planar_direct(struct BoardInfo *bi __asm("a0"),struct BitMap *bm __asm(
         for(k=0;k<bpp;k++) d[k]=c>>(8*(bpp-k-1));
     }
 }
+/* The firmware version is shared by fixed and broken UAE hosts. Exercise
+ * the actual hook in saved VRAM before enabling scanout. UAE host traps
+ * require a VRAM destination, even when their source is in system RAM. */
+BOOL rtg_probe_planar(struct BoardInfo *bi, ULONG formats)
+{
+    struct ColorIndexMapping *map;
+    struct BitMap bm;
+    struct RenderInfo ri;
+    UBYTE saved[32], *pixels, plane[2] = {0x50, 0};
+    UBYTE f, i, k;
+    BOOL ok = TRUE;
+    if (!bi->BlitPlanar2Direct || !bi->WaitBlitter ||
+        !bi->MemoryBase || bi->MemorySize < sizeof(saved)) return FALSE;
+    map = AllocVec(sizeof(*map), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!map) return FALSE;
+    pixels = bi->MemoryBase + bi->MemorySize - sizeof(saved);
+    rtg_wait(bi);
+    CopyMem(pixels, saved, sizeof(saved));
+    memset(&bm, 0, sizeof(bm));
+    bm.BytesPerRow = 2; bm.Rows = 1; bm.Depth = 1; bm.Planes[0] = plane;
+    for (f = 0; f < PF_COUNT && ok; f++) {
+        UBYTE bpp = board_bpp(f);
+        if (bpp == 1 || !(formats & PF_BIT(f))) continue;
+        memset(pixels, 0xa5, sizeof(saved));
+        memset(&ri, 0, sizeof(ri));
+        ri.Memory = pixels; ri.BytesPerRow = 4 * bpp; ri.RGBFormat = rtg_formats[f];
+        map->ColorMask = bpp == 2 ? 0xffff : 0xffffffff;
+        map->Colors[0] = rtg_colour(f, 0x123456);
+        map->Colors[1] = rtg_colour(f, 0xa1b2c3);
+        bi->BlitPlanar2Direct(bi, &bm, &ri, map, 0, 0, 0, 0, 4, 1, 12, 255);
+        rtg_wait(bi);
+        for (i = 0; i < 4; i++) {
+            ULONG c = rtg_pen(map->Colors[i & 1], bpp);
+            for (k = 0; k < bpp; k++)
+                if (pixels[i*bpp+k] != (UBYTE)(c >> (8*(bpp-k-1)))) ok = FALSE;
+        }
+        for (i = 4*bpp; i < sizeof(saved); i++) if (pixels[i] != 0xa5) ok = FALSE;
+    }
+    CopyMem(saved, pixels, sizeof(saved));
+    FreeVec(map);
+    return ok;
+}
 static UBYTE *rtg_address(struct PrismBoard *b,const struct PrismSurface *s,ULONG off)
 {
     struct BoardInfo *bi=b->priv;
     RGBFTYPE f=rtg_formats[s->format];
-    struct RenderInfo ri={NULL,s->pitch,0,f};
+    struct RenderInfo ri={b->vram+s->offset,s->pitch,0,f};
     rtg_wait(bi);
     if(bi->SetMemoryMode) bi->SetMemoryMode(bi,f);
     return bi->CalculateMemory ? bi->CalculateMemory(bi,b->vram+s->offset+off,&ri,f) :
@@ -100,7 +143,7 @@ enum PrismResult rtg_fill(struct PrismBoard *b,const struct PrismSurface *d,
     UWORD x,UWORD y,UWORD w,UWORD h,ULONG c)
 {
     struct BoardInfo *bi=b->priv;struct RenderInfo ri;
-    if((bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || !bi->FillRect || !rtg_render(b,d,&ri)) return PR_DECLINED;
+    if((b->flags & PBF_BANKED) || (bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || !bi->FillRect || !rtg_render(b,d,&ri)) return PR_DECLINED;
     bi->FillRect(bi,&ri,x,y,w,h,rtg_pen(c,d->bpp),255,ri.RGBFormat);rtg_wait(bi);
     return PR_DONE;
 }
@@ -108,7 +151,7 @@ enum PrismResult rtg_copy(struct PrismBoard *b,const struct PrismSurface *s,
     const struct PrismSurface *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h)
 {
     struct BoardInfo *bi=b->priv;struct RenderInfo ri;
-    if((bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || s->offset!=d->offset || s->pitch!=d->pitch || !bi->BlitRect || !rtg_render(b,d,&ri))
+    if((b->flags & PBF_BANKED) || (bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || s->offset!=d->offset || s->pitch!=d->pitch || !bi->BlitRect || !rtg_render(b,d,&ri))
         return PR_DECLINED;
     bi->BlitRect(bi,&ri,sx,sy,dx,dy,w,h,255,ri.RGBFormat);rtg_wait(bi);
     return PR_DONE;
@@ -117,7 +160,7 @@ enum PrismResult rtg_expand(struct PrismBoard *b,const struct PrismSurface *d,
     UWORD x,UWORD y,UWORD w,UWORD h,const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr)
 {
     struct BoardInfo *bi=b->priv;struct RenderInfo ri;struct Template t;
-    if((bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || !bi->BlitTemplate || !bi->BlitTemplateDefault || mod>32767 || !rtg_render(b,d,&ri))
+    if((b->flags & PBF_BANKED) || (bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || !bi->BlitTemplate || !bi->BlitTemplateDefault || mod>32767 || !rtg_render(b,d,&ri))
         return PR_DECLINED;
     t.Memory=(APTR)src;t.BytesPerRow=mod;t.XOffset=0;t.DrawMode=tr ? JAM1:JAM2;
     t.FgPen=rtg_pen(fg,d->bpp);t.BgPen=rtg_pen(bg,d->bpp);
@@ -133,7 +176,7 @@ enum PrismResult rtg_planar(struct PrismBoard *b,const struct PrismPlanar *s,
     static struct ColorIndexMapping cim;
     UWORD i;
     if((ULONG)sx+w>32768 || (ULONG)sy+h>32768 ||
-       (bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || (mt & 0xf0)!=0xc0 || mask!=255 || !rtg_render(b,d,&ri)) return PR_DECLINED;
+       (b->flags & PBF_BANKED) || (bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || (mt & 0xf0)!=0xc0 || mask!=255 || !rtg_render(b,d,&ri)) return PR_DECLINED;
     if(d->bpp==1) {
         if(!bi->BlitPlanar2Chunky) return PR_DECLINED;
         bi->BlitPlanar2Chunky(bi,(struct BitMap *)s->bitmap,&ri,sx,sy,dx,dy,w,h,12,mask);
@@ -157,13 +200,24 @@ static BOOL rtg_transfer(struct PrismBoard *b,const struct PrismSurface *s,ULONG
     UBYTE *mem,ULONG size,BOOL write)
 {
     ULONG n;
+    struct BoardInfo *bi=b->priv;
+    struct RenderInfo ri;
     if(s->format>=PF_COUNT || off>s->allocation || size>s->allocation-off ||
         s->offset>b->vramSize || s->allocation>b->vramSize-s->offset || !s->pitch) return FALSE;
+    ri.Memory=b->vram+s->offset;ri.BytesPerRow=s->pitch;ri.pad=0;ri.RGBFormat=rtg_formats[s->format];
+    rtg_wait(bi);
+    if(bi->SetMemoryMode)bi->SetMemoryMode(bi,ri.RGBFormat);
     while(size) {
-        UBYTE *mapped=rtg_address(b,s,off);
+        UBYTE *mapped=bi->CalculateMemory ? bi->CalculateMemory(bi,b->vram+s->offset+off,&ri,ri.RGBFormat) :
+            b->vram+s->offset+off;
         if(!mapped) return FALSE;
-        n=s->pitch-off%s->pitch;if(n>size)n=size;
-        if(write) CopyMem(mem,mapped,n); else CopyMem(mapped,mem,n);
+        /* A banked aperture can change on every translation. Consume the
+         * mapping before asking for another address; never infer a window
+         * size by probing ahead and invalidating the current mapping. */
+        n=(b->flags & PBF_BANKED) ? 1 : s->pitch-off%s->pitch;
+        if(n>size)n=size;
+        if(n==1) { if(write)*mapped=*mem;else *mem=*mapped; }
+        else if(write) CopyMem(mem,mapped,n); else CopyMem(mapped,mem,n);
         mem+=n;off+=n;size-=n;
     }
     return TRUE;

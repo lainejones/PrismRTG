@@ -276,11 +276,28 @@ struct Blk { ULONG off, size; };
 static struct Blk used[MAX_BLKS];
 static int nused;
 
-LONG vram_alloc(ULONG size)
+LONG vram_alloc(ULONG size, UBYTE format, ULONG pitch, UWORD width, UWORD height)
 {
     ULONG pos = 0;
     int i, j;
 
+    if (!size || size > 0xffffff00UL) return -1;
+    if (board.ops && board.ops->allocate) {
+        struct PrismSurface surface={NULL,0,size,pitch,width,height,format,0,PSF_VRAM};
+        surface.bpp=board_bpp(format);
+        if (!board.ops->release || nused == MAX_BLKS || !board.ops->allocate(&board,&surface)) return -1;
+        pos=surface.offset;
+        if (pos>board.vramSize || size>board.vramSize-pos) goto reject;
+        for (i=0;i<nused && used[i].off<pos;i++);
+        if ((i && used[i-1].off+used[i-1].size>pos) ||
+            (i<nused && pos+size>used[i].off)) goto reject;
+        for (j=nused;j>i;j--) used[j]=used[j-1];
+        used[i].off=pos;used[i].size=size;nused++;
+        return pos;
+reject:
+        board.ops->release(&board,pos);
+        return -1;
+    }
     size = (size + 255) & ~255UL;
     if (nused == MAX_BLKS)
         return -1;
@@ -322,6 +339,7 @@ void vram_free(ULONG off)
     int i;
     for (i = 0; i < nused; i++)
         if (used[i].off == off) {
+            if (board.ops && board.ops->release) board.ops->release(&board,off);
             for (; i < nused - 1; i++)
                 used[i] = used[i + 1];
             nused--;
@@ -550,7 +568,21 @@ static void update_display(void)
         struct PBitMap *dp = ps->front ? ps->front : ps->pbm;
         if (cardMode != ps->mode) {
             struct PrismMode m = ps->mode->m;
-            board.setMode(&board, &m);
+            /* Rebuilding the pool releases the old scanout allocation. */
+            if ((board.flags & PBF_REINIT) && rtgOn) {
+                board.setSwitch(&board, FALSE);
+                rtgOn = FALSE;
+            }
+            if (!pbm_prepare_mode() || !board.setMode(&board, &m)) {
+                pointer_off();
+                board.setSwitch(&board, FALSE);
+                rtgOn = FALSE;
+                shown = NULL;
+                shownPbm = NULL;
+                shownVP = NULL;
+                cardMode = NULL;
+                ReleaseSemaphore(&lock);return;
+            }
             cardMode = ps->mode;
             shown = NULL;
         }

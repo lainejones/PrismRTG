@@ -230,6 +230,85 @@ static void test_aperture(void)
     assert(!b.ops->read(&b,&surface,120,target,16));
 }
 
+static APTR banked_memory(struct BoardInfo *bi __asm("a0"),APTR address __asm("a1"),
+    struct RenderInfo *ri __asm("d0"),RGBFTYPE format __asm("d7"))
+{
+    (void)ri;(void)format;
+    return pixels+(((ULONG)address-(ULONG)bi->MemoryBase)^16);
+}
+static APTR custom_alloc(struct BoardInfo *bi __asm("a0"),ULONG size __asm("d0"),
+    BOOL force __asm("d1"),BOOL system __asm("d2"),ULONG pitch __asm("d3"),
+    struct ModeInfo *mi __asm("a1"),RGBFTYPE format __asm("d7"))
+{
+    assert(!force && !system);
+    if(size==128) {
+        assert(!pitch && !mi && format==RGBFB_R5G6B5);
+    } else {
+        assert(size==640*480 && pitch==640 && format==RGBFB_CLUT);
+        assert(mi && mi->Width==640 && mi->Height==480 && mi->Depth==8);
+        assert(mi->HorTotal==800 && mi->VerTotal==525 && mi->PixelClock==25175000);
+    }
+    return bi->MemoryBase+512;
+}
+static BOOL custom_free(struct BoardInfo *bi __asm("a0"),APTR address __asm("a1"))
+{ assert(address==bi->MemoryBase+512);return TRUE; }
+static void test_pool(void)
+{
+    APTR first,second;
+    p.nallocations=0;
+    first=card_alloc(&p.bi,17,FALSE,FALSE,0,NULL,RGBFB_CLUT);
+    second=card_alloc(&p.bi,17,FALSE,FALSE,0,NULL,RGBFB_CLUT);
+    assert(first==pixels && second==pixels+32);
+    assert(!card_alloc_abs(&p.bi,32,(char *)pixels+16));
+    assert(card_alloc_abs(&p.bi,64,(char *)pixels+128)==pixels+128);
+    assert(card_free(&p.bi,first) && !card_free(&p.bi,first));
+    assert(card_alloc(&p.bi,16,FALSE,FALSE,0,NULL,RGBFB_CLUT)==pixels);
+    card_reinit(&p.bi,RGBFB_CLUT);
+    assert(!p.nallocations);
+}
+static void ignored_planar(struct BoardInfo *bi __asm("a0"),struct BitMap *bm __asm("a1"),
+    struct RenderInfo *ri __asm("a2"),struct ColorIndexMapping *map __asm("a3"),
+    SHORT sx __asm("d0"),SHORT sy __asm("d1"),SHORT dx __asm("d2"),SHORT dy __asm("d3"),
+    SHORT w __asm("d4"),SHORT h __asm("d5"),UBYTE mt __asm("d6"),UBYTE mask __asm("d7"))
+{ (void)bi;(void)bm;(void)ri;(void)map;(void)sx;(void)sy;(void)dx;(void)dy;
+  (void)w;(void)h;(void)mt;(void)mask; }
+static void test_banks_and_allocator(void)
+{
+    struct PrismSurface surface={NULL,64,128,32,16,4,PF_RGB565BE,2,PSF_VRAM};
+    UBYTE source[128],target[128];ULONG i;
+    b.flags|=PBF_BANKED;
+    p.bi.CalculateMemory=banked_memory;
+    for(i=0;i<128;i++)source[i]=i^0x53;
+    assert(b.ops->write(&b,&surface,0,source,128));
+    for(i=0;i<128;i++)assert(pixels[(64+i)^16]==source[i]);
+    assert(b.ops->read(&b,&surface,0,target,128) && !memcmp(source,target,128));
+    assert(board_fill(&b,&surface,0,0,16,4,0)==PR_DECLINED);
+    p.bi.AllocCardMem=custom_alloc;p.bi.FreeCardMem=custom_free;
+    assert(p96_allocate(&b,&surface) && surface.offset==512);
+    p96_release(&b,surface.offset);
+    {
+        ULONG flags=p.bi.Flags;
+        struct PrismSurface screen={NULL,0,640*480,640,640,480,PF_CLUT8,1,PSF_VRAM};
+        p.bi.Flags &= ~BIF_INTERNALMODESONLY;
+        assert(p96_allocate(&b,&screen) && screen.offset==512);
+        p96_release(&b,screen.offset);
+        p.bi.Flags=flags;
+    }
+}
+
+static void test_planar_probe(void)
+{
+    p.bi.MemorySize=sizeof(pixels);
+    memcpy(expected,pixels,sizeof(pixels));
+    p.bi.BlitPlanar2Direct=rtg_planar_direct;
+    assert(rtg_probe_planar(&p.bi,PF_BIT(PF_RGB565BE)|PF_BIT(PF_BGR24)|PF_BIT(PF_BGRA32)));
+    assert(!memcmp(expected,pixels,sizeof(pixels)));
+    p.bi.BlitPlanar2Direct=ignored_planar;
+    assert(!rtg_probe_planar(&p.bi,PF_BIT(PF_BGRA32)));
+    p.bi.BlitPlanar2Direct=NULL;
+    assert(!rtg_probe_planar(&p.bi,PF_BIT(PF_BGRA32)));
+}
+
 int main(void)
 {
     setup();
@@ -238,6 +317,9 @@ int main(void)
     test_template();
     test_modes();
     test_aperture();
+    test_pool();
+    test_banks_and_allocator();
+    test_planar_probe();
     assert(waits != 0);
     puts("P96 adapter: ABI, formats, drawing fallbacks and mode setup passed");
     return 0;

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 set -eu
 mkdir -p out/tests
-for name in boardops cirrus_limits zz_surfaces render_replay; do
+for name in boardops cirrus_limits zz_surfaces render_replay damage shadow_upload pointer_mode; do
     extra=
     if [ "$name" = render_replay ]; then extra=src/p2c.S; fi
     ${CC:-m68k-amigaos-gcc} -O2 -ffunction-sections -fdata-sections -Wl,--gc-sections -m68020-60 -noixemul -Wall -Wextra -Wno-pointer-sign -Wno-missing-field-initializers -Wno-unused-parameter -Wno-sign-compare \
