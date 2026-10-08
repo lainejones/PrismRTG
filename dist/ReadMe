@@ -67,4 +67,11 @@ Reporting a problem
   the report it writes to an issue at
   https://github.com/lainejones/PrismRTG/issues
 
+Credits
+  Laine Jones, with Claude (Anthropic). Thanks to Stefan Reinauer (P96
+  card-driver adapter, native UAE driver, build fixes), Dimitris Panokostas
+  (UAE driver review, Amiberry pointer default), polluks and yelworC (MiSTer
+  test), and Individual Computers, A. Kneer, T. Abt and T. Richter (P96
+  driver headers, CC-BY). The README on GitHub has the full list.
+
 Licence: GNU General Public License version 3. (c) 2026 Laine Jones.

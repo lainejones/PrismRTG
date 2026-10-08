@@ -313,6 +313,25 @@ built, and every measurement; [docs/zz9000-hw.md](docs/zz9000-hw.md) and
 [docs/cirrus-picasso2-hw.md](docs/cirrus-picasso2-hw.md) are the hardware
 notes the drivers were written from.
 
+## Credits
+
+PrismRTG is written by Laine Jones, with Claude (Anthropic) as co-author -
+noted in every commit. With thanks to:
+
+* **Stefan Reinauer** - the build fixes (#3), the P96 card-driver adapter
+  (#4) and the native UAE RTG driver (#5).
+* **Dimitris Panokostas** (midwan, author of Amiberry) - reviewed the UAE
+  driver and found its `SetPanning` / `BitMapExtra` bug (#5), and made
+  Amiberry's RTG hardware pointer the default so PrismRTG shows a pointer
+  there ([amiberry#2388](https://github.com/BlitterStudio/amiberry/pull/2388)).
+* **polluks** and **yelworC** - the first test on a MiSTer FPGA (#2).
+* **Individual Computers**, **Alexander Kneer**, **Tobias Abt** and **Thomas
+  Richter** - the P96 driver development headers in `src/p96sdk` (CC-BY),
+  which the P96 card-driver adapter is built with.
+
+Contributions are welcome; everyone whose code or findings go into PrismRTG
+is named here and in the release notes.
+
 ## Licence
 
 GNU General Public License, version 3 (GPL-3.0-only). Copyright (c) 2026 Laine Jones.

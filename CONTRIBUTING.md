@@ -41,3 +41,9 @@ A driver fills in a `struct PrismBoard` (`src/prismboard.h`): mode set,
 display start, palette and monitor switch are required; blitter, line and
 cursor hooks are optional and PrismRTG draws on the CPU without them. See
 `src/drv_picasso2.c` and `src/drv_zz9000.c`.
+
+## Credit
+
+Everyone whose code, review or findings go into PrismRTG is named in the
+README's Credits section and in the release notes of the version it ships in.
+Your commits keep your name as their author.
