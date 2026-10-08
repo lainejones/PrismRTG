@@ -163,6 +163,19 @@ static ULONG grad(int x, int y)
 static UBYTE buf[32 * 32 * 4], back[32 * 32 * 4];
 static UBYTE pr[32 * 32], pg[32 * 32], pb[32 * 32];
 
+/* Screen dragging is opt-in (PrismPrefs DRAGGING=ON). */
+static BOOL dragging_on(void)
+{
+    char line[160];
+    BOOL on = FALSE;
+    BPTR f = Open((STRPTR)"ENV:Prism.prefs", MODE_OLDFILE);
+    if (!f) return FALSE;
+    while (FGets(f, (STRPTR)line, sizeof(line)))
+        if (!strncmp(line, "DRAGGING=ON", 11)) on = TRUE;
+    Close(f);
+    return on;
+}
+
 int main(void)
 {
     LONG args[3] = { 0, 0, 0 };
@@ -394,7 +407,10 @@ int main(void)
             ScreenPosition(s,SPOS_ABSOLUTE|SPOS_FORCEDRAG,0,24,0,0);
             Delay(10);
             printf("    dragged screen top: %d\n",s->TopEdge);
-            check("RTG screen dragging",s->TopEdge==24);
+            if (dragging_on())
+                check("RTG screen dragging",s->TopEdge==24);
+            else
+                printf("  RTG screen dragging                          skipped (DRAGGING=OFF in PrismPrefs)\n");
             ScreenPosition(s,SPOS_ABSOLUTE|SPOS_FORCEDRAG,0,0,0,0);
             check("p96PIP_Close",pipcall(pip,NULL,150));
             if(behind)tagcall((struct TagItem *)behind,0,96);

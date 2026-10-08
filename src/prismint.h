@@ -33,6 +33,9 @@ void memchk(const char *where);
 #endif
 
 LONG vram_alloc(ULONG size, UBYTE format, ULONG pitch, UWORD width, UWORD height);
+struct PBitMap;
+LONG vram_get_size(ULONG size, UBYTE format, ULONG pitch, UWORD width, UWORD height,
+                   struct PBitMap *keep);   /* evicts hidden bitmaps to fast RAM */
 void vram_free(ULONG off);
 
 /* ---- chunky bitmaps -------------------------------------------------
@@ -107,7 +110,7 @@ enum PrismResult pbm_hw_planar(const struct PrismPlanar *, struct PBitMap *, UWO
  * PR_FAILED so the caller redraws on the CPU. Anything else goes through
  * pbm_hw_fill / pbm_hw_copy and the surface operations. */
 #define HW_OK(p) ((p)->inVram && \
-    !(board.flags & (PBF_SHADOW | PBF_ACCEL_BROKEN | PBF_SOFTWARE)))
+    !(board.flags & (PBF_SHADOW | PBF_ACCEL_BROKEN | PBF_SOFTWARE | PBF_PRESENT)))
 
 static inline BOOL hw_fits(ULONG bytes, UWORD h, ULONG pitch)
 {

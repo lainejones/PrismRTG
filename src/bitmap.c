@@ -49,12 +49,12 @@ static ULONG pbm_bytes(struct PBitMap *p)
 }
 
 /* VRAM for `size` bytes, evicting least recently shown bitmaps (never
- * `keep`) until it fits. Caller holds lock. */
-static LONG vram_get(struct PBitMap *p, struct PBitMap *keep)
+ * `keep`, never one the card shows) until it fits. Caller holds lock. */
+LONG vram_get_size(ULONG size, UBYTE fmt, ULONG pitch, UWORD w, UWORD h, struct PBitMap *keep)
 {
     LONG off;
 
-    while ((off = vram_alloc(pbm_bytes(p),p->fmt,p->bpr,p->w,p->h)) < 0) {
+    while ((off = vram_alloc(size,fmt,pitch,w,h)) < 0) {
         struct PBitMap *v = NULL;
         UWORD i;
         for (i = 0; i < PBM_MAX; i++) {
@@ -67,6 +67,11 @@ static LONG vram_get(struct PBitMap *p, struct PBitMap *keep)
             return -1;
     }
     return off;
+}
+
+static LONG vram_get(struct PBitMap *p, struct PBitMap *keep)
+{
+    return vram_get_size(pbm_bytes(p), p->fmt, p->bpr, p->w, p->h, keep);
 }
 
 BOOL pbm_to_fast(struct PBitMap *p)

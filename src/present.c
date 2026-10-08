@@ -50,7 +50,9 @@ static BOOL prepare(struct PBitMap *front,UWORD width,UWORD height)
     previous=AllocVec(size,MEMF_ANY);
     if (!frame.pix || !previous) goto fail;
     owned=!(board.flags & PBF_SHADOW) || !front->inVram || front->w<width || front->h<height;
-    off=owned ? vram_alloc(size,front->fmt,pitch,width,height) : (LONG)front->vramOff;
+    /* hidden screens move to fast RAM to make room (a 2 MB card holds
+     * the shown screen, its composed copy and little else) */
+    off=owned ? vram_get_size(size,front->fmt,pitch,width,height,front) : (LONG)front->vramOff;
     if (off<0) goto fail;
     frame.w=width;frame.h=height;frame.bpr=pitch;frame.bpp=front->bpp;
     frame.fmt=front->fmt;frame.vramOff=off;frame.inVram=TRUE;
