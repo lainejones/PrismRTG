@@ -1459,3 +1459,39 @@ Opus with 440 KB left after booting (205 KB before); no fast RAM leaves
 Failure, one hang (IBrowse, as before). A second Prism screen next to an
 800x600 16-bit Workbench on a 2 MB card still needs ~1 MB in one piece to
 move a screen off the card; the README says so.
+
+## Other emulators (2026-10-08)
+
+Amiberry 8.3.0 (Ubuntu 24.04 build, run under WSL) and FS-UAE 3.1.66 were set
+up next to WinUAE on the same test disk; WinUAE's UAE RTG card was also tried
+as Zorro II.
+
+- **WinUAE 6.0.3, UAE RTG Zorro II (4 MB) and Zorro III (16 MB)**: `BOARD=UAEGFX`
+  and `BOARD=P96 P96CARD=uaegfx.card` pass tmpltest at 8, 16 and 32 bits and
+  p96test.
+- **Amiberry 8.3.0, UAE RTG Zorro III**: 8 and 16 bits pass everything. At 32
+  bits nearly every tmpltest line fails, with the card's blitter on or off.
+  Narrowed down with small programs on a PrismRTG 640x480 32-bit screen
+  (BGRA32, the same format WinUAE gives): plain long, word and byte accesses to
+  the card's memory read back right, and all 16 MB are there; but data written
+  into the screen's memory - by CopyMem or a plain CPU loop, 256 to 4096 bytes -
+  is now and then replaced afterwards with older contents (the screen's
+  background colour, or zeros), 2-4 copies in 40, at any pointer position. The
+  same program in WinUAE: 0 in 100. Nothing PrismRTG does is involved (the test
+  locks the bitmap and writes the memory itself); it looks like the emulator
+  writing an older copy of the frame back. The test program is in the scratch
+  notes of this session (cmrep.c) and goes with the report to Amiberry.
+- **Found on the way, a PrismRTG bug**: PrismRTG waited for the blitter with
+  WaitBlit() before reading planar memory the blitter may still be drawing (the
+  mask of AreaEnd and Flood, templates). WaitBlit() only waits for the running
+  blit; a fill queued behind others was read half-drawn - in Amiberry the top
+  rows of every area fill. blit_settle() waits for the queue (OwnBlitter,
+  WaitBlit, DisownBlitter; or only WaitBlit when the task owns the blitter).
+  The A4000's earlier "a few pixels missing under a polygon's top corner" was
+  probably the same.
+- **FS-UAE 3.1.66**: the test disk stopped at "Please insert a volume
+  containing LIBS/workbench.library" (the drive mounts; probably how FS-UAE 3.1
+  reads this disk's read-only files). Not followed up.
+- **libretro (RetroArch) Amiberry** keeps the RTG hardware pointer off, so the
+  UAE driver shows no pointer there; a software pointer (part of PR #6) would
+  fix it, as it would on the MiSTer (issue #2).
