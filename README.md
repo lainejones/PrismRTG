@@ -102,7 +102,7 @@ Tested in WinUAE 6.0.3 at 8, 16 and 32 bits (every PrismRTG test and
 | WinUAE 6.0.3, UAE RTG Zorro III or Zorro II | UAE (native), or P96 driver with `P96CARD=uaegfx.card` | Tested at 8, 16 and 32 bits: every test passes |
 | Amiberry 8.3.0 (Linux), UAE RTG | UAE (native) | With Amiberry's defaults every test passes at 8, 16 and 32 bits. With `rtg_nocustom=false` and ZeroCopy on, 32-bit screens lose some of what is drawn ([amiberry#2392](https://github.com/BlitterStudio/amiberry/issues/2392)) - keep `rtg_nocustom` at its default (true) or turn ZeroCopy off |
 | Amiberry inside RetroArch (libretro) | UAE (native) | Not tested. No mouse pointer: the libretro build has no RTG hardware pointer and PrismRTG has no software pointer yet |
-| FS-UAE 3.1 | UAE (native) | Not working yet in a first try (the test machine did not get past booting); not investigated |
+| FS-UAE 3.1.66 (Linux), UAE RTG | UAE (native), or P96 driver with `P96CARD=uaegfx.card` | Tested at 8, 16 and 32 bits: every test passes, both ways. FS-UAE 3.1 cannot open files that are read-only on the host, so a system folder shared from Windows with read-only files will not boot until the attribute is cleared |
 | MiSTer (FPGA), ZZ9000 core | Auto (ZZ9000) | Reported working with no pointer and garbled text in the Shell (issue #2) |
 
 UAE's RTG card needs its hardware pointer ("Hardware sprite emulation" in the

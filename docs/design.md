@@ -1490,8 +1490,12 @@ as Zorro II.
   The A4000's earlier "a few pixels missing under a polygon's top corner" was
   probably the same.
 - **FS-UAE 3.1.66**: the test disk stopped at "Please insert a volume
-  containing LIBS/workbench.library" (the drive mounts; probably how FS-UAE 3.1
-  reads this disk's read-only files). Not followed up.
+  containing LIBS/workbench.library". FS-UAE 3.1 cannot open a file that is
+  read-only on the host (List shows it, opening says "object not found"); three
+  files on the test disk had the Windows read-only attribute. With it cleared,
+  FS-UAE boots, and with its uaegfx.card 3.3 (WinUAE's is 4.0) both
+  `BOARD=UAEGFX` and `BOARD=P96 P96CARD=uaegfx.card` pass tmpltest at 8, 16 and
+  32 bits and p96test, vramcheck 0 of 50, the test chart right on screen.
 - **libretro (RetroArch) Amiberry** keeps the RTG hardware pointer off, so the
   UAE driver shows no pointer there; a software pointer (part of PR #6) would
   fix it, as it would on the MiSTer (issue #2).
