@@ -1,6 +1,7 @@
 # Native UAE RTG candidate
 
-Select the native driver explicitly:
+The native backend is packaged as `LIBS:Prism/UAEGFX.driver`. Select it
+explicitly:
 
 ```text
 Run >RAM:PrismD.log PrismD BOARD=UAEGFX
@@ -53,7 +54,9 @@ candidate. Compatibility with every UAE fork or version is not implied.
 UAE retains the host context and installs interrupt servers during card
 initialization. Ctrl-C removes Prism's display patches after its screens
 and API users close, disables the card interrupt, and switches to native
-Amiga video. The context and task then remain resident until reboot.
+Amiga video. The driver module and its context then remain resident until reboot;
+PrismD itself exits. The final diagnostic is flushed before PrismD closes
+its output.
 The generic adapter and native driver share a claim guard; reboot before
 changing between them or restarting either one.
 

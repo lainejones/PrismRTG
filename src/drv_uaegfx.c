@@ -364,5 +364,12 @@ void UAEGFX_KeepResident(void)
     quiet(resident);
     puts("PrismD: UAE RTG context remains resident until reboot");
     fflush(stdout);
+#ifdef PRISM_DRIVER_MODULE
+    /* The loader may release its output only after our last diagnostic. */
+    {
+        extern void driver_module_done(void);
+        driver_module_done();
+    }
+#endif
     for (;;) Wait(SIGBREAKF_CTRL_C);
 }

@@ -7,14 +7,17 @@
  * screens, bitmaps or the OS display database. Everything a driver does not
  * accelerate, prism.library does on the CPU.
  *
- * Native drivers and the P96 adapter are linked into PrismD. The adapter
- * loads external P96 card libraries and presents the same interface.
+ * PrismD loads native drivers and the P96 adapter as separate modules.
+ * The adapter loads external P96 card libraries behind the same interface.
  */
 #ifndef PRISMBOARD_H
 #define PRISMBOARD_H
 
 #include <exec/types.h>
 #include <libraries/configvars.h>
+
+/* Increment when a callback contract or board layout changes. */
+#define PRISM_BOARD_ABI 1UL
 
 /* Pixel formats, as the 68k sees them in VRAM (byte order in memory). */
 enum PrismFormat {
@@ -120,6 +123,9 @@ struct PrismBoard {
     /* Optional bitmap row layout; NULL keeps the default 8-byte alignment.
      * Drivers using this offer one compatible format per byte depth. */
     ULONG (*bytesPerRow)(struct PrismBoard *b, UWORD w, UWORD h, UBYTE bpp);
+
+    /* Optional Cirrus text-expansion diagnostic after the first mode set. */
+    UBYTE (*textExpand)(struct PrismBoard *b, BOOL *transparent);
 };
 
 #define CURSOR_SIZE 64
