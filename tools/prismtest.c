@@ -31,7 +31,7 @@ struct IntuitionBase *IntuitionBase;
 
 UWORD ZZ9000_FirmwareVersion(struct PrismBoard *b);
 
-static const char version[] __attribute__((used)) = "$VER: PrismTest 1.1b2 (08.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: PrismTest 1.1b3 (08.10.2026)";
 
 #define TEMPLATE "BOARD/K,WIDTH/K/N,HEIGHT/K/N,DEPTH/K/N,SECS/K/N,OFFSET/K,DUMP/S,BLIT/S,XTEST/S"
 enum { A_BOARD, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_OFFSET, A_DUMP, A_BLIT, A_XTEST, A_COUNT };

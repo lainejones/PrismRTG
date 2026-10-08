@@ -27,7 +27,7 @@ unsigned long *__BUFSIZE = &stdioBufSize;
 #elif defined(DRIVER_ZZ9000)
 #define DRIVER_NAME "ZZ9000"
 #endif
-static const char version[] __attribute__((used)) = "$VER: " DRIVER_NAME ".driver 1.1b2 (08.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: " DRIVER_NAME ".driver 1.1b3 (08.10.2026)";
 
 void driver_module_done(void)
 {

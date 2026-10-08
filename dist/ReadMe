@@ -23,6 +23,8 @@ Update or remove: run Install_PrismRTG again.
 
 What goes where
   C:PrismD               the driver; started at boot
+  LIBS:Prism/#?.driver   one module per kind of board; PrismD loads the
+                         one it needs
   C:PrismSetup           the installer's helper (card detection)
   C:PrismProbe           lists the expansion boards PrismRTG can drive
   DEVS:Monitors/Prism    starts PrismD before Workbench opens
@@ -33,6 +35,14 @@ Using it
   Reboot, open Prefs/ScreenMode and choose a PRISM: mode (8bit or 16bit).
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
+
+New in 1.1 beta 3
+  Needs Kickstart 3.1 or newer (3.0 never worked; PrismD now says so).
+  The board drivers are separate modules in LIBS:Prism, drawing goes
+  through format-aware operations a driver can decline or fail safely,
+  and Picasso96 card drivers can bring their own memory handling - all
+  Stefan Reinauer's work, with speed and robustness changes on top.
+  Software pointer for boards without a working hardware pointer.
 
 New in 1.1 beta (experimental - please report how it goes)
   Two more boards, chosen by hand: Board in PrismPrefs, or BOARD= in

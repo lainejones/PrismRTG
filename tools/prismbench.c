@@ -27,7 +27,7 @@ struct GfxBase *GfxBase;
 struct IntuitionBase *IntuitionBase;
 struct Device *TimerBase;
 
-static const char version[] __attribute__((used)) = "$VER: PrismBench 1.1b2 (08.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: PrismBench 1.1b3 (08.10.2026)";
 
 #define TEMPLATE "MODEID/K,DEPTH/K/N,LIST/S"
 
