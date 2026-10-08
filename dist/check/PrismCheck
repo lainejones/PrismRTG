@@ -1,0 +1,110 @@
+; PrismCheck - collect a report about PrismRTG on this Amiga.
+; Double-click its icon, or in a Shell: CD to this drawer, then Execute PrismCheck
+; The report goes to RAM:PrismCheck-report.txt and is copied into this drawer.
+; Attach it to an issue at https://github.com/lainejones/PrismRTG/issues
+FailAt 21
+If NOT EXISTS Tools/tmpltest
+  Echo "PrismCheck: start it from its own drawer (the Tools drawer is not here)."
+  Quit 10
+EndIf
+
+Echo "PrismCheck - collecting a report for PrismRTG."
+Echo "It opens and closes a few test screens; that is normal. About 2 to 5 minutes."
+Echo ""
+
+Echo >RAM:PrismCheck-report.txt "PrismCheck report"
+Date >>RAM:PrismCheck-report.txt
+
+Echo "System..."
+Echo >>RAM:PrismCheck-report.txt ""
+Echo >>RAM:PrismCheck-report.txt "=== System"
+Version >>RAM:PrismCheck-report.txt
+Version >>RAM:PrismCheck-report.txt exec.library
+Version >>RAM:PrismCheck-report.txt graphics.library
+Version >>RAM:PrismCheck-report.txt intuition.library
+Version >>RAM:PrismCheck-report.txt icon.library
+If EXISTS C:CPU
+  CPU >>RAM:PrismCheck-report.txt
+EndIf
+Avail >>RAM:PrismCheck-report.txt
+
+Echo "Boards..."
+Echo >>RAM:PrismCheck-report.txt ""
+Echo >>RAM:PrismCheck-report.txt "=== Expansion boards"
+Tools/PrismProbe >>RAM:PrismCheck-report.txt
+
+Echo "PrismRTG install..."
+Echo >>RAM:PrismCheck-report.txt ""
+Echo >>RAM:PrismCheck-report.txt "=== PrismRTG"
+Tools/prismstate >>RAM:PrismCheck-report.txt
+If EXISTS C:PrismD
+  Version >>RAM:PrismCheck-report.txt C:PrismD FULL
+Else
+  Echo >>RAM:PrismCheck-report.txt "C:PrismD is not there"
+EndIf
+If EXISTS DEVS:Monitors/Prism
+  Version >>RAM:PrismCheck-report.txt DEVS:Monitors/Prism
+EndIf
+Echo >>RAM:PrismCheck-report.txt "Monitor files:"
+List >>RAM:PrismCheck-report.txt DEVS:Monitors LFORMAT "  %n"
+Echo >>RAM:PrismCheck-report.txt "ENVARC:Prism.prefs:"
+If EXISTS ENVARC:Prism.prefs
+  Type >>RAM:PrismCheck-report.txt ENVARC:Prism.prefs
+Else
+  Echo >>RAM:PrismCheck-report.txt "  (none - PrismRTG's defaults)"
+EndIf
+If EXISTS LIBS:Picasso96/rtg.library
+  Echo >>RAM:PrismCheck-report.txt "Picasso96 is installed too:"
+  Version >>RAM:PrismCheck-report.txt LIBS:Picasso96/rtg.library FULL
+EndIf
+Echo >>RAM:PrismCheck-report.txt "Front screen and pointer:"
+Tools/prismdiag >>RAM:PrismCheck-report.txt
+Tools/lastalert >>RAM:PrismCheck-report.txt
+
+Echo "Drawing tests: 8 bits..."
+Echo >>RAM:PrismCheck-report.txt ""
+Echo >>RAM:PrismCheck-report.txt "=== Drawing tests (every line should end in 0 wrong)"
+Echo >>RAM:PrismCheck-report.txt "--- 8 bits, 640x480"
+Tools/tmpltest >>RAM:PrismCheck-report.txt MODEID=$7A000001
+Echo "Drawing tests: 16 bits..."
+Echo >>RAM:PrismCheck-report.txt "--- 16 bits, 640x480"
+Tools/tmpltest >>RAM:PrismCheck-report.txt MODEID=$7A000101
+Echo "Drawing tests: 24 bits..."
+Echo >>RAM:PrismCheck-report.txt "--- 24 bits, 640x480 (not every card has it)"
+Tools/tmpltest >>RAM:PrismCheck-report.txt MODEID=$7A000201
+Echo "Drawing tests: 32 bits..."
+Echo >>RAM:PrismCheck-report.txt "--- 32 bits, 640x480 (not every card has it)"
+Tools/tmpltest >>RAM:PrismCheck-report.txt MODEID=$7A000301
+
+Echo "Picasso96 API test..."
+Echo >>RAM:PrismCheck-report.txt ""
+Echo >>RAM:PrismCheck-report.txt "=== Picasso96 API test"
+Tools/p96test >>RAM:PrismCheck-report.txt
+
+Echo "Video memory test..."
+Echo >>RAM:PrismCheck-report.txt ""
+Echo >>RAM:PrismCheck-report.txt "=== Video memory (every result should be 0 of 40 copies wrong)"
+Echo >>RAM:PrismCheck-report.txt "--- 16 bits"
+Tools/vramcheck >>RAM:PrismCheck-report.txt $7A000101 8
+Echo >>RAM:PrismCheck-report.txt "--- 32 bits"
+Tools/vramcheck >>RAM:PrismCheck-report.txt $7A000301 8
+
+Echo ""
+Ask "Also measure drawing speed (another 2 to 5 minutes)? (y/n)"
+If WARN
+  Echo "Speed: 8 bits..."
+  Echo >>RAM:PrismCheck-report.txt ""
+  Echo >>RAM:PrismCheck-report.txt "=== Speed (PrismBench)"
+  Tools/PrismBench >>RAM:PrismCheck-report.txt MODEID=$7A000001
+  Echo "Speed: 16 bits..."
+  Tools/PrismBench >>RAM:PrismCheck-report.txt MODEID=$7A000101
+EndIf
+
+Echo >>RAM:PrismCheck-report.txt ""
+Echo >>RAM:PrismCheck-report.txt "=== End of report"
+Copy >NIL: RAM:PrismCheck-report.txt ""
+Echo ""
+Echo "Done. The report is RAM:PrismCheck-report.txt"
+Echo "(and PrismCheck-report.txt in this drawer, if it could be written here)."
+Echo "Please attach it to an issue at github.com/lainejones/PrismRTG/issues"
+Echo "and say in a few words what you saw on the screen."

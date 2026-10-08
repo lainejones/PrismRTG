@@ -57,8 +57,9 @@ int main(int argc, char **argv)
     for (i = 0; i < 8192; i++)
         src[i] = (UBYTE)(i * 7 + 3);
     if (!(s = OpenScreenTags(NULL, SA_DisplayID, id, SA_Depth, 8, SA_Quiet, TRUE, TAG_END))) {
-        puts("no screen");
-        return 10;
+        printf("can't open mode $%08lx - the card or its settings don't offer it (not an error)\n",
+               (unsigned long)id);
+        return 5;
     }
     h = LockBitMapTags(s->RastPort.BitMap, LBMI_BASEADDRESS, (ULONG)&base, LBMI_BYTESPERROW, (ULONG)&bpr, TAG_END);
     for (how = 0; how < 3; how++) {

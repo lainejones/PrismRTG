@@ -1,0 +1,34 @@
+PrismCheck - a report about PrismRTG on your Amiga
+==================================================
+
+If PrismRTG misbehaves on your machine, or you try it on hardware or an
+emulator it has not been tested on, PrismCheck collects what is needed to
+find out why - in one text file you can attach to a GitHub issue.
+
+Use
+  1. Install PrismRTG and reboot, so that PrismD is running.
+  2. Double-click PrismCheck (or in a Shell: CD to this drawer, then
+     Execute PrismCheck).
+  3. It opens and closes a few test screens for 2 to 5 minutes, then asks
+     whether to measure drawing speed too (another few minutes - say yes if
+     you can).
+  4. The report is RAM:PrismCheck-report.txt, and a copy is put in this
+     drawer. Attach it to an issue at
+         https://github.com/lainejones/PrismRTG/issues
+     and say in a few words what you saw on the screen.
+
+What it does
+  Reads: the OS and library versions, CPU, memory, expansion boards,
+  PrismRTG's version and settings, the monitor files, whether Picasso96 is
+  installed too, the front screen and pointer.
+  Tests: PrismRTG's drawing tests at 8, 16, 24 and 32 bits (each line should
+  end in "0 wrong"), the Picasso96 API test, and a video-memory test
+  (vramcheck - should say "0 of 40 copies wrong").
+  Changes nothing: it writes only the report, in RAM: and in this drawer.
+
+If something goes wrong half way (the Amiga hangs), RAM:PrismCheck-report.txt
+is lost with the reset - in that case, say which step was on the screen.
+
+Tools/ holds the test programs; each can also be run on its own.
+
+Licence: GNU General Public License version 3. (c) 2026 Laine Jones.

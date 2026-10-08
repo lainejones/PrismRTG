@@ -42,7 +42,7 @@ int main(void)
         printf("PrismProbe: no expansion.library\n");
         return 20;
     }
-    printf("PrismProbe 0.1 - expansion boards\n");
+    printf("PrismProbe - expansion boards\n");
     while ((cd = FindConfigDev(cd, -1, -1))) {
         const char *k = known(cd->cd_Rom.er_Manufacturer, cd->cd_Rom.er_Product);
         printf(" %5u/%-3u @ $%08lx size $%08lx %s%s\n",

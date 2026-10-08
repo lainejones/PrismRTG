@@ -51,7 +51,9 @@ $CC $CFLAGS -s -o out/trapwatch tools/trapwatch.c
 $CC $CFLAGS -s -o out/tmpltest tools/tmpltest.c
 $CC $CFLAGS -s -o out/stftest tools/stftest.c
 $CC $CFLAGS -s -o out/vramcheck tools/vramcheck.c
+$CC $CFLAGS -s -o out/prismstate tools/prismstate.c
 
 sh tools/mkpkg.sh
+sh tools/mkcheck.sh
 ls -l out
 echo "Done."

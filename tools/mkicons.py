@@ -6,6 +6,7 @@ Prism's own icons: a glass prism splitting a white beam into a spectrum.
 
     mkicons.py prefs  out/pkg/Prism/PrismPrefs.info   # prism + a settings slider
     mkicons.py prism  out/pkg/Prism/Prism.info        # the prism alone (monitor file)
+    mkicons.py check  dist/check/PrismCheck.info      # PrismCheck (IconX project)
     mkicons.py prefs --png preview.png                # enlarged colour preview
 
 Colour (OS 3.5+) icons with a 4-colour classic image as the fallback, built
@@ -148,25 +149,44 @@ def draw_slider(g, y):
         put(g, x, y + 2, 10)
 
 
+def draw_tick(g):
+    """a green tick in the lower right corner, black-edged"""
+    pts = [(31, 30), (32, 31), (33, 32), (34, 33), (35, 32), (36, 31), (37, 30), (38, 29),
+           (39, 28), (40, 27), (41, 26), (42, 25), (43, 24)]
+    for x, y in pts:
+        for dy in (-1, 0, 1, 2):
+            put(g, x, y + dy, 1 if dy in (-1, 2) else 9)
+
+
 def build(kind):
     g = new()
     if kind == 'prefs':
         draw_prism(g, 1, 27)
         draw_slider(g, 32)
+    elif kind == 'check':
+        draw_prism(g, 1, 30)
+        draw_tick(g)
     else:
         draw_prism(g, 4, 34)
     return g
 
 
 def main():
-    if len(sys.argv) < 3 or sys.argv[1] not in ('prefs', 'prism'):
+    if len(sys.argv) < 3 or sys.argv[1] not in ('prefs', 'prism', 'check'):
         print(__doc__)
         return 1
     g = build(sys.argv[1])
     if sys.argv[2] == '--png':
         iconlib.write_png(sys.argv[3], g, PALETTE, W, H, T)
         return 0
-    open(sys.argv[2], 'wb').write(iconlib.build_info(g, PALETTE, PLANAR_MAP, W, H, T))
+    if sys.argv[1] == 'check':
+        # PrismCheck: a project icon that runs the script through IconX, in a
+        # window that stays open at the end so the result can be read
+        open(sys.argv[2], 'wb').write(iconlib.build_info(
+            g, PALETTE, PLANAR_MAP, W, H, T, icon_type=4, default_tool='C:IconX',
+            tool_types=['WINDOW=CON:20/20/600/220/PrismCheck/CLOSE/WAIT']))
+    else:
+        open(sys.argv[2], 'wb').write(iconlib.build_info(g, PALETTE, PLANAR_MAP, W, H, T))
     return 0
 
 
