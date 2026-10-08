@@ -1585,3 +1585,21 @@ renderer redraws on the CPU. Merged with three changes on top:
 
 Still slower than main: 16-bit CPU lines (Line 390x60, -13%), as in #6
 itself - not looked into yet.
+
+## Memory pools, shadow spans, UAE planar probe (#9, 2026-10-08)
+
+Stefan Reinauer's #9, rebased onto main (after #6 with the fast paths):
+P96 card drivers may bring their own VRAM allocation and address
+translation; boards whose formats need a memory-mode switch, a displaced
+aperture or no direct access run in shadow mode again, now uploading only
+the changed span of each row (compared with the last transfer, which also
+catches writes through pointers clients kept) and reading back only the
+rows an operation touched. The UAE driver probes whether UAE's planar hooks
+work, in saved scratch VRAM, before using them.
+
+WinUAE: tmpltest/p96test pass on the Picasso II+, UAEGFX and P96 adapter
+boxes, PrismCheck on the Kickstart 3.1 box matches main; 68030 + Picasso II+
+speed unchanged from #6. P96 adapter on uaegfx.card (linear, so no shadow
+mode): unchanged, except planar blits 23/s -> 1432/s from the probe. Shadow
+mode itself has no test box yet - it needs a P96 card driver with a banked
+or displaced aperture.

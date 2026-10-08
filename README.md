@@ -337,7 +337,8 @@ noted in every commit. With thanks to:
 
 * **Stefan Reinauer** - the build fixes (#3), the P96 card-driver adapter
   (#4), the native UAE RTG driver (#5), the format-aware surface operations
-  (#6) and the loadable board-driver modules (#8).
+  (#6), the loadable board-driver modules (#8) and the P96 memory pools,
+  shadow transfers and UAE planar probe (#9).
 * **Dimitris Panokostas** (midwan, author of Amiberry) - reviewed the UAE
   driver and found its `SetPanning` / `BitMapExtra` bug (#5), and made
   Amiberry's RTG hardware pointer the default so PrismRTG shows a pointer
