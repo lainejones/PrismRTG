@@ -1013,7 +1013,7 @@ Picasso96/CyberGraphX) sit in `DH0:Apps/AKLibs`.
 | WBsteroids | true-colour intro and scroller in a Workbench window (`docs/app-wbsteroids.png`) |
 | Directory Opus 4 | own 800x600 16-bit screen next to Workbench (paging), listers, icon requester, clean quit (`docs/app-dopus4.png`) |
 | NetSurf 68k | own 16-bit screen, anti-aliased UI, local page with a PNG (`docs/app-netsurf.png`) |
-| PerfectPaint 2.93 | does NOT run - see below |
+| PerfectPaint 2.93 | does NOT run - also not with Picasso96 (see "PerfectPaint: not PrismRTG") |
 | ChaosPro, ScummVM RTG, AmiJeweled | not testable here (font from AmiKit's prefs missing; 68060-only build; Workbench start only) |
 
 **SetRast bug (fixed).** `SetRast` on a window's RastPort filled the whole
@@ -1495,3 +1495,16 @@ as Zorro II.
 - **libretro (RetroArch) Amiberry** keeps the RTG hardware pointer off, so the
   UAE driver shows no pointer there; a software pointer (part of PR #6) would
   fix it, as it would on the MiSTer (issue #2).
+
+## PerfectPaint: not PrismRTG (2026-10-08)
+
+The freeze after "Go" (see 2026-10-04) happens without PrismRTG too. On the
+same emulated machine (68030 + 68882, OS 3.2.3) with WinUAE's UAE RTG card
+and real Picasso96 (the free 2.0 that comes with AmiKit, rtg.library
+40.3994) instead of PrismRTG, PerfectPaint 2.93 shows its launcher, takes
+the "UAE: 800x600 16bit" mode, and after "Go" the emulated CPU halts
+(WinUAE: HALT) at the same point. Without an RTG system it cannot be
+started at all (its mode requester is the RTG system's). The blitter-queue
+fix of 1.1 beta 2 does not change it with PrismRTG either. So it is
+PerfectPaint on this machine, not PrismRTG; closed. Not tried: the current
+Picasso96 release.
