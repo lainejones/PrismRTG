@@ -660,8 +660,8 @@ PicassoII+, GBA-PII++), answering through ENV:PrismCard / PrismCardName /
 PrismP96Mon; `WBMODE=<slot>` writes ENVARC:Sys/screenmode.prefs.
 ENV:PrismFakeCard=1..4 is a test hook for machines without a card.
 
-The script: checks OS 3.0+/68020+, offers Update/Remove when installed,
-warns when no card (or a Zorro II ZZ9000) is found, copies the files, asks
+The script: checks Kickstart 3.1+ (graphics.library 40) and a 68020+, offers
+Update/Remove when installed, warns when no card (or a Zorro II ZZ9000) is found, copies the files, asks
 before moving the P96 monitor to SYS:Storage/Monitors (name noted in
 ENVARC:Prism.p96monitor), backs up the screen mode to
 screenmode.prefs.before-prism and sets a Prism Workbench mode. Remove undoes
@@ -1512,3 +1512,39 @@ started at all (its mode requester is the RTG system's). The blitter-queue
 fix of 1.1 beta 2 does not change it with PrismRTG either. So it is
 PerfectPaint on this machine, not PrismRTG; closed. Not tried: the current
 Picasso96 release.
+
+## Kickstart 3.1 and 3.0 (2026-10-08)
+
+Test box `prism os31` / `prism os30`: the Picasso II+ box with the OS 3.0
+Workbench disks (Workbench 39.29) under Kickstart 3.1 (40.68) or 3.0
+(39.106).
+
+Kickstart 3.1: the Installer, the boot onto the card and PrismCheck all
+pass (54 drawing lines "0 wrong", p96test 0 of 22, VRAM 0 of 40; no 32-bit
+on a 2 MB Picasso II). The 3.0 Workbench disks don't matter.
+
+Kickstart 3.0 never worked, 1.0.2 included: the machine resets about five
+seconds after Workbench comes up on the card, every boot, and exec's alert
+names IPrefs. What was found on the way:
+- PrismD copied the default MonitorSpec whole, including its
+  DisplayInfoDataBase list and semaphore, whose pointers then pointed into
+  graphics' own structure. Fixed for every Kickstart: the copy gets a list
+  and a semaphore of its own.
+- graphics 39's MrgCop and LoadView call the View's monitor (offsets 148 and
+  152, ms_MrgCop and ms_LoadView; the default monitor's are $FA9E52 and
+  $FACA40). With a Prism monitor those routines see the Prism viewport and
+  run the card's VRAM as code (WinUAE logs "B-Trap FFFF at 00600000").
+  Hooks that hide the Prism viewports from them stop that, but IPrefs still
+  dies later, at interrupt time (trapwatch sees nothing), and with the
+  hooks left empty Intuition waits for ever on its own busy flag (offset
+  2874 of IntuitionBase, polled with WaitTOF while holding the View lock).
+- WriteChunkyPixels (graphics -1056) is V40: patching it on 3.0 writes in
+  front of the jump table.
+
+So PrismD now opens graphics/intuition V40 and says "needs Kickstart 3.1 or
+newer" (Workbench stays on its native screen), and the Installer checks the
+Kickstart's graphics.library, not exec. Helpers written for this hunt
+(scratchpad, not in the repo): whowait (waiting tasks + semaphore owners),
+waitsem (the semaphore a task sleeps on, from its SemaphoreRequest),
+stackof (return addresses on a waiting task's stack, by segment),
+vbcount (a counting VERTB server), romwho.py (ROM offset -> module).

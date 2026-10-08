@@ -27,7 +27,8 @@ the native drivers do not need them.
 | GVP Spectrum 28/24, Zorro II | Cirrus GD5428 | WinUAE only | Emulation only. 8/16-bit, 24-bit 640x480. |
 | MNT ZZ9000, Zorro II mode | | none | Untested. No blitter or pointer support in this mode. |
 
-Needs AmigaOS 3.0 or newer and a 68020 or better. No FPU needed.
+Needs Kickstart 3.1 or newer (the Workbench disks may be 3.0) and a 68020 or
+better. No FPU needed. On Kickstart 3.0 PrismD does not start.
 
 ## How small a machine
 

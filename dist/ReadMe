@@ -8,7 +8,7 @@ A from-scratch retargetable-graphics system for two boards:
 
 It takes the place of Picasso96: the two cannot both be active on one
 Amiga, and PrismRTG does not start while Picasso96's monitor files are in
-DEVS:Monitors. Needs OS 3.0+ and a 68020 or better (no FPU needed).
+DEVS:Monitors. Needs Kickstart 3.1+ and a 68020 or better (no FPU needed).
 The driver takes about 330 KB of fast RAM (none of chip RAM); a Workbench
 at 800x600 16-bit with MUI and a network stack runs in 2 MB chip + 2 MB
 fast, and 4 MB fast leaves room for the usual programs.

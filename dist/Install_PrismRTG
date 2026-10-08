@@ -4,7 +4,7 @@
 ; PrismRTG - Installer script
 ; RTG (graphics card) software for AmigaOS 3.x:
 ;   Village Tronic Picasso II / GBAPII++ (Zorro II) and MNT ZZ9000.
-; Needs the standard Installer, AmigaOS 3.0 or newer and a 68020 or better.
+; Needs the standard Installer, Kickstart 3.1 or newer and a 68020 or better.
 ; Double-click Install_PrismRTG, or from a Shell in this drawer:
 ;     Installer Install_PrismRTG
 ; Run it again to update PrismRTG or to remove it.
@@ -16,8 +16,8 @@
 (complete 0)
 
 ; ---- the machine ---------------------------------------------------------
-(if (< (/ (getversion "exec.library" (resident)) 65536) 39)
-    (abort "PrismRTG needs AmigaOS 3.0 or newer."))
+(if (< (/ (getversion "graphics.library" (resident)) 65536) 40)
+    (abort "PrismRTG needs Kickstart 3.1 or newer (graphics.library 40)."))
 (set cpu (database "cpu"))
 (if (or (= cpu "68000") (= cpu "68010"))
     (abort "PrismRTG needs a 68020 or better processor (this Amiga has a " cpu ")."))

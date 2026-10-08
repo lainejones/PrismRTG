@@ -2023,12 +2023,14 @@ int main(void)
         PrintFault(IoErr(), "PrismD");
         return 20;
     }
-    GfxBase = (struct GfxBase *)OpenLibrary("graphics.library", 39);
-    IntuitionBase = (struct IntuitionBase *)OpenLibrary("intuition.library", 39);
+    /* Kickstart 3.0's graphics drives the display differently (its MrgCop
+     * and LoadView call into the monitor), and PrismRTG crashes it there. */
+    GfxBase = (struct GfxBase *)OpenLibrary("graphics.library", 40);
+    IntuitionBase = (struct IntuitionBase *)OpenLibrary("intuition.library", 40);
     UtilityBase = OpenLibrary("utility.library", 39);
     ExpansionBase = (struct ExpansionBase *)OpenLibrary("expansion.library", 37);
     if (!GfxBase || !IntuitionBase || !UtilityBase || !ExpansionBase) {
-        printf("PrismD: needs OS 3.0 or newer\n");
+        printf("PrismD: needs Kickstart 3.1 or newer\n");
         goto out;
     }
     if (FindSemaphore(PRISM_SEMNAME)) {
@@ -2104,9 +2106,18 @@ int main(void)
         board.setSwitch(&board, FALSE);
         cardMode = &modes[0];
     }
+    /* A copy of the system's monitor, but with a list and a semaphore of
+     * its own: copied, they would point into graphics' own MonitorSpec. */
     CopyMem(GfxBase->default_monitor, &prismMonitor, sizeof(prismMonitor));
     prismMonitor.ms_Node.xln_Name = monName;
     prismMonitor.ms_OpenCount = 0;
+    {
+        struct List *l = &prismMonitor.DisplayInfoDataBase;
+        l->lh_Head = (struct Node *)&l->lh_Tail;
+        l->lh_Tail = NULL;
+        l->lh_TailPred = (struct Node *)&l->lh_Head;
+    }
+    InitSemaphore(&prismMonitor.DisplayInfoDataBaseSemaphore);
 
     STAGE("board found, modes built");
     printf("PrismD: %s, %lu KB VRAM, modes:\n", board.name,
