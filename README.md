@@ -275,6 +275,15 @@ blitter off.
 * On the A2000 one unexplained crash was seen shortly after a cold boot;
   the boot failsafe recovered it and it has not been reproduced.
 
+## Reporting a problem
+
+Download **PrismCheck** from the release page and run it on the Amiga (double-click it
+with PrismRTG running). In 2 to 5 minutes it records the system, the card,
+PrismRTG's settings and modes, and runs every drawing test, the Picasso96 API test
+and `vramcheck` - into one text file. Attach that file to an
+[issue](https://github.com/lainejones/PrismRTG/issues) with a few words on what
+you saw on the screen.
+
 ## Build
 
 Needs amiga-gcc (Bebbo) under WSL or Linux:

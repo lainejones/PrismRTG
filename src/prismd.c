@@ -169,7 +169,7 @@ struct ModeRec {
     UBYTE pad[128];
 };
 
-static const char version[] __attribute__((used)) = "$VER: PrismD 1.1b1 (07.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: PrismD 1.1b2 (08.10.2026)";
 
 #define MAX_MODES 32
 static struct ModeRec modes[MAX_MODES];

@@ -62,4 +62,9 @@ If something goes wrong
   256-colour screens with red and blue exchanged (a real Piccolo or
   Spectrum may do this): tick "Swap red/blue" in PrismPrefs.
 
+Reporting a problem
+  Download PrismCheck from the same release page, run it, and attach
+  the report it writes to an issue at
+  https://github.com/lainejones/PrismRTG/issues
+
 Licence: GNU General Public License version 3. (c) 2026 Laine Jones.
