@@ -143,8 +143,15 @@ pin), so there is no automatic monitor detection: use the Test button.
 ## Speed against Picasso96
 
 Same machine, same card, same benchmark (`PrismBench`), operations per
-second, higher is better. Picasso96 is rtg.library 43.760 with each card's
-own driver. Run-to-run noise is about 5%.
+second, higher is better. Picasso96 is the current release from Individual
+Computers (rtg.library 43.760 of 18 December 2025) with each card's own
+driver. Run-to-run noise is about 5%.
+
+These are a handful of drawing operations on two cards, and they say nothing
+about everything else Picasso96 does and PrismRTG does not: a long list of
+cards, picture-in-picture, years of tested compatibility. Picasso96 may well
+make different trade-offs for good reasons. `PrismBench` is included, so
+anyone can repeat the measurements on their own machine.
 
 ### A4000, 68060, ZZ9000 - 800x600, 8-bit
 
