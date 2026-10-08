@@ -50,6 +50,7 @@ $CC $CFLAGS -s -o out/p96test tools/p96test.c
 $CC $CFLAGS -s -o out/trapwatch tools/trapwatch.c
 $CC $CFLAGS -s -o out/tmpltest tools/tmpltest.c
 $CC $CFLAGS -s -o out/stftest tools/stftest.c
+$CC $CFLAGS -s -o out/vramcheck tools/vramcheck.c
 
 sh tools/mkpkg.sh
 ls -l out

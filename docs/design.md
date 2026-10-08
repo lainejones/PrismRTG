@@ -1479,8 +1479,8 @@ as Zorro II.
   background colour, or zeros), 2-4 copies in 40, at any pointer position. The
   same program in WinUAE: 0 in 100. Nothing PrismRTG does is involved (the test
   locks the bitmap and writes the memory itself); it looks like the emulator
-  writing an older copy of the frame back. The test program is in the scratch
-  notes of this session (cmrep.c) and goes with the report to Amiberry.
+  writing an older copy of the frame back. The test program is
+  `tools/vramcheck` (`vramcheck $7A000301 8`, with PrismD running).
 - **Found on the way, a PrismRTG bug**: PrismRTG waited for the blitter with
   WaitBlit() before reading planar memory the blitter may still be drawing (the
   mask of AreaEnd and Flood, templates). WaitBlit() only waits for the running
