@@ -20,6 +20,7 @@
 #include "p96sdk/boardinfo.h"
 #pragma pack(pop)
 #include "prismboard.h"
+#include "cardcall.h"
 
 /* GCC 13 otherwise overwrites the a0 argument in indirect tail calls. */
 #pragma GCC optimize ("no-optimize-sibling-calls")
@@ -27,6 +28,9 @@ _Static_assert(offsetof(struct BoardInfo, SetGC) == 294, "UAE BoardInfo ABI");
 _Static_assert(offsetof(struct BoardInfo, MouseImage) == 1390, "UAE sprite ABI");
 _Static_assert(sizeof(struct CLUTEntry) == 3, "UAE palette ABI");
 _Static_assert(offsetof(struct ModeInfo, PixelClock) == 44, "UAE mode ABI");
+/* WinUAE and Amiberry take the shown bitmap's size from here in SetPanning */
+_Static_assert(offsetof(struct BitMapExtra, Width) == 40, "UAE panning ABI");
+_Static_assert(offsetof(struct BitMapExtra, Height) == 42, "UAE panning ABI");
 
 /* Shared with the generic adapter: either path may claim UAE, never both. */
 #define UAE_OWNER "prism.p96.card"
@@ -34,6 +38,7 @@ _Static_assert(offsetof(struct ModeInfo, PixelClock) == 44, "UAE mode ABI");
 struct UAEPriv {
     struct BoardInfo bi;
     struct ModeInfo mode;
+    struct BitMapExtra shown;   /* bi.BitMapExtra: the bitmap on display */
     struct Library *firmware;
     struct SignalSemaphore owner;
     STRPTR tooltypes[1];
@@ -80,10 +85,24 @@ static BOOL uae_check(struct PrismBoard *b, struct PrismMode *m)
     return TRUE;
 }
 
+/* WinUAE's and Amiberry's SetPanning take the virtual width and height -
+ * and from them the row length - from bi->BitMapExtra, not from d0. Left
+ * NULL, they read exception vectors at 0x28 and the display comes out with
+ * the wrong stride (found by Dimitris Panokostas, PR #5). */
 static void uae_pan(struct PrismBoard *b, ULONG offset)
 {
     struct UAEPriv *p = b->priv;
+    struct BitMapExtra *x = &p->shown;
     p->bi.XOffset = p->bi.YOffset = 0;
+    memset(x, 0, sizeof(*x));
+    x->BoardInfo = &p->bi;
+    x->Width = p->mode.Width;
+    x->Height = p->mode.Height;
+    x->RenderInfo.Memory = b->vram + offset;
+    x->RenderInfo.BytesPerRow = uae_pitch(b, p->mode.Width, p->mode.Height,
+                                          (p->mode.Depth + 7) / 8);
+    x->RenderInfo.RGBFormat = p->bi.RGBFormat;
+    p->bi.BitMapExtra = x;
     p->bi.SetPanning(&p->bi, b->vram + offset, p->mode.Width, p->mode.Height,
                     0, 0, p->bi.RGBFormat);
 }
@@ -242,6 +261,14 @@ static void quiet(struct UAEPriv *p)
 static void uae_shutdown(struct PrismBoard *b) { quiet(b->priv); }
 static void soft_interrupt(void) { __asm__ volatile ("moveq #0,%%d0" : : : "d0"); }
 
+/* By hand: NewMinList() is exec V45 (OS 3.2), and Prism runs on 3.0 */
+static void init_list(struct MinList *l)
+{
+    l->mlh_Head = (struct MinNode *)&l->mlh_Tail;
+    l->mlh_Tail = NULL;
+    l->mlh_TailPred = (struct MinNode *)&l->mlh_Head;
+}
+
 BOOL UAEGFX_Probe(struct PrismBoard *b)
 {
     static const UBYTE formats[] = { PF_CLUT8, PF_RGB565BE, PF_BGR565LE,
@@ -272,11 +299,11 @@ BOOL UAEGFX_Probe(struct PrismBoard *b)
     bi->ExecBase = SysBase; bi->UtilBase = UtilityBase;
     bi->CardBase = (struct CardBase *)lib;
     InitSemaphore(&bi->BoardLock);
-    NewMinList(&bi->ResolutionsList);
-    NewMinList(&bi->SpecialFeatures);
-    NewMinList(&bi->BitMapList);
-    NewMinList(&bi->MemList);
-    NewMinList(&bi->WaitQ);
+    init_list(&bi->ResolutionsList);
+    init_list(&bi->SpecialFeatures);
+    init_list(&bi->BitMapList);
+    init_list(&bi->MemList);
+    init_list(&bi->WaitQ);
     bi->SoftInterrupt.is_Node.ln_Type = NT_INTERRUPT;
     bi->SoftInterrupt.is_Node.ln_Name = (STRPTR)"Prism UAE RTG";
     bi->SoftInterrupt.is_Data = bi; bi->SoftInterrupt.is_Code = soft_interrupt;
@@ -292,14 +319,11 @@ BOOL UAEGFX_Probe(struct PrismBoard *b)
     /* UAE writes its retained BoardInfo pointer even if FindCard fails.
      * Keep the context from this point onward, including error paths. */
     resident = p;
-    if (!((BOOL (*)(struct BoardInfo * __asm("a0"), struct Library * __asm("a6")))
-           ((UBYTE *)lib - 30))(bi, lib)) {
+    if (!card_FindCard(lib, bi, NULL)) {
         puts("PrismD: UAE RTG memory is unavailable or already claimed");
         return FALSE;
     }
-    p->initialized = ((BOOL (*)(struct BoardInfo * __asm("a0"), STRPTR * __asm("a1"),
-                                struct Library * __asm("a6")))((UBYTE *)lib - 36))
-                                (bi, p->tooltypes, lib);
+    p->initialized = card_InitCard(lib, bi, p->tooltypes);
     if (!p->initialized) { puts("PrismD: UAE RTG initialization failed"); return FALSE; }
     if (bi->SetInterrupt) bi->SetInterrupt(bi, FALSE);
     if (!bi->MemoryBase || bi->MemorySize < 65536 || !bi->SetGC || !bi->SetDAC ||

@@ -25,6 +25,7 @@
 #include "p96sdk/boardinfo.h"
 #pragma pack(pop)
 #include "prismboard.h"
+#include "cardcall.h"
 
 /* amiga-gcc 13 can put an indirect tail-call target in a0, overwriting
  * the BoardInfo argument. Keep register-ABI calls as ordinary calls. */
@@ -689,18 +690,14 @@ BOOL P96_Probe(struct PrismBoard *b, const char *card, const char *monitor)
     if (!claimed) AddSemaphore(&p->owner);
     Permit();
     if (claimed) goto fail;
-    claimed = ((BOOL (*)(struct BoardInfo * __asm("a0"), STRPTR * __asm("a1"),
-                         struct Library * __asm("a6")))((UBYTE *)p->card - 30))
-                         (&p->bi, tt, p->card);
+    claimed = card_FindCard(p->card, &p->bi, tt);
     if (!claimed) {
         RemSemaphore(&p->owner);
         puts("PrismD: P96 driver found no unclaimed card");
         goto fail;
     }
     resident = p;
-    p->initialized = ((BOOL (*)(struct BoardInfo * __asm("a0"), STRPTR * __asm("a1"),
-                               struct Library * __asm("a6")))((UBYTE *)p->card - 36))
-                               (&p->bi, tt, p->card);
+    p->initialized = card_InitCard(p->card, &p->bi, tt);
     if (!p->initialized) {
         puts("PrismD: P96 card initialization failed");
         return FALSE;
