@@ -35,6 +35,23 @@
 #include <string.h>
 #include "prismint.h"
 
+/* WaitBlit() only waits for the blit that is running. AreaEnd and Flood
+ * can leave their fill queued behind other blits, and then a WaitBlit()
+ * returns while the mask is still being drawn: in Amiberry 8.3 every area
+ * fill on a 32-bit screen lost its top rows (2026-10-07). OwnBlitter()
+ * returns only when everything queued ahead has gone; a task that owns the
+ * blitter already must not call it again (it would wait for itself). */
+void blit_settle(void)
+{
+    if (GfxBase->BlitOwner == FindTask(NULL)) {
+        WaitBlit();
+        return;
+    }
+    OwnBlitter();
+    WaitBlit();
+    DisownBlitter();
+}
+
 #define MAXW 4096
 /* rowA is long-aligned (text expansion writes it a long at a time) and
  * has room for a whole last group of 8 */
@@ -1136,7 +1153,7 @@ LONG h_BltPattern(struct Regs *r)
      * (A4000, PrismBench area check). The same goes for every planar
      * source below. */
     if (r->a[0])
-        WaitBlit();
+        blit_settle();
     if (r->a[0] && !rp->AreaPtrn && rp->DrawMode <= JAM2 && RW(2) >= RW(0) && RW(3) >= RW(1)) {
         UBYTE dm = rp->DrawMode;
         rp->DrawMode = JAM1;
@@ -2006,7 +2023,7 @@ LONG h_BltTemplate(struct Regs *r)
     if (!rp_is_prism(rp))
         return 0;
     if (RW(4) > 0 && RW(5) > 0) {
-        WaitBlit();                       /* the template may still be drawn */
+        blit_settle();                       /* the template may still be drawn */
         blt_template(rp, (const UBYTE *)r->a[0], RW(0), RW(1), RW(2), RW(3), RW(4), RW(5));
     }
     return 1;
@@ -2178,7 +2195,7 @@ LONG h_BltBitMap(struct Regs *r)
         d.pix ? "chunky" : "planar", (ULONG)d.bpp, (ULONG)db->Depth,
         (LONG)RW(4), (LONG)RW(5), (ULONG)(UBYTE)r->d[6], (ULONG)(UBYTE)r->d[7]);
     if (!s.pix || !d.pix)
-        WaitBlit();                       /* a planar side: let the blitter finish with it */
+        blit_settle();                       /* a planar side: let the blitter finish with it */
     ObtainSemaphore(&lock);
     blit(&s, RW(0), RW(1), &d, RW(2), RW(3), RW(4), RW(5), (UBYTE)r->d[6], (UBYTE)r->d[7]);
     ReleaseSemaphore(&lock);
@@ -2235,7 +2252,7 @@ LONG h_BitMapScale(struct Regs *r)
         col[x] = c < (ULONG)sw ? c : sw - 1;
     }
     if (!s.pix || !d.pix)
-        WaitBlit();                       /* a planar side: let the blitter finish with it */
+        blit_settle();                       /* a planar side: let the blitter finish with it */
     ObtainSemaphore(&lock);
     if (s.p && s.p->inVram && board.waitBlit)
         board.waitBlit(&board);
@@ -2386,7 +2403,7 @@ static LONG blit_rp(struct Regs *r, const UBYTE *amask)
     }
 #endif
     if (!b.src.pix || amask)
-        WaitBlit();                       /* planar source or mask: let the blitter finish */
+        blit_settle();                       /* planar source or mask: let the blitter finish */
     b.mt = (UBYTE)r->d[6];
     b.mask = rp->Mask;
     b.amask = amask;

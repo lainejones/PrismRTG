@@ -12,6 +12,11 @@
 #include <graphics/rastport.h>
 #include "prismboard.h"
 
+/* Before the CPU reads or writes planar memory the Amiga's blitter may be
+ * working on: wait until the blitter has finished everything queued, not
+ * only the blit that is running (render.c). */
+void blit_settle(void);
+
 extern struct PrismBoard board;
 extern struct SignalSemaphore lock;     /* card registers, VRAM allocator,
                                            render buffers, bitmap table */

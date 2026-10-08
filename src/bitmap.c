@@ -215,7 +215,7 @@ void pbm_free(struct PBitMap *p)
         vram_free(p->vramOff);
     ReleaseSemaphore(&lock);
     if (p->dummy) {
-        WaitBlit();
+        blit_settle();
         FreeBitMap(p->dummy);
     }
     if (p->bm) FreeVec(p->bm);
