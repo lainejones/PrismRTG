@@ -572,8 +572,10 @@ static void p96_cursor_move(struct PrismBoard *b, WORD x, WORD y)
 
 static BOOL select_formats(struct P96Priv *p, struct PrismBoard *b)
 {
-    /* Advertise each accepted format. Retain a first choice per byte
-     * depth only for the legacy diagnostic callbacks. */
+    /* One linear format per byte depth, as before: a format that needs its
+     * own aperture or a memory-mode switch would put the whole board into
+     * shadow mode, which uploads and reads back a full bitmap around every
+     * operation. That waits for the changed-span tracking (#9). */
     static const UBYTE order[] = {
         PF_CLUT8, PF_RGB565BE, PF_BGR565LE, PF_RGB565LE,
         PF_BGR24, PF_RGB24, PF_BGRA32, PF_ARGB32, PF_RGBA32
@@ -585,20 +587,15 @@ static BOOL select_formats(struct P96Priv *p, struct PrismBoard *b)
         UBYTE pf = order[i], bpp = rgb_bpp(rgbformat[pf]);
         RGBFTYPE f = rgbformat[pf];
         ULONG bit = 1UL << f, mask;
-        UBYTE *base,*end;
-        if (!(bi->RGBFormats & bit)) continue;
-        mask = bi->GetCompatibleFormats(bi, f);
-        if (!(mask & bit)) continue;
-        base=bi->CalculateMemory(bi,bi->MemoryBase,NULL,f);
-        end=bi->CalculateMemory(bi,bi->MemoryBase+bi->MemorySize-1,NULL,f);
-        /* Fixed format apertures may be displaced, but must expose an
-         * entire contiguous view. Arbitrary banked P96 drivers remain out. */
-        if (!base || (ULONG)end-(ULONG)base != bi->MemorySize-1) continue;
-        if (((mask & accepted)!=accepted || !(compatible & bit)) && !bi->SetMemoryMode)
+        if (p->pf[bpp] != PF_COUNT || !(bi->RGBFormats & bit) || !(compatible & bit))
             continue;
-        if (base!=bi->MemoryBase || (mask & accepted)!=accepted || !(compatible & bit))
-            b->flags |= PBF_SHADOW;
-        if (p->pf[bpp]==PF_COUNT) p->pf[bpp] = pf;
+        mask = bi->GetCompatibleFormats(bi, f);
+        if ((mask & accepted) != accepted || !(mask & bit)) continue;
+        if (bi->CalculateMemory(bi, bi->MemoryBase, NULL, f) != bi->MemoryBase ||
+            bi->CalculateMemory(bi, bi->MemoryBase + bi->MemorySize - 1, NULL, f) !=
+                bi->MemoryBase + bi->MemorySize - 1)
+            continue;
+        p->pf[bpp] = pf;
         b->formats |= PF_BIT(pf);
         accepted |= bit;
         compatible &= mask;

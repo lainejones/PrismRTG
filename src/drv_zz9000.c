@@ -327,9 +327,12 @@ static BOOL zz_surface(struct PrismBoard *b,const struct PrismSurface *s)
     return zz_storage(b,s) && (s->format==PF_CLUT8 ||
         s->format==PF_RGB565BE || s->format==PF_RGB555BE || s->format==PF_BGRA32);
 }
+/* Fill, line and text colours arrive as raw 16-bit values, so 15-bit
+ * surfaces use the 565 commands too: the bytes written are the same, and
+ * that is the path tested on the hardware (zz_pan maps 555 to 565 alike). */
 static UBYTE zz_surface_cm(const struct PrismSurface *s)
 {
-    return s->format==PF_RGB555BE ? CM_555 : zz_cm(s->bpp);
+    return zz_cm(s->bpp);
 }
 static enum PrismResult zz_fill(struct PrismBoard *b,const struct PrismSurface *d,
     UWORD x,UWORD y,UWORD w,UWORD h,ULONG c)

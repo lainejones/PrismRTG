@@ -401,9 +401,42 @@ void pbm_flush_shown(void)
         if (!pbm_upload(table[i])) dbg("driver: aperture upload failed\n");
     ReleaseSemaphore(&lock);
 }
+/* Surface-operation fast path (boards whose drivers only have ops): build
+ * the surface here and call the driver directly. The direct-hook fast
+ * paths are inline in prismint.h (pbm_fill, pbm_copy). */
+#define HW_FAST(p) (HW_OK(p) && board.ops)
+
+static inline BOOL hw_rect(const struct PBitMap *p, UWORD x, UWORD y, UWORD w, UWORD h)
+{
+    return w && h && (ULONG)x + w <= p->w && (ULONG)y + h <= p->h;
+}
+
+static inline void hw_surface(const struct PBitMap *p, struct PrismSurface *s)
+{
+    s->memory = p->pix; s->offset = p->vramOff; s->allocation = p->bpr * p->h;
+    s->pitch = p->bpr; s->width = p->w; s->height = p->h;
+    s->format = p->fmt; s->bpp = p->bpp; s->flags = PSF_VRAM;
+}
+
+static inline enum PrismResult hw_finish(enum PrismResult r)
+{
+    if (r == PR_DONE || r == PR_DECLINED)
+        return r;
+    board.faults++;
+    if (r == PR_RETRY)
+        return r;
+    board.flags |= PBF_ACCEL_BROKEN;
+    dbg("driver: operation failed; acceleration disabled\n");
+    return PR_FAILED;
+}
+
 enum PrismResult pbm_hw_fill(struct PBitMap *p,UBYTE bpp,UWORD x,UWORD y,UWORD w,UWORD h,ULONG c)
 {
     struct PrismSurface s;
+    if (HW_FAST(p) && board.ops->fill && bpp == p->bpp && bpp != 1 && hw_rect(p,x,y,w,h)) {
+        hw_surface(p,&s);
+        return hw_finish(board.ops->fill(&board,&s,x,y,w,h,c));
+    }
     if (!p->inVram || !pbm_upload(p)) return PR_DECLINED;
     pbm_surface(p,&s);
     if (bpp==1 && p->bpp!=1) {
@@ -419,6 +452,14 @@ enum PrismResult pbm_hw_copy(struct PBitMap *s,struct PBitMap *d,UWORD sx,UWORD 
     UWORD dx,UWORD dy,UWORD w,UWORD h)
 {
     struct PrismSurface a,b;
+    if (HW_FAST(s) && d->inVram && board.ops->copy && s->fmt == d->fmt &&
+        hw_rect(s,sx,sy,w,h) && hw_rect(d,dx,dy,w,h)) {
+        hw_surface(s,&a);
+        if (s == d)
+            return hw_finish(board.ops->copy(&board,&a,&a,sx,sy,dx,dy,w,h));
+        hw_surface(d,&b);
+        return hw_finish(board.ops->copy(&board,&a,&b,sx,sy,dx,dy,w,h));
+    }
     if (!s->inVram || !d->inVram || !pbm_upload(s) || (s!=d && !pbm_upload(d))) return PR_DECLINED;
     pbm_surface(s,&a); pbm_surface(d,&b);
     return pbm_result(d,board_copy(&board,&a,&b,sx,sy,dx,dy,w,h));
@@ -427,6 +468,11 @@ enum PrismResult pbm_hw_expand(struct PBitMap *p,UWORD x,UWORD y,UWORD w,UWORD h
     const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr)
 {
     struct PrismSurface s;
+    if (HW_FAST(p) && board.ops->expand && src && mod >= ((ULONG)w + 7) / 8 &&
+        hw_rect(p,x,y,w,h)) {
+        hw_surface(p,&s);
+        return hw_finish(board.ops->expand(&board,&s,x,y,w,h,src,mod,fg,bg,tr));
+    }
     if (!p->inVram || !pbm_upload(p)) return PR_DECLINED;
     pbm_surface(p,&s);
     return pbm_result(p,board_expand(&board,&s,x,y,w,h,src,mod,fg,bg,tr));

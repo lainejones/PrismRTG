@@ -551,17 +551,25 @@ static BOOL p2_WaitBlitFor(struct PrismBoard *b, ULONG n);
 
 static void p2_WaitBlit(struct PrismBoard *b)
 {
-    if (!p2_WaitBlitFor(b, 1000000)) {
+    if (!p2_WaitBlitFor(b, 1000000))
         b->flags |= PBF_ACCEL_BROKEN;
-        b->faults++;
-    }
 }
 
 /* start the blit and wait for it */
 static inline void blt_run(struct PrismBoard *b, struct P2Priv *p)
 {
+    volatile UBYTE *d = b->regs + GRC_D;
+    ULONG n;
     gr_out(b, p, 0x31, 0x02);
-    if (!p2_WaitBlitFor(b, 1000000)) p->failed = TRUE;
+    /* poll here (GR31 is selected already); p2_WaitBlitFor only for the
+     * reset when it never finishes */
+    for (n = 0; n < 1000000 && (*d & 0x01); n++) ;
+    if ((*d & 0x01) && !p2_WaitBlitFor(b, 0)) {
+        /* a fill or copy that never finished: the chip is wedged. The
+         * core's direct path sees the flag and redraws on the CPU. */
+        p->failed = TRUE;
+        b->flags |= PBF_ACCEL_BROKEN;
+    }
 }
 
 static inline void blt_dst(struct PrismBoard *b, struct P2Priv *p, UWORD wbytes, UWORD h,
@@ -735,6 +743,7 @@ static BOOL p2_WaitBlitFor(struct PrismBoard *b, ULONG n)
     if (!(*d & 0x01))
         return TRUE;
     ((struct P2Priv *)b->priv)->failed = TRUE;
+    b->faults++;                                  /* the core's direct paths look */
     wgrc(b, 0x31, 0x04);                          /* BLT reset            */
     wgrc(b, 0x31, 0x00);
     gr_forget();
@@ -1470,6 +1479,11 @@ BOOL Picasso2_Probe(struct PrismBoard *b)
     b->fillRect        = p2_FillRect;
     b->copyRect        = p2_CopyRect;
     b->ops             = &p2_ops;
+    /* what the BLT registers can encode (p2_surface_ok): bigger requests
+     * take the surface path, which declines them */
+    b->blitMaxBytes    = p->is5434 ? 8192 : 2048;
+    b->blitMaxRows     = p->is5434 ? 2048 : 1024;
+    b->blitMaxPitch    = p->is5434 ? 8191 : 4095;
     b->modeReady       = p2_ready;
     b->copyBetween     = p2_CopyBetween;
     b->expandRect      = p2_ExpandRect;

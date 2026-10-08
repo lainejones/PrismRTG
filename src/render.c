@@ -467,7 +467,7 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
         /* plain copy, same chunky format */
         ULONG bytes = (ULONG)w * d->bpp;
         if (s->p && d->p && w * h > 64 &&
-            pbm_hw_copy(s->p,d->p,sx,sy,dx,dy,w,h) != PR_DECLINED)
+            pbm_copy(s->p,d->p,sx,sy,dx,dy,w,h) != PR_DECLINED)
             return;
         if (same && dy > sy) {
             for (y = h - 1; y >= 0; y--)
@@ -704,14 +704,14 @@ static void fill(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1,
         /* a blitter that takes 4-byte pixels (ZZ9000) */
         if (b == 4 && p->inVram && (board.fillRect || (board.ops && board.ops->fill)) && (board.flags & PBF_BLIT_32) &&
             w * (y1 - y0 + 1) >= 12) {
-            if (pbm_hw_fill(p, 4, x0, y0, w, y1 - y0 + 1,
+            if (pbm_fill(p, 4, x0, y0, w, y1 - y0 + 1,
                            ((ULONG)px[0] << 24) | ((ULONG)px[1] << 16) | ((ULONG)px[2] << 8) |
                            px[3]) == PR_DONE) return;
         }
         /* a grey (all bytes equal) fills as bytes on the blitter */
         if (px[0] == px[1] && px[1] == px[2] && (b == 3 || px[2] == px[3]) &&
             p->inVram && (board.fillRect || (board.ops && board.ops->fill)) && w * (y1 - y0 + 1) > 64) {
-            if (pbm_hw_fill(p, 1, x0 * b, y0, w * b, y1 - y0 + 1, px[0]) == PR_DONE) return;
+            if (pbm_fill(p, 1, x0 * b, y0, w * b, y1 - y0 + 1, px[0]) == PR_DONE) return;
         }
         for (x = 0, r = rowW; x < w; x++, r += b) {
             r[0] = px[0]; r[1] = px[1]; r[2] = px[2];
@@ -725,7 +725,7 @@ static void fill(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1,
             vcopy(p->pix + (ULONG)y0 * p->bpr + (ULONG)x0 * b, rowW, (LONG)w * b);
             while (done < h) {
                 k = (done < h - done) ? done : h - done;
-                enum PrismResult result = pbm_hw_copy(p,p,x0,y0,x0,y0+done,w,k);
+                enum PrismResult result = pbm_copy(p,p,x0,y0,x0,y0+done,w,k);
                 if (result != PR_DONE) {
                     WORD row;
                     for (row=0; row<k; row++)
@@ -742,7 +742,7 @@ static void fill(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1,
     }
     if (!xor && (mask == 0xff || p->bpp == 2) && p->inVram && (board.fillRect || (board.ops && board.ops->fill)) &&
         w * (y1 - y0 + 1) >= 12) {
-        if (pbm_hw_fill(p, p->bpp, x0, y0, w, y1 - y0 + 1,
+        if (pbm_fill(p, p->bpp, x0, y0, w, y1 - y0 + 1,
                        pixval(p, pen)) == PR_DONE) return;
     }
     if (p->bpp == 2) {
@@ -1976,7 +1976,7 @@ static void tmpl_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
             /* byte-aligned (unclipped text always is): the template rows
              * go to the chip as they are */
             const UBYTE *src = t->src + (LONG)(by0 - oy - t->ty) * t->srcMod + (sbit0 >> 3);
-            if (pbm_hw_expand(p, bx0, by0, w, h, src,
+            if (pbm_expand(p, bx0, by0, w, h, src,
                                  t->srcMod, fgv, bgv,
                                  !(dm & JAM2)) == PR_DONE)
                 return;
@@ -1988,7 +1988,7 @@ static void tmpl_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
                 for (k = 0; k < rb; k++)
                     *o++ = get8(src, sbit + (LONG)k * 8) ^ invb;
             }
-            if (pbm_hw_expand(p, bx0, by0, w, h, xtmpl, rb,
+            if (pbm_expand(p, bx0, by0, w, h, xtmpl, rb,
                                  fgv, bgv, !(dm & JAM2)) == PR_DONE)
                 return;
         }

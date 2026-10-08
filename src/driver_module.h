@@ -64,6 +64,7 @@ static inline ULONG driver_board_layout(void)
     FIELD(bytesPerRow); FIELD(textExpand);
 #ifdef PRISM_BOARD_HAS_OPS
     FIELD(ops); FIELD(modeReady); FIELD(faults);
+    FIELD(blitMaxBytes); FIELD(blitMaxRows); FIELD(blitMaxPitch);
 #endif
     MIX(offsetof(struct PrismMode,width)); MIX(offsetof(struct PrismMode,height));
     MIX(offsetof(struct PrismMode,format)); MIX(offsetof(struct PrismMode,refresh));

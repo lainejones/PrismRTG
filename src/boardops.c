@@ -12,7 +12,7 @@ BOOL board_rect(const struct PrismSurface *s, UWORD x, UWORD y, UWORD w, UWORD h
     return s && w && h && s->bpp && s->bpp == board_bpp(s->format) &&
         (ULONG)x+w <= s->width && (ULONG)y+h <= s->height &&
         s->pitch >= (ULONG)s->width*s->bpp &&
-        s->height && s->pitch <= s->allocation/s->height;
+        s->height && (ULONG)s->pitch * s->height <= s->allocation;
 }
 static enum PrismResult finish(struct PrismBoard *b, enum PrismResult r)
 {

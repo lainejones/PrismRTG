@@ -93,6 +93,84 @@ enum PrismResult pbm_hw_copy(struct PBitMap *, struct PBitMap *, UWORD, UWORD, U
 enum PrismResult pbm_hw_expand(struct PBitMap *, UWORD, UWORD, UWORD, UWORD, const UBYTE *, ULONG, ULONG, ULONG, BOOL);
 enum PrismResult pbm_hw_line(struct PBitMap *, WORD, WORD, WORD, WORD, ULONG);
 enum PrismResult pbm_hw_planar(const struct PrismPlanar *, struct PBitMap *, UWORD, UWORD, UWORD, UWORD, UWORD, UWORD, UBYTE, UBYTE);
+
+/* Fast paths for the common case, one of our own VRAM bitmaps on a linear
+ * board: fills and copies the board's direct hooks can encode go straight
+ * to them, inline in the caller, as before the surface layer - on a 68030
+ * every extra call level (registers saved, arguments copied, a surface
+ * built) costs a noticeable part of a small blit. A PBitMap already
+ * guarantees what board_rect() checks besides the rectangle. A driver that
+ * finds its blitter wedged sets PBF_ACCEL_BROKEN, which comes back as
+ * PR_FAILED so the caller redraws on the CPU. Anything else goes through
+ * pbm_hw_fill / pbm_hw_copy and the surface operations. */
+#define HW_OK(p) ((p)->inVram && \
+    !(board.flags & (PBF_SHADOW | PBF_ACCEL_BROKEN | PBF_SOFTWARE)))
+
+static inline BOOL hw_fits(ULONG bytes, UWORD h, ULONG pitch)
+{
+    return (!board.blitMaxBytes || bytes <= board.blitMaxBytes) &&
+        (!board.blitMaxRows || h <= board.blitMaxRows) &&
+        (!board.blitMaxPitch || pitch <= board.blitMaxPitch);
+}
+
+static inline enum PrismResult hw_direct(void)
+{
+    if (!(board.flags & PBF_ACCEL_BROKEN))
+        return PR_DONE;
+    dbg("driver: operation failed; acceleration disabled\n");
+    return PR_FAILED;
+}
+
+/* The callers (render.c, p96.c) pass rectangles already clipped to the
+ * bitmap, and copies only between bitmaps of one format; the general
+ * path behind these still checks everything. */
+static inline enum PrismResult pbm_fill(struct PBitMap *p, UBYTE bpp, UWORD x, UWORD y,
+                                        UWORD w, UWORD h, ULONG c)
+{
+    if (HW_OK(p) && board.fillRect && (bpp == p->bpp || bpp == 1) &&
+        hw_fits((UWORD)w * (UWORD)bpp, h, p->bpr)) {
+        board.fillRect(&board, p->vramOff, p->bpr, bpp, x, y, w, h, c);
+        return hw_direct();
+    }
+    return pbm_hw_fill(p, bpp, x, y, w, h, c);
+}
+
+static inline enum PrismResult pbm_copy(struct PBitMap *s, struct PBitMap *d, UWORD sx, UWORD sy,
+                                        UWORD dx, UWORD dy, UWORD w, UWORD h)
+{
+    if (HW_OK(s) && d->inVram && hw_fits((UWORD)w * (UWORD)s->bpp, h, s->bpr) &&
+        (!board.blitMaxPitch || d->bpr <= board.blitMaxPitch)) {
+        if (s == d && board.copyRect) {
+            board.copyRect(&board, s->vramOff, s->bpr, s->bpp, sx, sy, dx, dy, w, h);
+            return hw_direct();
+        }
+        /* two of our bitmaps never share VRAM */
+        if (s != d && board.copyBetween) {
+            board.copyBetween(&board, s->vramOff + (ULONG)sy * s->bpr + (ULONG)sx * s->bpp, s->bpr,
+                              d->vramOff + (ULONG)dy * d->bpr + (ULONG)dx * d->bpp, d->bpr,
+                              (UWORD)(w * d->bpp), h);
+            return hw_direct();
+        }
+    }
+    return pbm_hw_copy(s, d, sx, sy, dx, dy, w, h);
+}
+
+/* Text: a timeout while the CPU feeds the template only turns blitter text
+ * off (the driver counts it in faults and stops expanding), so it comes
+ * back as PR_RETRY and this string is drawn on the CPU. */
+static inline enum PrismResult pbm_expand(struct PBitMap *p, UWORD x, UWORD y, UWORD w, UWORD h,
+                                          const UBYTE *src, ULONG mod, ULONG fg, ULONG bg, BOOL tr)
+{
+    if (HW_OK(p) && board.expandRect && hw_fits((UWORD)w * (UWORD)p->bpp, h, p->bpr)) {
+        ULONG f = board.faults;
+        BOOL done = board.expandRect(&board, p->vramOff, p->bpr, p->bpp, x, y, w, h,
+                                     src, mod, fg, bg, tr);
+        if (board.faults != f)
+            return PR_RETRY;
+        return done ? PR_DONE : PR_DECLINED;
+    }
+    return pbm_hw_expand(p, x, y, w, h, src, mod, fg, bg, tr);
+}
 /* prismd.c: is it the bitmap the card shows; a bitmap is going away */
 BOOL            pbm_is_shown(struct PBitMap *p);
 void            pbm_gone(struct PBitMap *p);

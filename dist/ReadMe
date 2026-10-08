@@ -69,7 +69,8 @@ Reporting a problem
 
 Credits
   Laine Jones, with Claude (Anthropic). Thanks to Stefan Reinauer (P96
-  card-driver adapter, native UAE driver, driver modules, build fixes),
+  card-driver adapter, native UAE driver, surface operations, driver
+  modules, build fixes),
   Dimitris Panokostas (UAE driver review, Amiberry pointer default), polluks
   and yelworC (MiSTer test), and Individual Computers, A. Kneer, T. Abt and
   T. Richter (P96 driver headers, CC-BY). The README on GitHub has the full list.

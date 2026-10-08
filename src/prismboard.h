@@ -131,6 +131,10 @@ struct PrismBoard {
     const struct PrismOps *ops; /* surface-aware operations; prefer to legacy hooks */
     void (*modeReady)(struct PrismBoard *); /* optional first-mode setup */
     ULONG faults;              /* operations that failed after starting */
+    /* Largest blit the direct fillRect/copyRect hooks can encode: bytes
+     * per row, rows and pitch (0 = no limit). Larger ones go through ops. */
+    UWORD blitMaxBytes, blitMaxRows;
+    ULONG blitMaxPitch;
 };
 
 #define CURSOR_SIZE 64

@@ -1548,3 +1548,40 @@ Kickstart's graphics.library, not exec. Helpers written for this hunt
 waitsem (the semaphore a task sleeps on, from its SemaphoreRequest),
 stackof (return addresses on a waiting task's stack, by segment),
 vbcount (a counting VERTB server), romwho.py (ROM offset -> module).
+
+## Surface operations (#6) and the fast paths (2026-10-08)
+
+Stefan Reinauer's surface layer (#6): every drawing request carries its
+pixel format, pitch and allocation (struct PrismSurface) to the driver's
+`ops`, which can decline before touching anything or report a failure the
+renderer redraws on the CPU. Merged with three changes on top:
+
+- **Speed.** On the cycle-exact 68030 + Picasso II+ box ("prism low
+  030-16") the new chain cost 27% on RectFill, 33% on ClipBlit, 39% on
+  ScrollRaster and 19% on short text: render.c -> pbm_hw_* -> board_* ->
+  ops -> driver, each level saving ten registers and passing the surface
+  again, about 50 us per operation. A PC-sampling profiler (VERTB server,
+  finds the level-3 frame on the supervisor stack; scratchpad pcprof.c +
+  profsum.py with symbols placed per object file) showed it. Now
+  `pbm_fill`, `pbm_copy` and `pbm_expand` (inline in prismint.h) call the
+  board's direct fillRect/copyRect/expandRect hooks for our own VRAM
+  bitmaps, as before #6, as long as the blit fits what the chip can encode
+  (`blitMaxBytes/Rows/Pitch` in PrismBoard, set by the Picasso II driver
+  from the limits #6 found: 2048 bytes/1024 rows/pitch 4095 on the
+  5426/28, 8192/2048/8191 on the 5434). Everything else, and every board
+  without direct hooks (P96, UAE), goes through the surface path. Result:
+  within 1-6% of main on every blitter line (text 1-3%), about the
+  run-to-run noise of lines that do not touch PrismRTG.
+- **Failures stay safe on the direct path.** A fill or copy whose blit
+  never finishes sets PBF_ACCEL_BROKEN (the driver resets the chip), which
+  the fast path returns as PR_FAILED, so the pixels are redrawn on the CPU.
+  A text timeout is counted in `faults` only: PR_RETRY, that string on the
+  CPU, the rest of the blitter stays on.
+- **No shadow mode in the P96 adapter yet**: format selection is one linear
+  format per byte depth again. Shadow mode uploaded and read back a whole
+  bitmap around every operation; it waits for the changed-span tracking of
+  #9. The ZZ9000 keeps the 565 commands for 15-bit surfaces (same bytes,
+  the hardware-tested path).
+
+Still slower than main: 16-bit CPU lines (Line 390x60, -13%), as in #6
+itself - not looked into yet.
