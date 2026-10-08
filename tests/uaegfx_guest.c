@@ -65,6 +65,61 @@ static void exercise(struct PrismBoard *b)
         if (memcmp(reference, b->vram, size)) {
             sprintf(message, "FAIL copy %u\n", bpp); emit(message); FreeVec(reference); return;
         }
+        {
+            /* Nonzero source/destination origins, interleaved plane rows,
+             * and every pixel size through the selected and default callbacks. */
+            UBYTE planes[16] = {0xaa,0xaa,0xcc,0xcc,0x55,0x55,0x33,0x33,
+                                0xaa,0xaa,0xcc,0xcc,0x55,0x55,0x33,0x33};
+            ULONG rgb[256]={0,0xff0000,0x00ff00,0xffffff};
+            struct BitMap bm;
+            struct PrismSurface dst={b->vram,0,size,m.bytesPerRow,640,480,m.format,bpp,PSF_VRAM};
+            struct PrismPlanar src={&bm,rgb,NULL};
+            __typeof__(p->bi.BlitPlanar2Chunky) host_chunky=p->bi.BlitPlanar2Chunky;
+            __typeof__(p->bi.BlitPlanar2Direct) host_direct=p->bi.BlitPlanar2Direct;
+            int fallback;
+            memset(&bm,0,sizeof(bm));bm.BytesPerRow=4;bm.Rows=4;
+            bm.Depth=2;bm.Flags=BMF_INTERLEAVED;bm.Planes[0]=planes;bm.Planes[1]=planes+2;
+            for(fallback=1;fallback>=0;fallback--) {
+                if(fallback) {
+                    p->bi.BlitPlanar2Chunky=p->bi.BlitPlanar2ChunkyDefault;
+                    p->bi.BlitPlanar2Direct=p->bi.BlitPlanar2DirectDefault;
+                } else {
+                    p->bi.BlitPlanar2Chunky=host_chunky;
+                    p->bi.BlitPlanar2Direct=host_direct;
+                }
+                memset(b->vram+(12*m.bytesPerRow),0xcd,3*m.bytesPerRow);
+                memset(reference+(12*m.bytesPerRow),0xcd,3*m.bytesPerRow);
+                if(board_planar(b,&src,&dst,3,1,21,12,11,3,0xc0,255)!=PR_DONE) {
+                    emit("FAIL planar dispatch\n");FreeVec(reference);return;
+                }
+                for(y=0;y<3;y++) for(x=0;x<11;x++) {
+                    UBYTE bit=0x80>>((x+3)&7);
+                    ULONG off=(y+1)*4+(x+3)/8;
+                    UBYTE index=(!!(planes[off]&bit)) | (!!(planes[off+2]&bit)<<1);
+                    ULONG c;
+                    switch(m.format) {
+                    case PF_CLUT8: c=index;break;
+                    case PF_RGB565BE: c=(index&1?0xf800:0)|(index&2?0x07e0:0)|(index==3?31:0);break;
+                    case PF_RGB565LE: c=(index&1?0x00f8:0)|(index&2?0xe007:0)|(index==3?0x1f00:0);break;
+                    case PF_RGB24: case PF_ARGB32: c=rgb[index];break;
+                    case PF_BGR24: c=index==1?0xff:index==2?0xff00:rgb[index];break;
+                    case PF_BGRA32: c=index==1?0xff00:index==2?0xff0000:rgb[index]<<8;break;
+                    case PF_RGBA32: c=rgb[index]<<8;break;
+                    default: emit("FAIL planar reference format\n");FreeVec(reference);return;
+                    }
+                    for(k=0;k<bpp;k++) reference[(y+12)*m.bytesPerRow+(x+21)*bpp+k]=c>>(8*(bpp-k-1));
+                }
+                if(memcmp(reference,b->vram,size)) {
+                    for(i=0;i<size;i++) if(reference[i]!=b->vram[i]) {
+                        sprintf(message,"DIFF offset=%lu expected=%02x actual=%02x format=%u\n",i,reference[i],b->vram[i],m.format);emit(message);break;
+                    }
+                    sprintf(message,"FAIL planar %u fallback=%d\n",bpp,fallback);emit(message);
+                    FreeVec(reference);return;
+                }
+            }
+            p->bi.BlitPlanar2Chunky=host_chunky;
+            p->bi.BlitPlanar2Direct=host_direct;
+        }
         FreeVec(reference);
         if (b->cursorImage) {
             for (i = 0; i < 16; i++) cursor[i*CURSOR_SIZE+i] = 3;

@@ -24,6 +24,7 @@
 
 /* GCC 13 otherwise overwrites the a0 argument in indirect tail calls. */
 #pragma GCC optimize ("no-optimize-sibling-calls")
+#include "rtg_ops.h"
 _Static_assert(offsetof(struct BoardInfo, SetGC) == 294, "UAE BoardInfo ABI");
 _Static_assert(offsetof(struct BoardInfo, MouseImage) == 1390, "UAE sprite ABI");
 _Static_assert(sizeof(struct CLUTEntry) == 3, "UAE palette ABI");
@@ -307,6 +308,8 @@ BOOL UAEGFX_Probe(struct PrismBoard *b)
     bi->SoftInterrupt.is_Node.ln_Type = NT_INTERRUPT;
     bi->SoftInterrupt.is_Node.ln_Name = (STRPTR)"Prism UAE RTG";
     bi->SoftInterrupt.is_Data = bi; bi->SoftInterrupt.is_Code = soft_interrupt;
+    bi->BlitPlanar2ChunkyDefault = rtg_planar_chunky;
+    bi->BlitPlanar2DirectDefault = rtg_planar_direct;
     bi->MouseImage = p->sprite;
     bi->FillRectDefault = fill_default; bi->BlitRectDefault = copy_default;
     InitSemaphore(&p->owner);
@@ -325,6 +328,10 @@ BOOL UAEGFX_Probe(struct PrismBoard *b)
     }
     p->initialized = card_InitCard(lib, bi, p->tooltypes);
     if (!p->initialized) { puts("PrismD: UAE RTG initialization failed"); return FALSE; }
+    /* Older Unix UAE hosts omit BLIT_SRC in the direct planar path.
+     * Keep this optional operation on the CPU: the firmware version
+     * does not distinguish corrected hosts from affected releases. */
+    bi->BlitPlanar2Direct = rtg_planar_direct;
     if (bi->SetInterrupt) bi->SetInterrupt(bi, FALSE);
     if (!bi->MemoryBase || bi->MemorySize < 65536 || !bi->SetGC || !bi->SetDAC ||
         !bi->SetPanning || !bi->SetColorArray || !bi->SetSwitch || !bi->SetDisplay) {
@@ -339,6 +346,7 @@ BOOL UAEGFX_Probe(struct PrismBoard *b)
         }
     }
     if (!b->formats) { puts("PrismD: UAE has no enabled Prism pixel formats"); return FALSE; }
+    b->ops = &rtg_ops;
     b->priv = p; b->name = "UAE (native)";
     b->vram = bi->MemoryBase; b->vramSize = bi->MemorySize;
     b->maxWidth = b->maxHeight = 8192;
