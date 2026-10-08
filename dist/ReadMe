@@ -34,6 +34,17 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.1 beta (experimental - please report how it goes)
+  Two more boards, chosen by hand: Board in PrismPrefs, or BOARD= in
+  ENVARC:Prism.prefs. Neither is picked automatically.
+  "UAE (native)"  BOARD=UAEGFX - UAE's own RTG card in WinUAE/Amiberry,
+                  without Picasso96.
+  "P96 driver"    BOARD=P96 P96CARD=<file> - drives a card through its
+                  existing Picasso96 card driver (.card), without the rest
+                  of Picasso96. Tried with UAE's uaegfx.card only, not yet
+                  with a real card's driver.
+  Details: docs/uaegfx.md and docs/p96-drivers.md on GitHub.
+
 24-bit or 32-bit?
   Both are true colour. On the GBAPII++ the card's blitter can draw text
   and fills at 32-bit but not at 24-bit (text is several times faster),
