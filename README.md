@@ -124,7 +124,7 @@ Tested in WinUAE 6.0.3 at 8, 16 and 32 bits (every PrismRTG test and
 
 | Emulator, card | Board in PrismPrefs | Status |
 |---|---|---|
-| WinUAE, Picasso II / II+, Piccolo, Piccolo SD64, Spectrum | Auto | Tested: every PrismRTG test passes |
+| WinUAE, Picasso II / II+, Piccolo, Piccolo SD64, Spectrum (Zorro II and III) | Auto | Tested: every PrismRTG test passes on each; the figures per board are in [docs/emulated-cards.md](docs/emulated-cards.md) |
 | WinUAE 6.0.3, UAE RTG Zorro III or Zorro II | UAE (native), or P96 driver with `P96CARD=uaegfx.card` | Tested at 8, 16 and 32 bits: every test passes |
 | Amiberry 8.3.0 (Linux), UAE RTG | UAE (native) | With Amiberry's defaults every test passes at 8, 16 and 32 bits. With `rtg_nocustom=false` and ZeroCopy on, 32-bit screens lose some of what is drawn ([amiberry#2392](https://github.com/BlitterStudio/amiberry/issues/2392)) - keep `rtg_nocustom` at its default (true) or turn ZeroCopy off |
 | Amiberry inside RetroArch (libretro) | UAE (native) | Not tested. The libretro build has no RTG hardware pointer, so PrismRTG draws its software pointer (tested with WinUAE's hardware sprite turned off) |
