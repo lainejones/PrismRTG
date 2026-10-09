@@ -371,6 +371,8 @@ noted in every commit. With thanks to:
 * **Individual Computers**, **Alexander Kneer**, **Tobias Abt** and **Thomas
   Richter** - the P96 driver development headers in `src/p96sdk` (CC-BY),
   which the P96 card-driver adapter is built with.
+* **Toni Wilen** - WinUAE, in which every Cirrus board here was tested,
+  and whose source is the only public description of the Graffity.
 
 Contributions are welcome; everyone whose code or findings go into PrismRTG
 is named here and in the release notes.

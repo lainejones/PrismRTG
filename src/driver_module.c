@@ -27,7 +27,7 @@ unsigned long *__BUFSIZE = &stdioBufSize;
 #ifndef DRIVER_NAME
 #error Build a driver with tools/mkdriver.sh NAME (it defines DRIVER_NAME)
 #endif
-static const char version[] __attribute__((used)) = "$VER: " DRIVER_NAME ".driver 1.1b3 (08.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: " DRIVER_NAME ".driver 1.1b4 (09.10.2026)";
 
 void driver_module_done(void)
 {
@@ -47,6 +47,9 @@ int main(void)
     struct MsgPort *control=NULL;
     BOOL found=FALSE;
     setvbuf(stdout,NULL,_IONBF,0);
+    /* the linker's --gc-sections drops an unreferenced $VER string (beta 3
+     * shipped without one): keep it reachable */
+    __asm__ volatile("" : : "r"(version));
     if(!r || !TypeOfMem(r)) return 20;
     acknowledgement=&r->message;
     if(r->magic!=PRISM_DRIVER_MAGIC) {

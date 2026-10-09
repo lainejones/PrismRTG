@@ -30,7 +30,7 @@ struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *GadToolsBase;
 
-static const char version[] __attribute__((used)) = "$VER: PrismPrefs 1.1b3 (08.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: PrismPrefs 1.1b4 (09.10.2026)";
 
 enum { GAD_LIST = 1, GAD_ON, GAD_HZ, GAD_BOARD, GAD_BLIT, GAD_LOG,
        GAD_SAVE, GAD_USE, GAD_DEFAULTS, GAD_CANCEL, GAD_STATUS, GAD_TEST, GAD_BGR };

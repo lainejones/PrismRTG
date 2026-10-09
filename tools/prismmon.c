@@ -18,7 +18,7 @@
 #include "prism.h"
 #include "prefs.h"
 
-static const char version[] __attribute__((used)) = "$VER: Prism 1.1b3 (08.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: Prism 1.1b4 (09.10.2026)";
 
 #define PRISMD "C:PrismD"
 

@@ -38,6 +38,20 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.1 beta 4 "Tequila"
+  Thirteen bugs from a code review fixed: among them ScrollRaster in a
+  partly covered window, a pointer that could be copied with the screen,
+  a stale palette cache, and quitting PrismD while programs still draw.
+  Faster: pixels, lines and small blits 3-11%; text on the native UAE
+  driver five times; and dragging a screen no longer eats the machine -
+  the compositor redoes only what changed and copies the dragged screen
+  on the card's blitter. 35 KB less fast RAM.
+  New board: Ateo Concepts Graffity (Zorro II and III), emulation only.
+  A driver for a new board is one file: src/drv_template.c, built with
+  tools/mkdriver.sh, loaded by name or found by itself in LIBS:Prism.
+  docs/writing-a-driver.md and docs/driver-development.md on GitHub.
+  Tested on every board WinUAE emulates: docs/emulated-cards.md.
+
 New in 1.1 beta 3
   Needs Kickstart 3.1 or newer (3.0 never worked; PrismD now says so).
   The board drivers are separate modules in LIBS:Prism, drawing goes

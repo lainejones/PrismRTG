@@ -12,7 +12,7 @@ cp dist/check/PrismCheck dist/check/ReadMe LICENSE $P/
 cp dist/check/PrismCheck.info dist/check/ReadMe.info $P/
 # the drawer's own icon goes BESIDE it, or Workbench doesn't show the drawer
 cp dist/check/PrismCheck-drawer.info $O/PrismCheck.info
-for t in tmpltest p96test vramcheck PrismBench PrismProbe prismdiag lastalert prismstate; do
+for t in tmpltest p96test vramcheck PrismBench PrismProbe PrismTest prismdiag lastalert prismstate; do
     cp out/$t $P/Tools/
 done
 ls -l $P $P/Tools

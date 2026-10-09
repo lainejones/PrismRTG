@@ -174,7 +174,7 @@ struct ModeRec {
     UBYTE pad[128];
 };
 
-static const char version[] __attribute__((used)) = "$VER: PrismD 1.1b3 (08.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: PrismD 1.1b4 (09.10.2026)";
 
 #define MAX_MODES 32
 static struct ModeRec modes[MAX_MODES];
@@ -2092,6 +2092,9 @@ int main(void)
     ULONG i;
     int rc = 20;
 
+    /* the linker's --gc-sections drops an unreferenced $VER string (beta 3
+     * shipped without one): keep it reachable */
+    __asm__ volatile("" : : "r"(version));
     if (!(rda = ReadArgs(TEMPLATE, args, NULL))) {
         PrintFault(IoErr(), "PrismD");
         return 20;
