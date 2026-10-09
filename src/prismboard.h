@@ -12,13 +12,12 @@
  */
 #ifndef PRISMBOARD_H
 #define PRISMBOARD_H
-#define PRISM_BOARD_HAS_OPS 1
 
 #include <exec/types.h>
 #include <libraries/configvars.h>
 
 /* Increment when a callback contract or board layout changes. */
-#define PRISM_BOARD_ABI 1UL
+#define PRISM_BOARD_ABI 2UL
 
 /* Pixel formats, as the 68k sees them in VRAM (byte order in memory). */
 enum PrismFormat {
@@ -48,13 +47,16 @@ struct PrismMode {
     ULONG bytesPerRow;       /* set by the driver in SetMode            */
 };
 
-/* Capability flags */
-#define PBF_BLIT_FILL     (1UL << 0)  /* FillRect                        */
-#define PBF_BLIT_COPY     (1UL << 1)  /* CopyRect (screen to screen)     */
-#define PBF_BLIT_EXPAND   (1UL << 2)  /* 1-bit template -> colour        */
-#define PBF_HW_CURSOR     (1UL << 3)
-#define PBF_VBLANK_IRQ    (1UL << 4)
+/* Board flags (bits 0-2 and 4 are free; what a board can draw is
+ * whatever its PrismOps provide) */
+#define PBF_HW_CURSOR     (1UL << 3)  /* cursorImage/Show/Move work      */
 #define PBF_BLIT_32       (1UL << 5)  /* fill + expand take 4-byte pixels */
+#define PBF_SHADOW        (1UL << 6)  /* CPU access goes through read/write */
+#define PBF_ACCEL_BROKEN  (1UL << 7)  /* an operation failed: CPU from now on */
+#define PBF_SOFTWARE      (1UL << 8)  /* blitter off in PrismPrefs        */
+#define PBF_BANKED        (1UL << 9)  /* CalculateMemory may remap every byte */
+#define PBF_PRESENT       (1UL << 10) /* device holds composed, not source pixels */
+#define PBF_REINIT        (1UL << 11) /* release shadow VRAM before setMode */
 
 struct PrismOps;
 struct PrismBoard {
@@ -123,11 +125,10 @@ struct PrismBoard {
     void (*cursorMove)(struct PrismBoard *b, WORD x, WORD y);
 
     /* Optional bitmap row layout; NULL keeps the default 8-byte alignment.
-     * Drivers using this offer one compatible format per byte depth. */
+     * (bytes per pixel only: drivers whose row layout depends on the exact
+     * format provide PrismOps.pitch instead). */
     ULONG (*bytesPerRow)(struct PrismBoard *b, UWORD w, UWORD h, UBYTE bpp);
 
-    /* Optional Cirrus text-expansion diagnostic after the first mode set. */
-    UBYTE (*textExpand)(struct PrismBoard *b, BOOL *transparent);
     const struct PrismOps *ops; /* surface-aware operations; prefer to legacy hooks */
     void (*modeReady)(struct PrismBoard *); /* optional first-mode setup */
     ULONG faults;              /* operations that failed after starting */

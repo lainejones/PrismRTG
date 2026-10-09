@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 #include <assert.h>
 #include "../src/drv_picasso2.c"
-struct ExpansionBase *ExpansionBase;
+struct ExpansionBase *ExpansionBase=NULL; /* not common: keeps libnix from auto-opening it */
 int main(void)
 {
     struct PrismBoard b;

@@ -262,7 +262,7 @@ static void quiet(struct UAEPriv *p)
 static void uae_shutdown(struct PrismBoard *b) { quiet(b->priv); }
 static void soft_interrupt(void) { __asm__ volatile ("moveq #0,%%d0" : : : "d0"); }
 
-/* By hand: NewMinList() is exec V45 (OS 3.2), and Prism runs on 3.0 */
+/* By hand: NewMinList() is exec V45 (OS 3.2), and Prism runs on 3.1 */
 static void init_list(struct MinList *l)
 {
     l->mlh_Head = (struct MinNode *)&l->mlh_Tail;
@@ -354,8 +354,8 @@ BOOL UAEGFX_Probe(struct PrismBoard *b)
     b->setPalette = uae_palette; b->setSwitch = uae_switch;
     b->waitVBlank = uae_vblank; b->shutdown = uae_shutdown;
     if (!(bi->Flags & BIF_NOBLITTER)) {
-        if (bi->FillRect) { b->fillRect = uae_fill; b->flags |= PBF_BLIT_FILL | PBF_BLIT_32; }
-        if (bi->BlitRect) { b->copyRect = uae_copy; b->flags |= PBF_BLIT_COPY; }
+        if (bi->FillRect) { b->fillRect = uae_fill; b->flags |= PBF_BLIT_32; }
+        if (bi->BlitRect) b->copyRect = uae_copy;
     }
     if ((bi->Flags & BIF_HARDWARESPRITE) && bi->SetSprite && bi->SetSpriteImage &&
         bi->SetSpritePosition && bi->SetSpriteColor) {

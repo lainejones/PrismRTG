@@ -7,18 +7,11 @@ static inline ULONG composite_rgb(const struct PBitMap *p, const UBYTE *pixel)
     if (p->fmt != PF_CLUT8) return pf_get(p->fmt,pixel);
     return p->rgbTab ? p->rgbTab[*pixel] : *pixel * 0x010101UL;
 }
+/* A bitmap without a palette is taken as a grey ramp. */
 static inline UBYTE composite_pen(const struct PBitMap *p,ULONG rgb)
 {
-    ULONG best=~0UL; UWORD i; UBYTE pen=0;
-    for (i=0;i<256;i++) {
-        ULONG c=p->rgbTab ? p->rgbTab[i] : i*0x010101UL;
-        LONG r=(LONG)((rgb>>16)&255)-(LONG)((c>>16)&255);
-        LONG g=(LONG)((rgb>>8)&255)-(LONG)((c>>8)&255);
-        LONG b=(LONG)(rgb&255)-(LONG)(c&255);
-        ULONG distance=r*r+g*g+b*b;
-        if (distance<best) { best=distance;pen=i;if(!distance)break; }
-    }
-    return pen;
+    if (p->rgbTab) return pen_nearest(p->rgbTab,rgb);
+    return (((rgb>>16)&255)*3+((rgb>>8)&255)*4+(rgb&255)*2)/9;
 }
 static inline void composite_put(struct PBitMap *p, UBYTE *pixel, ULONG rgb)
 {

@@ -41,18 +41,22 @@ Host refresh and presentation remain emulator settings.
 Palette changes, display switching, panning, fills, overlapping copies
 and hardware sprites use UAE host operations. Fill and copy have CPU
 fallbacks if UAE declines an operation. Plain planar copies use the host
-hook when a startup probe confirms its output in each direct-colour format;
+hook when a startup probe (#9) confirms its output in each direct-colour format;
 missing or broken hooks use a CPU fallback. Other drawing uses Prism's core.
 Host blits complete synchronously. Vblank waits use graphics.library's
 WaitTOF; UAE's card WaitVerticalSync entry point is a no-op.
 
-The hardware cursor is limited to 32x48 pixels. With hardware sprites
-disabled, Prism uses stable CPU shadows and its software cursor. The shared
-presentation path also supplies vertical RTG screen dragging and RGB/CLUT
-P96 memory-window PIPs. It does not use UAE's host overlay or split hooks.
-There is no multi-board support, and compatibility with every UAE fork or
-version is not implied. See [driver architecture](driver-architecture.md)
-for presentation costs and PIP limits.
+UAE RTG memory is linear, so bitmaps use direct VRAM pointers; this driver
+does not use shadow mode. The hardware cursor is limited to 32x48 pixels
+and is used when WinUAE or Amiberry provides one. Without it, for example
+with WinUAE's hardware sprite turned off or in the libretro build, Prism
+draws its software pointer into the shown bitmap. The experimental
+compositor (#10) supplies vertical RTG screen dragging (`DRAGGING=ON`) and
+RGB/CLUT P96 memory-window PIPs. It does not use UAE's host overlay or
+split hooks. There is no multi-board support, and compatibility with every
+UAE fork or version is not implied. See
+[driver architecture](driver-architecture.md) for the pointer, composition
+costs and PIP limits.
 
 ## Lifetime
 
@@ -74,5 +78,6 @@ and [Windows RTG backend](https://github.com/tonioni/WinUAE/blob/master/od-win32
 `tests/uaegfx_guest.c` exercises the native driver in a dedicated UAE boot,
 including all four byte depths, mode bounds, host fills and copies,
 fallback rendering, palette and sprite calls. It reports through the
-Amiga serial port and retains the context until reset. Compile it with
-amiga-gcc using `-O2 -m68020-60 -noixemul -Isrc -Isrc/p96sdk`.
+Amiga serial port and retains the context until reset. `sh tests/architecture.sh`
+builds it (amiga-gcc, `-O2 -m68020-60 -noixemul -Isrc -Isrc/p96sdk`,
+linked with `src/boardops.c` and `src/rtg_ops.c`).

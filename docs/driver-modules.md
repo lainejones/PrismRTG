@@ -1,16 +1,21 @@
 # Loadable board modules
 
-PrismD loads one backend executable from `LIBS:Prism/<name>.driver`, then
-tries `PROGDIR:Drivers/<name>.driver`. The supplied names are PICASSO2,
-ZZ9000, P96 and UAEGFX. Automatic selection tries the native hardware
-backends in their existing order. P96 and UAEGFX remain explicit choices.
+Board drivers are separate Amiga executables (#8). PrismD loads one from
+`PROGDIR:Drivers/<name>.driver` first, so a build run from its own drawer
+uses its own modules, then from `LIBS:Prism/<name>.driver`. At boot PrismD
+runs as `C:PrismD`, so the installed modules are used. The supplied names
+are PICASSO2, ZZ9000, P96 and UAEGFX. Automatic selection tries PICASSO2,
+then ZZ9000. P96 and UAEGFX remain explicit choices. Each module carries a
+`$VER` string with its name and release, so `Version` can report it.
 
 Each module runs as an AmigaDOS process with a 16 KB stack, its own C
-runtime and library bases. The module exports the same `PrismBoard`
-callbacks previously linked into PrismD. This change does not introduce a
-new drawing API or alter native card synchronization and mode setup.
-The optional `textExpand` board callback preserves Cirrus startup
-information without linking that backend into PrismD.
+runtime and library bases. It exports its `PrismBoard` callbacks and its
+`PrismOps` surface-operation table (#6); native card synchronization and
+mode setup are unchanged from the linked drivers. The optional
+`modeReady` board callback runs after the first mode set; the Cirrus
+driver prints its blitter self-test results there. Modules set libnix's `__BUFSIZE` to
+1 KB; the default 64 KB per standard stream would cost about 190 KB per
+driver process.
 
 ## Protocol and compatibility
 
@@ -19,10 +24,11 @@ request with a reply port and starts the module with the request address as
 its argument. The message, magic, ABI version and request-size prefix is
 fixed. Before probing hardware, a module compares the protocol version,
 request size, board ABI version and size, a board-layout signature, and
-operation-table ABI version and size. This standalone board interface has
-no operation table, so those last fields are zero. A future surface API
-must define its own nonzero operation version and size and update the
-board ABI when extending the board interface.
+operation-table ABI version and size. The board carries a `PrismOps`
+table, so the operation ABI is `PRISM_OPS_ABI` = 1 (`boardops.h`) and the
+size is that of `struct PrismOps`. Changes to the operation table must
+increment `PRISM_OPS_ABI`; extensions to the board interface must update
+the board ABI.
 
 The layout signature includes every board member's offset and size, mode
 member offsets, scalar representation and pixel-format count. Semantic
@@ -54,15 +60,21 @@ quiescing and retain their process after acknowledging stop. A failed
 probe which has already claimed such a context follows the same lifetime
 rule. Unclaimed contexts and native modules can return normally.
 
+While waiting for startup, and while waiting for a late reply after a
+timeout, the loader checks whether the driver process still exists
+(`child_alive`). A process which ends without answering, for example
+because its startup failed or `BOARD=` named some other program, is
+reported as such instead of being waited for.
+
 A startup timeout cancels the request but keeps the loader, request and
 borrowed output alive until the module acknowledges release. A late READY
-reply is followed by STOP before cleanup. A permanently stuck driver
-therefore requires a reboot; the loader does not free memory or close an
+reply is followed by STOP before cleanup. A driver process which stays
+alive but never answers therefore requires a reboot; the loader does not free memory or close an
 output handle that the child may still use.
 
 ## Packaging and development
 
-`build.sh` builds the four modules into `out/Drivers`. `mkpkg.sh` includes
+`build.sh` builds the four modules into `out/Drivers`. `tools/mkpkg.sh` includes
 them in the release drawer; the installer copies them to `LIBS:Prism`.
 Uninstall removes only the four supplied module files and removes the
 drawer only when it is empty. PrismCheck and its tools remain separate.

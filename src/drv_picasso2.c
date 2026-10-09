@@ -27,7 +27,6 @@
 
 extern struct ExpansionBase *ExpansionBase;
 
-#define VT_MFR        2167
 
 /* VGA ports (= offsets in the register window, §1.2) */
 #define ATTR_W     0x3c0
@@ -1462,7 +1461,7 @@ BOOL Picasso2_Probe(struct PrismBoard *b)
     else
         b->formats = PF_BIT(PF_CLUT8) | PF_BIT(PF_RGB565LE) | PF_BIT(PF_RGB555LE) |
                      PF_BIT(PF_BGR24) | (p->is5434 ? PF_BIT(PF_BGRA32) : 0);
-    b->flags     = PBF_BLIT_FILL | PBF_BLIT_COPY | PBF_HW_CURSOR;
+    b->flags     = PBF_HW_CURSOR;
     b->maxWidth  = 1024;
     b->maxHeight = 768;
 
@@ -1473,7 +1472,6 @@ BOOL Picasso2_Probe(struct PrismBoard *b)
     b->setSwitch       = p2_SetSwitch;
     b->waitVBlank      = p2_WaitVBlank;
     b->shutdown        = p2_Shutdown;
-    b->textExpand      = Picasso2_TextExpand;
     b->saveState       = p2_SaveState;
     b->restoreState    = p2_RestoreState;
     b->fillRect        = p2_FillRect;

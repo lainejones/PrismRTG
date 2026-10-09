@@ -1497,7 +1497,7 @@ as Zorro II.
   `BOARD=UAEGFX` and `BOARD=P96 P96CARD=uaegfx.card` pass tmpltest at 8, 16 and
   32 bits and p96test, vramcheck 0 of 50, the test chart right on screen.
 - **libretro (RetroArch) Amiberry** keeps the RTG hardware pointer off, so the
-  UAE driver shows no pointer there; a software pointer (part of PR #6) would
+  UAE driver shows no pointer there; a software pointer (PR #10, then pointer.c's sprite) would
   fix it, as it would on the MiSTer (issue #2).
 
 ## PerfectPaint: not PrismRTG (2026-10-08)

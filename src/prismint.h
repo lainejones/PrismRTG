@@ -27,6 +27,7 @@ struct PBitMap;
 extern struct PBitMap *swOn;           /* bitmap the software pointer is drawn into */
 extern volatile ULONG prismActivity;
 void sw_hide(void);
+UBYTE pen_nearest(const ULONG *rgbTab, ULONG rgb);   /* render.c */
 /* Drawing into `p` (bitmap coordinates, inclusive): take the pointer out
  * if it is in the way; p == NULL: always. Caller holds the lock or Forbid. */
 void sw_clear(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1);
@@ -123,6 +124,9 @@ enum PrismResult pbm_hw_planar(const struct PrismPlanar *, struct PBitMap *, UWO
  * finds its blitter wedged sets PBF_ACCEL_BROKEN, which comes back as
  * PR_FAILED so the caller redraws on the CPU. Anything else goes through
  * pbm_hw_fill / pbm_hw_copy and the surface operations. */
+/* Can the board do this operation at all (render.c's first choice)? */
+#define BOARD_CAN(op) (board.ops && board.ops->op)
+
 #define HW_OK(p) ((p)->inVram && \
     !(board.flags & (PBF_SHADOW | PBF_ACCEL_BROKEN | PBF_SOFTWARE | PBF_PRESENT)))
 

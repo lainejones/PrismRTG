@@ -5,7 +5,7 @@
 #include "../src/drv_p96.c"
 
 struct Library *UtilityBase;
-struct GfxBase *GfxBase;
+struct GfxBase *GfxBase=NULL; /* not common: keeps libnix from auto-opening it */
 static struct P96Priv p;
 static struct PrismBoard b;
 static UBYTE pixels[4096], expected[4096];

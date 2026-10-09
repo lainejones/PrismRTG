@@ -27,7 +27,7 @@ static void mock_free(APTR p)
 
 struct PrismBoard board;
 struct SignalSemaphore lock;
-struct GfxBase *GfxBase;
+struct GfxBase *GfxBase=NULL; /* not common: keeps libnix from auto-opening it */
 static struct PBitMap bitmap;
 static UBYTE pixels[512], device[512];
 static ULONG writes, released;

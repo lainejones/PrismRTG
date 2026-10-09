@@ -2155,15 +2155,8 @@ int main(void)
         rc = 5;
         goto out;
     }
-    if (!prefs.blitter) {
-        board.flags |= PBF_SOFTWARE;
-        board.fillRect = NULL;              /* render.c falls back to the CPU */
-        board.copyRect = NULL;
-        board.copyBetween = NULL;
-        board.expandRect = NULL;
-        board.drawLine = NULL;
-        board.flags &= ~(PBF_BLIT_FILL | PBF_BLIT_COPY);
-    }
+    if (!prefs.blitter)
+        board.flags |= PBF_SOFTWARE;        /* every blitter path checks it */
     build_modes();
     if (!nmodes) {
         printf("PrismD: %s offers no usable modes\n", board.name);
@@ -2203,18 +2196,6 @@ int main(void)
                modes[i].m.refresh);
     if (!prefs.blitter)
         printf("PrismD: blitter off (PrismPrefs)\n");
-    else if (board.textExpand) {
-        BOOL tr;
-        UBYTE pad = board.textExpand(&board, &tr);
-        if (pad == 0xff)
-            printf("PrismD: text on the CPU (blitter text expansion failed its self-test)\n");
-        else
-            printf("PrismD: text on the blitter (rows padded to %u byte%s, %s)\n", pad,
-                   pad == 1 ? "" : "s", tr ? "JAM1 + JAM2" : "JAM2 only");
-        if (board.formats & PF_BIT(PF_BGRA32))
-            puts((board.flags & PBF_BLIT_32) ? "PrismD: 32-bit fills and text on the blitter"
-                                             : "PrismD: no 32-bit blitter (self-test failed)");
-    }
 
     /* Planar bitmaps above chip RAM are Prism's to draw into (render.c) -
      * unless Picasso96 is running too. It can be, on another display: its

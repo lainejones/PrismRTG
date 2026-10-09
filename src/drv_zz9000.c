@@ -30,7 +30,6 @@ extern struct ExpansionBase *ExpansionBase;
 #define REG_MODE        0x02
 #define REG_PAN_HI      0x0a
 #define REG_PAN_LO      0x0c
-#define REG_VCAP_MODE   0x0e
 #define REG_X1          0x10
 #define REG_Y1          0x12
 #define REG_X2          0x14
@@ -663,8 +662,7 @@ BOOL ZZ9000_Probe(struct PrismBoard *b)
     b->shutdown        = zz_Shutdown;
     if (p->z3) {
         b->ops         = &zz_ops;
-        b->flags       = PBF_BLIT_FILL | PBF_BLIT_COPY | PBF_BLIT_EXPAND | PBF_BLIT_32 |
-                         PBF_HW_CURSOR;
+        b->flags       = PBF_BLIT_32 | PBF_HW_CURSOR;
         b->fillRect    = zz_FillRect;
         b->copyRect    = zz_CopyRect;
         b->copyBetween = zz_CopyBetween;

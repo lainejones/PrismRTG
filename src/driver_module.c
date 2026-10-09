@@ -69,7 +69,7 @@ int main(void)
     }
     if(r->cancelled) { r->status=PRD_CANCELLED;goto done; }
     r->status=PRD_NO_RESOURCES;
-    GfxBase=(struct GfxBase *)OpenLibrary("graphics.library",39);
+    GfxBase=(struct GfxBase *)OpenLibrary("graphics.library",40);
     ExpansionBase=(struct ExpansionBase *)OpenLibrary("expansion.library",37);
     if(GfxBase && ExpansionBase) control=CreateMsgPort();
     if(control) {

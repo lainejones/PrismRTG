@@ -7,7 +7,7 @@
 
 struct PrismBoard board;
 struct SignalSemaphore lock;
-struct GfxBase *GfxBase;
+struct GfxBase *GfxBase=NULL; /* not common: keeps libnix from auto-opening it */
 struct IntuitionBase *IntuitionBase;
 APTR o_MoveSprite,o_ChangeSprite,o_ChangeExtSpriteA;
 static struct Screen screen,behindScreen;
@@ -41,6 +41,23 @@ void p96_pip_compose(struct PBitMap *p,struct Screen *s,WORD top)
 LONG vram_alloc(ULONG size,UBYTE fmt,ULONG pitch,UWORD w,UWORD h)
 { (void)fmt;(void)pitch;(void)w;(void)h;assert(size==16);allocations++;return failAllocate ? -1 : 128; }
 void vram_free(ULONG off) { assert(off==128);frees++; }
+/* render.c's nearest pen (same weighting), without linking the renderer. */
+UBYTE pen_nearest(const ULONG *tab,ULONG c)
+{
+    UWORD i,best=0;LONG bd=0x7fffffff;
+    if(!tab)return 0;
+    for(i=0;i<256;i++) {
+        LONG dr=(LONG)((tab[i]>>16)&255)-(LONG)((c>>16)&255);
+        LONG dg=(LONG)((tab[i]>>8)&255)-(LONG)((c>>8)&255);
+        LONG db=(LONG)(tab[i]&255)-(LONG)(c&255);
+        LONG dd=dr*dr*3+dg*dg*4+db*db*2;
+        if(dd<bd) { bd=dd;best=i;if(!dd)break; }
+    }
+    return best;
+}
+/* No other bitmaps to evict here, so this is vram_alloc (as in bitmap.c). */
+LONG vram_get_size(ULONG size,UBYTE fmt,ULONG pitch,UWORD w,UWORD h,struct PBitMap *keep)
+{ (void)keep;return vram_alloc(size,fmt,pitch,w,h); }
 void pbm_surface(const struct PBitMap *p,struct PrismSurface *s)
 { s->offset=p->vramOff;s->allocation=p->bpr*p->h; }
 BOOL pbm_upload(struct PBitMap *p)
@@ -71,14 +88,21 @@ int main(void)
     colours[0]=0x11;colours[1]=0x22;colours[2]=0x33;
     front.uploaded=AllocVec(16,MEMF_ANY);
     assert(front.uploaded);
+    /* The pointer alone is a software sprite in the shown bitmap (pointer.c),
+     * not a reason to compose: nothing is presented or written. */
     present_tick();
+    assert(front.uploaded && !allocated && !(board.flags&PBF_PRESENT) && !writes);
+    /* A PIP is. In shadow mode the shown bitmap's own VRAM is the scanout,
+     * and the composed frame carries the pointer (pointer_compose). */
+    overlay=TRUE;present_tick();
     assert(!front.uploaded);
     assert(display==0 && (board.flags&PBF_PRESENT));
     assert(pf_get(PF_RGB24,video)==0x112233 && !memcmp(source,original,16));
+    assert(pf_get(PF_RGB24,video+11)==0x654321);
     n=writes;present_tick();assert(writes==n);
     posX=1;present_tick();
     assert(pf_get(PF_RGB24,video)==0xabcdef && pf_get(PF_RGB24,video+3)==0x112233);
-    on=FALSE;present_tick();
+    on=FALSE;overlay=FALSE;present_tick();
     assert(!(board.flags&PBF_PRESENT) && !memcmp(video,source,16) && !frees);
     board.flags=0;screenTop=1;present_tick();
     assert(display==128 && pf_get(PF_RGB24,video+128)==0x123456);
@@ -99,10 +123,19 @@ int main(void)
     n=writes;failWrite=TRUE;source[0]=0x44;present_tick();assert(writes==n);
     failWrite=FALSE;present_tick();assert(video[128]==0x44);
     overlay=FALSE;present_tick();assert(display==0 && frees==1);
-    /* A clipped software sprite uses the visible source column. */
-    board.flags=PBF_SHADOW;on=TRUE;posX=-1;image[1]=1;present_tick();
-    assert(pf_get(PF_RGB24,video)==0x112233);
-    pointer_off();assert(!allocated && !memcmp(video,source,16));
+    /* A clipped software sprite uses the visible source column. Without
+     * composition it is drawn into the shown bitmap, over a save-under. */
+    {
+        UBYTE under[16];
+        board.flags=PBF_SHADOW;on=TRUE;posX=-1;posY=0;image[1]=1;imgW=2;imgH=1;
+        memcpy(under,source,sizeof(under));
+        present_tick();assert(!allocated);
+        pointer_tick();
+        assert(swOn==&front && pf_get(PF_RGB24,source)==0x112233);
+        assert(!memcmp(source+3,under+3,sizeof(under)-3));
+        pointer_off();
+        assert(!swOn && !allocated && !memcmp(source,under,sizeof(under)));
+    }
     {
         static ULONG dstPalette[256],srcPalette[256];
         UBYTE srcPixels[2]={1,0},dstPixels[2],map[256];

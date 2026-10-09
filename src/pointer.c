@@ -6,7 +6,10 @@
  * Intuition shows its pointer with sprite 0: ChangeSprite/ChangeExtSpriteA
  * give the image, MoveSprite the position. The patches let the original
  * run (the native display keeps its pointer) and keep a copy here; while a
- * Prism screen is in front the board's hardware cursor shows it.
+ * Prism screen is in front the board's hardware cursor shows it - or, on a
+ * board without a working one (or SOFTWAREPOINTER=ON), a software sprite
+ * drawn into the shown bitmap with what was under it saved (sw_*), and
+ * while the compositor runs (dragging, PIPs), pointer_compose.
  *
  * Position updates come from input.device's task, so they only touch the
  * board when Prism's lock is free right then; otherwise PrismD's main loop

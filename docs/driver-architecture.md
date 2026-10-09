@@ -1,8 +1,11 @@
 # Driver architecture
 
-The driver implementations are linked into PrismD. The surface interface
-keeps pixel formats and memory ownership explicit across the native and
-P96 adapter backends.
+Each board driver is a separate module, `LIBS:Prism/<NAME>.driver`, which
+PrismD loads and starts as its own process (`src/driver_loader.c`,
+`src/driver_module.c`; `PROGDIR:Drivers` is tried first). See
+[the module protocol](driver-modules.md). The surface interface (#6) keeps
+pixel formats and memory ownership explicit across the native and P96
+adapter backends.
 
 ## Operation results
 
@@ -17,9 +20,19 @@ therefore preserves fill and copy acceleration.
 
 Cirrus checks pitch, dimensions and its implemented address range before
 issuing commands. Its bounded wait resets the blitter on a timeout.
-Unsupported requests decline before any command is submitted. Existing
-void callbacks remain for diagnostic programs; Prism's render paths use
-the result-bearing surface interface.
+Unsupported requests decline before any command is submitted.
+
+The common case has a shorter route. For one of Prism's own VRAM bitmaps,
+the inline fast paths `pbm_fill`, `pbm_copy` and `pbm_expand` in
+`src/prismint.h` call the board's direct `fillRect`, `copyRect`/`copyBetween`
+and `expandRect` hooks when the blit fits `board.blitMaxBytes`,
+`blitMaxRows` and `blitMaxPitch`. On a 68030 the extra call levels of the
+surface layer cost a noticeable part of a small blit. These paths stand
+down for shadow boards, broken or software-only acceleration and while the
+compositor reuses scanout (`PBF_PRESENT`). A driver that finds its blitter
+wedged sets `PBF_ACCEL_BROKEN`, which returns `PR_FAILED`; a text timeout
+returns `PR_RETRY`. Everything else goes through `PrismOps`, with the
+decline, failure and CPU replay rules above.
 
 ## Surfaces and planar operations
 
@@ -41,14 +54,13 @@ support interleaved planes and the null/all-ones plane sentinels.
 
 Linear boards normally retain direct VRAM access. `PBF_SHADOW` bitmaps
 retain stable CPU shadows, including while applications hold pointers.
-Nonlinear boards supply byte-range `read` and `write` operations; linear
-boards can use the core's copy fallback when software presentation needs
-shadows.
+Nonlinear boards supply byte-range `read` and `write` operations; on
+linear boards without them, the compositor's uploads use a plain copy.
 The driver owns address translation and aperture changes; the core
 serializes transfers with rendering through its existing semaphore.
 
-Displayed shadows are compared byte-for-byte against the last successful
-upload. Only the changed span of each row crosses the bus. This detects
+Shadow transfer tracking and driver memory pools came with #9. Displayed
+shadows are compared byte-for-byte against the last successful upload. Only the changed span of each row crosses the bus. This detects
 writes through retained application pointers without requiring new lock
 rules or relying on hashes. If the comparison buffer cannot be allocated,
 uploads fall back to full-bitmap transfers through a bounded snapshot.
@@ -73,57 +85,57 @@ releases device allocations before setting another mode, allowing the
 driver's `ReInitMemory` hook to rebuild its pool for an incompatible format.
 Application pointers remain stable throughout.
 
-## Presentation (draft)
+## Software pointer
 
-This follow-up is held separately from the driver foundations. It is not
-ready to land on memory-constrained physical boards. `DRAGGING=OFF` is the
-default; `DRAGGING=ON` in `ENV:Prism.prefs` opts in to screen splits.
-`SOFTWAREPOINTER=ON` forces software sprites even when a board advertises
-hardware support, including MiSTer configurations without a working sprite.
+`src/pointer.c` draws the pointer as a sprite directly into the shown
+bitmap and keeps a save-under of the pixels it covers. It is used when the
+board has no working hardware cursor (no `PBF_HW_CURSOR` or cursor hooks,
+or P96's `EnableSoftSprite` asks for a software sprite in the current
+mode), or when `SOFTWAREPOINTER=ON` is set in `ENV:Prism.prefs`, for
+example on MiSTer configurations without a working sprite. Hardware
+sprites remain preferred otherwise. The pointer does not set shadow mode
+and does not need the compositor.
+
+Drawing takes the pointer out only when it would touch it. `LOCK()` removes
+it before any drawing, and `draw_lock()` and `sw_clear()` in the render
+paths remove it only when the drawn rectangle overlaps the pointer on the
+shown bitmap. PrismD's tick restores it once a tick has passed without
+drawing. The sprite keeps all 64x64 decoded pixels and clips at the screen
+edges; it is not drawn into a locked bitmap.
+
+## Presentation (experimental)
+
+The compositor in `src/present.c` (#10) is merged but experimental, and
+does nothing unless it is needed. It supplies vertical RTG screen splits,
+which are off unless `DRAGGING=ON` is set in `ENV:Prism.prefs`, and P96
+memory-window PIPs, which compose whenever an application has one open.
 Both preferences survive a save through PrismPrefs.
+
+It copies the front screen at its dragged origin, fills the exposed area
+from the immediately behind screen when it is RTG, converts differing
+formats, and adds each visible screen's PIPs and the pointer. While a frame
+is being composed the pointer is drawn into that frame. Native-chipset
+pixels are not sampled. The front screen's palette is used for indexed
+scanout.
+
+Application bitmap pixels are never used as a PIP save-under. The
+compositor owns a CPU frame and comparison buffer and uploads changed row
+spans. It normally reserves a separate scanout allocation through
+`vram_get_size`, which moves hidden bitmaps to fast RAM to make room; a
+shadow-backed screen can reuse its own VRAM instead. During that reuse
+(`PBF_PRESENT`), rendering stays in CPU shadows and the direct fast paths
+stand down, so accelerated readback cannot copy overlays into application
+data. Stopping presentation restores the original pixels and scanout before
+releasing storage.
 
 A working hardware pointer remains visible until the first composed frame
 has been uploaded. Failed buffer allocation is retried after a cooldown,
 or immediately for an explicit new PIP request.
 
-The remaining work before this compositor can land is:
-
-- Allocate scanout through an evicting allocator while protecting the front
-  screen. If a second frame still cannot fit, retain the front's application
-  pixels in fast RAM and reuse its VRAM without moving locked/direct pointers
-  or allowing overlays into the application image. The two-screen 2 MB PIP
-  case must work without another full-screen VRAM allocation.
-- Keep composition inputs in fast RAM with explicit ownership and damage
-  tracking. Dragging must not read a full frame over Zorro II on every tick.
-- Compose only changed regions. Pointer movement must restore and update the
-  old/new pointer rectangles, without rebuilding or scanning the whole
-  frame under the board lock. Retained application pointers still need a
-  coherent route for detecting their writes.
-- Preserve the last working frame while replacing storage, restoring source
-  scanout, or waiting for a busy PIP layer. Scope acceleration restrictions
-  to affected surfaces instead of disabling all bitmap acceleration.
-
-
-A shared compositor supplies software cursors, vertical RTG screen splits
-and P96 memory-window PIPs. It copies the front screen at its dragged origin,
-fills the exposed area from the immediately behind screen when it is RTG,
-converts differing formats, and adds each visible screen's PIPs and the
-pointer. Native-chipset pixels are not sampled. The front screen's palette
-is used for indexed scanout.
-
-Software sprites retain all 64x64 decoded pixels and clip at screen edges.
-Hardware sprites remain preferred when the board and current mode support
-them. Dragged screens use the software path to position the pointer in the
-composed image. P96's `EnableSoftSprite` decision is honored per mode.
-
-Application bitmap pixels are never used as a cursor/PIP save-under. The
-compositor owns a CPU frame and comparison buffer and uploads changed row
-spans. It normally reserves a separate scanout allocation; a shadow-backed
-screen can reuse its own VRAM. During that reuse, rendering stays in CPU
-shadows so accelerated readback cannot copy overlays into application data.
-Stopping presentation restores the original pixels and scanout before
-releasing storage. Composition still reads the frame each tick and costs
-CPU time; this is not a hardware overlay or page-flip implementation.
+The compositor rebuilds the whole frame on every tick and compares it
+against the last upload. Only changed spans cross the bus, but the
+rebuild itself is slow on a 68030. This is not a hardware overlay or
+page-flip implementation.
 
 P96 memory windows expose their source bitmap and RastPort, with RGB/CLUT
 formats, nearest-neighbor scaling, source cropping, placement, brightness,
@@ -136,14 +148,21 @@ those constraints being enforced.
 
 ## Driver lifetime
 
-Drivers share PrismD's process and library bases. P96 and UAE interfaces
+Each driver runs in its own process with its own C runtime and library
+bases; PrismD calls the callbacks it publishes while that process stays
+alive. Native drivers end when PrismD stops them. P96 and UAE interfaces
 can retain board-context pointers and have no general release operation.
-After claiming either card, PrismD keeps that context resident until
-reboot, including after a failed startup.
+After claiming either card, the driver process keeps that context resident
+until reboot, including after a failed startup, while PrismD itself can
+exit.
 
 ## Development fixtures
 
 `sh tests/architecture.sh` runs the operation-contract, Cirrus-limit,
-ZZ9000 surface, replay, presentation, shadow damage and P96 ABI fixtures using amiga-gcc and
-vamos. The P96 and UAE guest exercisers run in an isolated Amiga boot;
-all guest fixtures claim the virtual card until reset.
+ZZ9000 surface, replay, damage, shadow upload, pointer mode, presentation,
+driver-module request and P96 ABI fixtures using amiga-gcc and vamos. It
+also builds the guest programs (P96 and UAE exercisers, the driver and
+module-loader checks) into `out/tests/guest` and lists them as skipped:
+they need a real or emulated Amiga boot, and all of them claim the
+virtual card until reset. `tests/README.md` describes each test and how
+to run the guest programs.

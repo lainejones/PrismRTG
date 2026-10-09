@@ -725,15 +725,13 @@ static BOOL attach_board(struct P96Priv *p, struct PrismBoard *b)
     if (bi->WaitBlitter && !(bi->Flags & BIF_NOBLITTER)) {
         if (bi->FillRect && bi->FillRect != cpu_fill) {
             b->fillRect = p96_fill;
-            b->flags |= PBF_BLIT_FILL | PBF_BLIT_32;
+            b->flags |= PBF_BLIT_32;
         }
-        if (bi->BlitRect && bi->BlitRect != cpu_copy) {
+        if (bi->BlitRect && bi->BlitRect != cpu_copy)
             b->copyRect = p96_copy;
-            b->flags |= PBF_BLIT_COPY;
-        }
         if (bi->BlitTemplate && bi->BlitTemplate != cpu_template) {
             b->expandRect = p96_expand;
-            b->flags |= PBF_BLIT_EXPAND | PBF_BLIT_32;
+            b->flags |= PBF_BLIT_32;
         }
     }
     if ((bi->Flags & BIF_HARDWARESPRITE) && bi->SetSprite && bi->SetSpriteImage &&

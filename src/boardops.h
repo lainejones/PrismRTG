@@ -46,12 +46,7 @@ struct PrismOps {
 #define PRISM_OPS_ABI 1
 #define PRISM_OPS_SIZE sizeof(struct PrismOps)
 
-#define PBF_SHADOW (1UL << 6)     /* CPU access goes through read/write */
-#define PBF_REINIT (1UL << 11)   /* release shadow VRAM before setMode */
-#define PBF_PRESENT (1UL << 10)  /* device holds composed, not source pixels */
-#define PBF_BANKED (1UL << 9)    /* CalculateMemory may remap every byte */
-#define PBF_SOFTWARE (1UL << 8)
-#define PBF_ACCEL_BROKEN (1UL << 7)
+/* PBF_* board flags: prismboard.h */
 
 UBYTE board_bpp(UBYTE format);
 BOOL board_rect(const struct PrismSurface *, UWORD, UWORD, UWORD, UWORD);

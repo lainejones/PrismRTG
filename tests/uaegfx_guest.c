@@ -113,7 +113,7 @@ static void exercise(struct PrismBoard *b)
                 }
                 if(memcmp(reference,b->vram,size)) {
                     for(i=0;i<size;i++) if(reference[i]!=b->vram[i]) {
-                        sprintf(message,"DIFF offset=%lu expected=%02x actual=%02x format=%u\n",i,reference[i],b->vram[i],m.format);emit(message);break;
+                        sprintf(message,"DIFF offset=%lu expected=%02x actual=%02x format=%u\n",(unsigned long)i,reference[i],b->vram[i],m.format);emit(message);break;
                     }
                     sprintf(message,"FAIL planar %u fallback=%d\n",bpp,fallback);emit(message);
                     FreeVec(reference);return;
@@ -130,7 +130,7 @@ static void exercise(struct PrismBoard *b)
             b->cursorShow(b, TRUE);
         }
         b->waitVBlank(b);
-        sprintf(message, "OK %u-bit pitch=%lu format=%u\n", bpp*8, m.bytesPerRow, m.format);
+        sprintf(message, "OK %u-bit pitch=%lu format=%u\n", bpp*8, (unsigned long)m.bytesPerRow, m.format);
         emit(message);
     }
     /* Exercise the ROM fallback callbacks even if the host always blits. */

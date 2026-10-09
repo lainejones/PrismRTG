@@ -4,12 +4,14 @@
 #include "../src/pointer.c"
 struct PrismBoard board;
 struct SignalSemaphore lock;
-struct GfxBase *GfxBase;
+struct GfxBase *GfxBase=NULL; /* not common: keeps libnix from auto-opening it */
 static ULONG uploads, moves, shows, hides;
 BOOL present_ready(void) { return FALSE; }
 void present_stop(void) {}
 BOOL prism_dragging(void) { return FALSE; }
 BOOL prism_software_pointer(void) { return FALSE; }
+/* No shown Prism bitmap: the software sprite has nowhere to draw. */
+struct PBitMap *prism_display_bitmap(void) { return NULL; }
 struct Screen *prism_display_layers(struct PBitMap **f,struct PBitMap **b,
     WORD *top,WORD *bt,UWORD *w,UWORD *h)
 { (void)f;(void)b;(void)bt;(void)w;(void)h;*top=0;return NULL; }

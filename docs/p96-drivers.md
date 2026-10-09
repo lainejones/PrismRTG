@@ -59,14 +59,19 @@ with Prism.
 The adapter waits for the blitter before handing control back to Prism.
 
 Prism uses the driver's bitmap pitch requirements and carries the exact
-pixel format through rendering calls. Compatible linear formats use direct
-VRAM pointers. Displaced contiguous apertures and incompatible memory modes
-use stable CPU shadow buffers. The adapter waits for the blitter, selects
+pixel format through rendering calls. The adapter advertises every pixel
+format the driver accepts. When all of them share one direct linear
+mapping, bitmaps use direct VRAM pointers. If any accepted format needs a
+displaced aperture, a memory-mode switch or has no direct access, or the
+driver supplies its own allocator, soft-sprite handling or `ReInitMemory`,
+the whole board runs in shadow mode (#9): bitmaps keep stable CPU shadow
+buffers and the direct fast paths are not used. The adapter waits for the blitter, selects
 the memory mode and translates addresses for each transfer. Applications
 keep stable bitmap pointers while the adapter changes device mappings.
 
 Shadow uploads send changed row spans, including writes through retained
-bitmap pointers; accelerated readback covers only the destination region.
+bitmap pointers; after an accelerated operation only the rows of the
+destination region are read back.
 The comparison history consumes an additional CPU buffer. Banked mappings
 are supported when `CalculateMemory` exposes each requested byte, using
 conservative transfers and CPU rendering. Custom allocators can wrap the
@@ -82,16 +87,18 @@ files and arbitrary user-defined timings are not imported. External
 drivers must provide a pixel-clock resolver; large clock deviations are
 rejected.
 
-The presentation follow-up is a draft. Dragging is opt-in through
-`DRAGGING=ON`; `SOFTWAREPOINTER=ON` overrides a non-working hardware sprite.
-Low-VRAM scanout and damage-based composition still need work.
+Hardware cursor input is limited to 32x48 pixels. When the driver has no
+sprite hooks, or its `EnableSoftSprite` asks for a software sprite in the
+current mode, the core draws a software pointer into the shown bitmap;
+`SOFTWAREPOINTER=ON` forces it over a non-working hardware sprite.
 
-Hardware cursor input is limited to 32x48 pixels. The core supplies a
-software cursor when the board or mode requires one, vertical dragging
-between RTG screens, and software P96 RGB/CLUT memory-window PIPs. PIPs
-support scaling, cropping, brightness and layer clipping; capture modes,
-YUV and custom render/save callbacks are not implemented. These features
-consume CPU time and extra buffers; they do not invoke card overlay engines.
+The compositor (#10) is merged but experimental. It supplies vertical
+dragging between RTG screens, off unless `DRAGGING=ON` is set, and software
+P96 RGB/CLUT memory-window PIPs. PIPs support scaling, cropping, brightness
+and layer clipping; capture modes, YUV and custom render/save callbacks are
+not implemented. Composition rebuilds the frame each tick, which is slow on
+a 68030, and needs an extra frame buffer; to make room it moves hidden
+bitmaps to fast RAM. It does not invoke card overlay engines.
 See [driver architecture](driver-architecture.md) for the memory and
 presentation contracts. Private `rtg.library` services and arbitrary bank
 protocols remain outside this adapter's interface.

@@ -10,6 +10,8 @@ export PATH=/opt/amiga/bin:$PATH
 
 CC=m68k-amigaos-gcc
 CFLAGS="-DPRISM_DEBUG -O2 -m68020-60 -noixemul -Wall -Wno-pointer-sign -fomit-frame-pointer -Isrc -Isrc/p96sdk"
+# PrismD and the driver modules: leave out functions nothing calls (debug helpers etc.)
+GC="-ffunction-sections -fdata-sections -Wl,--gc-sections"
 
 mkdir -p out
 
@@ -23,13 +25,13 @@ fi
 
 echo "== Loadable board drivers =="
 mkdir -p out/Drivers
-$CC $CFLAGS -s -DPRISM_DRIVER_MODULE -DDRIVER_PICASSO2 -o out/Drivers/PICASSO2.driver src/driver_module.c src/drv_picasso2.c src/boardops.c
-$CC $CFLAGS -s -DPRISM_DRIVER_MODULE -DDRIVER_ZZ9000 -o out/Drivers/ZZ9000.driver src/driver_module.c src/drv_zz9000.c src/boardops.c
-$CC $CFLAGS -s -DPRISM_DRIVER_MODULE -DDRIVER_P96 -o out/Drivers/P96.driver src/driver_module.c src/drv_p96.c src/boardops.c src/rtg_ops.c
-$CC $CFLAGS -s -DPRISM_DRIVER_MODULE -DDRIVER_UAEGFX -o out/Drivers/UAEGFX.driver src/driver_module.c src/drv_uaegfx.c src/boardops.c src/rtg_ops.c
+$CC $CFLAGS $GC -s -DPRISM_DRIVER_MODULE -DDRIVER_PICASSO2 -o out/Drivers/PICASSO2.driver src/driver_module.c src/drv_picasso2.c src/boardops.c
+$CC $CFLAGS $GC -s -DPRISM_DRIVER_MODULE -DDRIVER_ZZ9000 -o out/Drivers/ZZ9000.driver src/driver_module.c src/drv_zz9000.c src/boardops.c
+$CC $CFLAGS $GC -s -DPRISM_DRIVER_MODULE -DDRIVER_P96 -o out/Drivers/P96.driver src/driver_module.c src/drv_p96.c src/boardops.c src/rtg_ops.c
+$CC $CFLAGS $GC -s -DPRISM_DRIVER_MODULE -DDRIVER_UAEGFX -o out/Drivers/UAEGFX.driver src/driver_module.c src/drv_uaegfx.c src/boardops.c src/rtg_ops.c
 
 echo "== M1 =="
-$CC $CFLAGS -s -o out/PrismD src/prismd.c src/prefs.c src/bitmap.c src/present.c src/render.c src/pointer.c src/cgx.c src/p96.c src/stubs.S src/p2c.S src/boardops.c src/driver_loader.c
+$CC $CFLAGS $GC -s -o out/PrismD src/prismd.c src/prefs.c src/bitmap.c src/present.c src/render.c src/pointer.c src/cgx.c src/p96.c src/stubs.S src/p2c.S src/boardops.c src/driver_loader.c
 $CC $CFLAGS -s -o out/PrismScreen tools/prismscreen.c tools/m8tests.c
 $CC $CFLAGS -s -o out/PrismMouse tools/prismmouse.c
 $CC $CFLAGS -s -o out/PrismBench tools/prismbench.c -lm

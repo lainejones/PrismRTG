@@ -79,7 +79,7 @@ static void exercise(struct PrismBoard *b)
             b->cursorShow(b, TRUE);
         }
         b->waitVBlank(b);
-        sprintf(message, "OK %u-bit pitch=%lu format=%u\n", bpp*8, m.bytesPerRow, m.format);
+        sprintf(message, "OK %u-bit pitch=%lu format=%u\n", bpp*8, (unsigned long)m.bytesPerRow, m.format);
         emit(message);
     }
     b->setSwitch(b, FALSE);

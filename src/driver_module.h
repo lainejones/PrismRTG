@@ -4,17 +4,12 @@
 #include <exec/ports.h>
 #include <stddef.h>
 #include "prismboard.h"
-#ifdef PRISM_BOARD_HAS_OPS
 #include "boardops.h"
 #ifndef PRISM_OPS_ABI
 #error Surface operations require an explicit PRISM_OPS_ABI
 #endif
 #ifndef PRISM_OPS_SIZE
 #define PRISM_OPS_SIZE ((ULONG)sizeof(struct PrismOps))
-#endif
-#else
-#define PRISM_OPS_ABI 0UL
-#define PRISM_OPS_SIZE 0UL
 #endif
 #define PRISM_DRIVER_MAGIC 0x50524456UL
 #ifndef PRISM_DRIVER_ABI
@@ -61,11 +56,9 @@ static inline ULONG driver_board_layout(void)
     FIELD(saveState); FIELD(restoreState); FIELD(fillRect); FIELD(copyRect);
     FIELD(copyBetween); FIELD(expandRect); FIELD(waitBlit); FIELD(drawLine);
     FIELD(cursorImage); FIELD(cursorShow); FIELD(cursorMove);
-    FIELD(bytesPerRow); FIELD(textExpand);
-#ifdef PRISM_BOARD_HAS_OPS
+    FIELD(bytesPerRow);
     FIELD(ops); FIELD(modeReady); FIELD(faults);
     FIELD(blitMaxBytes); FIELD(blitMaxRows); FIELD(blitMaxPitch);
-#endif
     MIX(offsetof(struct PrismMode,width)); MIX(offsetof(struct PrismMode,height));
     MIX(offsetof(struct PrismMode,format)); MIX(offsetof(struct PrismMode,refresh));
     MIX(offsetof(struct PrismMode,bytesPerRow));

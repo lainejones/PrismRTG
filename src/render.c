@@ -65,20 +65,33 @@ ULONG rgbRow[MAXW];
 static ULONG rowWbuf[MAXW + 8];
 #define rowW ((UBYTE *)rowWbuf)
 
-/* Nearest pen to an RGB colour (format conversions into pen bitmaps). */
-static UBYTE nearest_pen(const ULONG *tab, ULONG c)
+/* Nearest pen to an RGB colour (format conversions into pen bitmaps, the
+ * software pointer, composition): green weighs most, blue least. The last
+ * answer is kept - conversions ask for the same colour many times. */
+UBYTE pen_nearest(const ULONG *tab, ULONG c)
 {
+    static const ULONG *lastTab;
+    static ULONG lastC;
+    static UBYTE lastPen;
     UWORD i, best = 0;
     LONG bd = 0x7fffffff;
     if (!tab)
         return 0;
+    c &= 0xffffff;
+    if (tab == lastTab && c == lastC)
+        return lastPen;
     for (i = 0; i < 256; i++) {
         LONG dr = (LONG)((tab[i] >> 16) & 255) - ((c >> 16) & 255);
         LONG dg = (LONG)((tab[i] >> 8) & 255) - ((c >> 8) & 255);
         LONG db = (LONG)(tab[i] & 255) - (c & 255);
         LONG dd = dr * dr * 3 + dg * dg * 4 + db * db * 2;
-        if (dd < bd) { bd = dd; best = i; }
+        if (dd < bd) {
+            bd = dd; best = i;
+            if (!dd)
+                break;
+        }
     }
+    lastTab = tab; lastC = c; lastPen = best;
     return best;
 }
 
@@ -544,7 +557,7 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
                         (ULONG)w * d->bpp);
             } else {
                 for (x = 0; x < w; x++)
-                    rowA[x] = nearest_pen(d->rgbTab, rgbRow[x]);
+                    rowA[x] = pen_nearest(d->rgbTab, rgbRow[x]);
                 surf_write(d, dx, dy + y, w, rowA, mask);
             }
         }
@@ -702,7 +715,7 @@ static void fill(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1,
         /* These fills overwrite their pixels, so a stopped partial blit
          * can finish on the CPU. The same applies to the solid row below. */
         /* a blitter that takes 4-byte pixels (ZZ9000) */
-        if (b == 4 && p->inVram && (board.fillRect || (board.ops && board.ops->fill)) && (board.flags & PBF_BLIT_32) &&
+        if (b == 4 && p->inVram && BOARD_CAN(fill) && (board.flags & PBF_BLIT_32) &&
             w * (y1 - y0 + 1) >= 12) {
             if (pbm_fill(p, 4, x0, y0, w, y1 - y0 + 1,
                            ((ULONG)px[0] << 24) | ((ULONG)px[1] << 16) | ((ULONG)px[2] << 8) |
@@ -710,14 +723,14 @@ static void fill(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1,
         }
         /* a grey (all bytes equal) fills as bytes on the blitter */
         if (px[0] == px[1] && px[1] == px[2] && (b == 3 || px[2] == px[3]) &&
-            p->inVram && (board.fillRect || (board.ops && board.ops->fill)) && w * (y1 - y0 + 1) > 64) {
+            p->inVram && BOARD_CAN(fill) && w * (y1 - y0 + 1) > 64) {
             if (pbm_fill(p, 1, x0 * b, y0, w * b, y1 - y0 + 1, px[0]) == PR_DONE) return;
         }
         for (x = 0, r = rowW; x < w; x++, r += b) {
             r[0] = px[0]; r[1] = px[1]; r[2] = px[2];
             if (b == 4) r[3] = px[3];
         }
-        if (p->inVram && (board.copyRect || (board.ops && board.ops->copy)) && w * (y1 - y0 + 1) > 256) {
+        if (p->inVram && BOARD_CAN(copy) && w * (y1 - y0 + 1) > 256) {
             /* no colour expansion at 24 bits on the 5426/28: write the
              * first row, then let the blitter double it down (1, 2, 4...
              * rows per copy) */
@@ -740,7 +753,7 @@ static void fill(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1,
             vcopy(p->pix + (ULONG)y * p->bpr + (ULONG)x0 * b, rowW, (LONG)w * b);
         return;
     }
-    if (!xor && (mask == 0xff || p->bpp == 2) && p->inVram && (board.fillRect || (board.ops && board.ops->fill)) &&
+    if (!xor && (mask == 0xff || p->bpp == 2) && p->inVram && BOARD_CAN(fill) &&
         w * (y1 - y0 + 1) >= 12) {
         if (pbm_fill(p, p->bpp, x0, y0, w, y1 - y0 + 1,
                        pixval(p, pen)) == PR_DONE) return;
@@ -1538,7 +1551,7 @@ static void line_solid(struct PBitMap *p, struct LineCtx *l, WORD bx0, WORD by0,
     if ((x < x1 ? x : x1) >= bx0 && (x < x1 ? x1 : x) <= bx1 &&
         (y < y1 ? y : y1) >= by0 && (y < y1 ? y1 : y) <= by1) {
         /* long enough to be worth a blitter command */
-        if ((board.drawLine || (board.ops && board.ops->line)) && p->inVram && b != 3 && (dx > 40 || dy > 40) &&
+        if (BOARD_CAN(line) && p->inVram && b != 3 && (dx > 40 || dy > 40) &&
             (b != 4 || (board.flags & PBF_BLIT_32))) {
             ULONG c;
             if (b == 1)      c = pen;
@@ -1961,7 +1974,7 @@ static void tmpl_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
 
     /* On the card's blitter (Cirrus colour expansion): JAM1 = transparent,
      * JAM2 = opaque, INVERSVID = the template inverted. */
-    if ((board.expandRect || (board.ops && board.ops->expand)) && p->inVram && rp->Mask == 0xff && !(dm & COMPLEMENT) &&
+    if (BOARD_CAN(expand) && p->inVram && rp->Mask == 0xff && !(dm & COMPLEMENT) &&
         (LONG)w * h >= 64 &&
         (p->bpp <= 2 || (p->bpp == 4 && (board.flags & PBF_BLIT_32)))) {
         ULONG rb = ((ULONG)w + 7) >> 3, k, fgv, bgv;

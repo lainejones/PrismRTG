@@ -103,36 +103,11 @@ static inline void put_rgbf(ULONG f, ULONG c, UBYTE *d)
     pf_put(rgbf2pf[f], c, d);
 }
 
-/* nearest pen of an 8-bit bitmap to a colour, remembering the last answer */
-static UBYTE near_pen(struct PBitMap *p, ULONG rgb)
-{
-    static ULONG *lastTab, lastC;
-    static UBYTE lastPen;
-    UWORD i, best = 0;
-    LONG bd = 0x7fffffff;
-
-    rgb &= 0xffffff;
-    if (!p->rgbTab)
-        return 0;
-    if (p->rgbTab == lastTab && rgb == lastC)
-        return lastPen;
-    for (i = 0; i < 256; i++) {
-        ULONG c = p->rgbTab[i];
-        LONG dr = (LONG)((c >> 16) & 255) - ((rgb >> 16) & 255);
-        LONG dg = (LONG)((c >> 8) & 255) - ((rgb >> 8) & 255);
-        LONG db = (LONG)(c & 255) - (rgb & 255);
-        LONG d = dr * dr * 3 + dg * dg * 4 + db * db * 2;
-        if (d < bd) { bd = d; best = i; }
-    }
-    lastTab = p->rgbTab; lastC = rgb; lastPen = best;
-    return best;
-}
-
 /* a colour into one pixel of a Prism bitmap */
 static inline void put_pbm(struct PBitMap *p, UBYTE *d, ULONG rgb)
 {
     if (p->bpp == 1)
-        *d = near_pen(p, rgb);
+        *d = pen_nearest(p->rgbTab, rgb);
     else
         pf_put(p->fmt, rgb, d);
 }
@@ -598,7 +573,7 @@ static void rd_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
                 CopyMem((APTR)s, d, (ULONG)n * p->bpp);
             else if (a->fmt == RGBFB_CLUT)
                 for (x = 0; x < n; x++, s += p->bpp)
-                    d[x] = p->bpp == 1 ? *s : near_pen(p, pf_get(p->fmt, s));
+                    d[x] = p->bpp == 1 ? *s : pen_nearest(p->rgbTab, pf_get(p->fmt, s));
             else
                 for (x = 0; x < n; x++, s += p->bpp, d += a->bpp)
                     put_rgbf(a->fmt, get_pbm(p, s), d);
@@ -694,7 +669,7 @@ static void fill_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
     /* on the card where it can: 8- and 16-bit fills, 32-bit on a blitter
      * that takes 4-byte pixels */
     put_pbm(p, px, c->rgb);
-    if (p->inVram && (board.fillRect || (board.ops && board.ops->fill)) && (LONG)n * (by1 - by0 + 1) >= 12 &&
+    if (p->inVram && BOARD_CAN(fill) && (LONG)n * (by1 - by0 + 1) >= 12 &&
         (p->bpp <= 2 || (p->bpp == 4 && (board.flags & PBF_BLIT_32)))) {
         ULONG v = p->bpp == 1 ? px[0] : p->bpp == 2 ? (((ULONG)px[0] << 8) | px[1]) : be32(px);
         if (pbm_fill(p,p->bpp,bx0,by0,n,by1-by0+1,v) == PR_DONE) return;

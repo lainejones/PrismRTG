@@ -4,9 +4,10 @@
 #include "../src/render.c"
 struct PrismBoard board;
 struct SignalSemaphore lock;
-struct GfxBase *GfxBase;
+struct GfxBase *GfxBase=NULL; /* not common: keeps libnix from auto-opening it */
 static ULONG hw_calls;
 static enum PrismResult outcome=PR_FAILED;
+void dbg(const char *fmt,...) { (void)fmt; } /* PrismD's debug log */
 enum PrismResult pbm_hw_fill(struct PBitMap *p,UBYTE b,UWORD x,UWORD y,UWORD w,UWORD h,ULONG c)
 { (void)b;(void)w;(void)h;(void)c;p->pix[y*p->bpr+x*p->bpp]=0xee;hw_calls++;return outcome; }
 enum PrismResult pbm_hw_copy(struct PBitMap *s,struct PBitMap *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h)
