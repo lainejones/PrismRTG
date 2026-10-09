@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Laine Jones */
+ * Copyright (C) 2026 Laine Jones
+ * Copyright (C) 2026 Stefan Reinauer */
 /*
  * render.c - graphics.library drawing into Prism bitmaps.
  *
@@ -1563,6 +1564,14 @@ static void line_fast(struct PBitMap *p, struct LineCtx *l, WORD ox, WORD oy, UB
  * Bresenham steps as line_cb, but the pixel's bytes are worked out once,
  * the row pointer moves with y, and nothing is read back from VRAM - a
  * read across Zorro II costs far more than the write. */
+/* A 32-bit pen as the four VRAM bytes in a long (out of line: see line_hw) */
+static __attribute__((noinline)) ULONG line_colour32(struct PBitMap *p, UBYTE pen)
+{
+    UBYTE px[4] = { 0, 0, 0, 0 };
+    pf_put(p->fmt, pen_rgb(p->rgbTab, pen), px);
+    return ((ULONG)px[0] << 24) | ((ULONG)px[1] << 16) | ((ULONG)px[2] << 8) | px[3];
+}
+
 /* The blitter attempt, out of line: with it inlined next to line_fast
  * the compiler spilled the colour and the run count to the stack inside
  * the 16-bit per-run loop (-12%). */
@@ -1603,7 +1612,8 @@ static void line_solid(struct PBitMap *p, struct LineCtx *l, WORD bx0, WORD by0,
     /* nothing to clip? */
     if ((x < x1 ? x : x1) >= bx0 && (x < x1 ? x1 : x) <= bx1 &&
         (y < y1 ? y : y1) >= by0 && (y < y1 ? y1 : y) <= by1) {
-        /* long enough to be worth a blitter command */
+        /* long enough to be worth a blitter command (a board with a direct
+         * drawLine hook was offered the line already: line_direct) */
         if (BOARD_CAN(line) && p->inVram && b != 3 && (dx > 40 || dy > 40) &&
             (b != 4 || (board.flags & PBF_BLIT_32)) && line_hw(p, x, y, x1, y1, pen))
             return;
@@ -1705,6 +1715,28 @@ static void line_solid(struct PBitMap *p, struct LineCtx *l, WORD bx0, WORD by0,
 }
 
 /* Plot the part of the line that falls in this piece. */
+/* A board with a direct drawLine hook (the ZZ9000): a solid line that
+ * needs no clipping goes straight to it, as 1.0 did - through the surface
+ * layer the A4000 drew a fifth fewer lines. Out of line_solid on purpose:
+ * there it cost the 68030's software line loop its registers (-8%).
+ * FALSE: not done, draw it the usual way. */
+static __attribute__((noinline)) BOOL line_direct(struct PBitMap *p, struct LineCtx *l,
+                                                  WORD bx0, WORD by0, WORD bx1, WORD by1,
+                                                  WORD ox, WORD oy, UBYTE pen)
+{
+    WORD x = l->x0 + ox, y = l->y0 + oy, x1 = l->x1 + ox, y1 = l->y1 + oy;
+    WORD dx = x1 > x ? x1 - x : x - x1, dy = y1 > y ? y1 - y : y - y1;
+    UBYTE b = p->bpp;
+    if (b == 3 || (dx <= 40 && dy <= 40) || (b == 4 && !(board.flags & PBF_BLIT_32)) || !HW_OK(p))
+        return FALSE;
+    if ((x < x1 ? x : x1) < bx0 || (x < x1 ? x1 : x) > bx1 ||
+        (y < y1 ? y : y1) < by0 || (y < y1 ? y1 : y) > by1)
+        return FALSE;                    /* clipped: the usual way */
+    board.drawLine(&board, p->vramOff, p->bpr, b, x, y, x1 - x, y1 - y,
+                   b == 1 ? pen : b == 2 ? pixval(p, pen) : line_colour32(p, pen));
+    return !(board.flags & PBF_ACCEL_BROKEN);
+}
+
 static void line_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
                     WORD ox, WORD oy, void *ctx)
 {
@@ -1716,6 +1748,8 @@ static void line_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
 
     /* solid pattern, plain JAM1/JAM2 drawing in the foreground pen */
     if (l->ptrn == 0xffff && rp->Mask == 0xff && !(rp->DrawMode & (COMPLEMENT | INVERSVID))) {
+        if (board.drawLine && line_direct(p, l, bx0, by0, bx1, by1, ox, oy, fg))
+            return;
         line_solid(p, l, bx0, by0, bx1, by1, ox, oy, fg);
         return;
     }
