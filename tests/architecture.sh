@@ -34,6 +34,8 @@ for name in boardops cirrus_limits zz_surfaces render_replay damage shadow_uploa
     run $name
 done
 sh tests/p96-adapter.sh
+# the patches run on the calling program's stack: every chain under budget
+sh tests/stack_audit.sh
 
 # ---- guest exercisers (build only) ----------------------------------
 # Dedicated-boot tools use the same shared RTG implementation as PrismD.

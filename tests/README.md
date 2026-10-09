@@ -33,6 +33,7 @@ one of these files, the test needs a matching stub.
 | `pointer_mode.c` | `pointer.c`: hardware cursor used or dropped per mode |
 | `presentation.c` | `present.c` + `pointer.c`: no composition for the pointer alone, PIP/dragging composition, shadow-mode in-place scanout, split screens, damage-only writes, allocation/upload failure keeps the hardware sprite, software sprite with save-under, CLUT remapping |
 | `driver_module.c` | Driver module request: ABI, size, board layout and ops ABI mismatches are rejected |
+| `stack_audit.sh` + `stack_audit.py` | PrismD's patches run on the calling program's stack: compiles PrismD and the drivers to assembly with `-fstack-usage`, follows every call (render callbacks charged to the function that hands them to `clip_rp`, register calls into the drivers' installed hooks), and fails if any patch's deepest chain plus the stub's frame exceeds 1,536 bytes (`STACK_BUDGET`). Extra edges the assembly cannot show go in `stack_indirect.txt` |
 | `p96_adapter.c` (`p96-adapter.sh`) | `drv_p96.c` through the real 68k register ABI: fills, overlapping blits, templates, mode setup order, card memory pool and aperture, banked memory, planar probe |
 
 ## Guest exercisers (built, not run: reported as SKIP)

@@ -85,6 +85,16 @@ screen, PrismD's own tick task. Therefore, inside any callback:
   caller's time: a `waitBlit` that spins for a second freezes the
   application. Bound every hardware wait (`for (n = 0; n < LIMIT && busy; n++)`)
   and report a timeout as a failure rather than spinning forever.
+* **A callback runs on the caller's stack**, which can be a 4 KB Workbench
+  or input.device stack already deep in Intuition and layers. Keep a
+  callback's own frame under about 150 bytes: no buffers or tables as
+  local variables (make them static - the board lock serialises the
+  callbacks - or allocate them in the probe). `sh tests/stack_audit.sh`
+  measures every chain from PrismD's patches down through the drivers'
+  hooks and fails above 1,536 bytes; the host test suite runs it. (A
+  1.9 KB frame in PrismD's own text drawing crashed Kickstart 3.1 at boot
+  during the 1.1 beta 4 work; it had been one register away from it since
+  beta 3.)
 
 Who calls what:
 

@@ -2258,11 +2258,26 @@ int main(void)
             vb0 = GfxBase->VBCounter | 1;
         dbgMain = FindTask(NULL);
         while (!(SetSignal(0, 0) & SIGBREAKF_CTRL_C)) {
+            /* up for a minute (3600 vertical blanks): this start is a good
+             * one (see prismmon.c). Checked first: LOG=SYNC below sleeps,
+             * and every second boot was skipped while it did (1.1 beta 4) */
+            if (!settled && GfxBase->VBCounter - vb0 > 3600) {
+                settled = TRUE;
+                DeleteFile(PRISM_BOOTFLAG);
+            }
             if (prefs.log == 2) {
                 /* LOG=SYNC (or "prismlog SYNC"): sleep until dbg() has a
-                 * line, write it at once, ahead of whoever logged it */
+                 * line, write it at once, ahead of whoever logged it -
+                 * polling once a frame until the start has settled */
+                ULONG sig;
                 SetTaskPri(dbgMain, 10);
-                if (Wait(SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F) & SIGBREAKF_CTRL_C)
+                if (settled)
+                    sig = Wait(SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F);
+                else {
+                    Delay(1);
+                    sig = SetSignal(0, SIGBREAKF_CTRL_F);
+                }
+                if (sig & SIGBREAKF_CTRL_C)
                     SetSignal(SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_C);
                 dbg_flush();
                 if (alertWaiter) {
@@ -2284,12 +2299,6 @@ int main(void)
             pointer_tick();
             if (prefs.log || ++tick % 25 == 0)
                 dbg_flush();
-            /* up for a minute (3600 vertical blanks): this start is a good
-             * one (see prismmon.c) */
-            if (!settled && GfxBase->VBCounter - vb0 > 3600) {
-                settled = TRUE;
-                DeleteFile(PRISM_BOOTFLAG);
-            }
         }
         SetSignal(0, SIGBREAKF_CTRL_C);
         if (pscreens) {

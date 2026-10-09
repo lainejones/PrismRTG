@@ -408,7 +408,8 @@ BOOL pbm_upload(struct PBitMap *p)
     pbm_surface(p,&s);
     if (!p->uploaded) p->uploaded = AllocVec(s.allocation, MEMF_ANY);
     if (!p->uploaded) {
-        UBYTE snapshot[256];
+        /* static: the board lock is held (this runs on any caller's stack) */
+        static UBYTE snapshot[256];
         ULONG off;
         /* Low memory still permits presentation, without damage history.
          * Never pass a buffer that clients can change during the transfer. */

@@ -2107,6 +2107,55 @@ static inline UWORD glyph_index(struct TextFont *tf, UBYTE c)
 }
 
 /* Text(rp a1, string a0, count d0) */
+/* Text runs on the CALLER's stack: Workbench, IPrefs, input.device - often
+ * 4 KB, already deep in Intuition and layers. A 1 KB buffer and two
+ * 256-entry tables in h_Text (1.9 KB in all) overflowed it at boot on
+ * Kickstart 3.1 once anything else grew; they now come from this pool
+ * (tests/stack_audit.sh checks every chain). */
+#define TEXT_POOL     4                 /* strings drawn at once without AllocVec */
+#define TEXT_TMPL     1024              /* the template part of a pool buffer */
+#define TEXT_POOLBUF  (TEXT_TMPL + 512 + 256)   /* + glyph offsets and masks (256 each) */
+
+/* Text's template and glyph-table buffers: static (not on the caller's stack),
+ * claimed under a Forbid of a few instructions and never waited for - no
+ * lock is held while the template is built, so there is no lock order to
+ * get wrong. More than TEXT_POOL tasks drawing at once fall back to
+ * AllocVec. */
+static ULONG textPool[TEXT_POOL][TEXT_POOLBUF / 4];
+static UBYTE textPoolUsed[TEXT_POOL];
+
+static UBYTE *text_buf_get(ULONG size)
+{
+    WORD i;
+    if (size <= TEXT_POOLBUF) {
+        Forbid();
+        for (i = 0; i < TEXT_POOL; i++)
+            if (!textPoolUsed[i]) {
+                textPoolUsed[i] = 1;
+                Permit();
+                return (UBYTE *)textPool[i];
+            }
+        Permit();
+    }
+    return AllocVec(size, MEMF_ANY);
+}
+
+static void text_buf_put(UBYTE *b)
+{
+    WORD i;
+    for (i = 0; i < TEXT_POOL; i++)
+        if (b == (UBYTE *)textPool[i]) {
+            textPoolUsed[i] = 0;
+            return;
+        }
+    FreeVec(b);
+}
+
+/* Fixed 8-pixel fonts (topaz 8: Workbench, Shells, most windows) with no
+ * style or extra spacing: every glyph is one byte per row at a byte offset
+ * in the font data, so the template is a byte per character per row - no
+ * extent pass, no shifting, rows contiguous for the chip. FALSE: not this
+ * kind of string (nothing drawn). */
 LONG h_Text(struct Regs *r)
 {
     TRACE("Text");
@@ -2117,7 +2166,12 @@ LONG h_Text(struct Regs *r)
     struct TextFont *tf;
     const ULONG *loc;
     const WORD *space, *kern;
-    UBYTE style, stackbuf[1024], *tmpl;
+    /* The caller's stack (Workbench, IPrefs, input.device: often 4 KB,
+     * already deep in Intuition and layers) is no place for the 1.8 KB of
+     * template and glyph tables this used to keep there - it overflowed at
+     * boot on Kickstart 3.1. They come from the static pool (text_buf_get:
+     * claimed without waiting, AllocVec when all are taken). */
+    UBYTE style, *pool, *stackbuf, *tmpl;
     ULONG tbpr, size;
     struct TmplCtx t;
 
@@ -2125,6 +2179,9 @@ LONG h_Text(struct Regs *r)
         return 0;
     if (!(tf = rp->Font) || count <= 0)
         return 1;
+    if (!(pool = text_buf_get(TEXT_POOLBUF)))
+        return 1;
+    stackbuf = pool;
     loc = tf->tf_CharLoc;
     space = tf->tf_CharSpace;
     kern = tf->tf_CharKern;
@@ -2136,9 +2193,9 @@ LONG h_Text(struct Regs *r)
      * offset in the font data, so the template is a byte per character per
      * row - no extent pass, no shifting, rows contiguous for the chip. */
     if (tf->tf_XSize == 8 && !(tf->tf_Flags & FPF_PROPORTIONAL) && !kern && !space &&
-        !style && !rp->TxSpacing && count <= 256 && (ULONG)count * tf->tf_YSize + 4 <= sizeof(stackbuf)) {
-        UWORD off[256];
-        UBYTE msk[256], gy;
+        !style && !rp->TxSpacing && count <= 256 && (ULONG)count * tf->tf_YSize + 4 <= TEXT_TMPL) {
+        UWORD *off = (UWORD *)(pool + TEXT_TMPL);
+        UBYTE *msk = pool + TEXT_TMPL + 512, gy;
         for (i = 0; i < count; i++) {
             ULONG l = loc[glyph_index(tf, str[i])];
             UWORD bo = l >> 16, bw = l & 0xffff;
@@ -2163,6 +2220,7 @@ LONG h_Text(struct Regs *r)
             clip_rp_q(rp, t.tx, top, rp->cp_x + count * 8 - 1, top + tf->tf_YSize - 1, tmpl_cb,
                       &t, (LONG)count * 8 * tf->tf_YSize <= QUICK_AREA);
             rp->cp_x += count * 8;
+            text_buf_put(pool);
             return 1;
         }
     }
@@ -2182,16 +2240,19 @@ LONG h_Text(struct Regs *r)
     if (width > x1) x1 = width;
     if (x1 <= x0) {
         rp->cp_x += width;
+        text_buf_put(pool);
         return 1;
     }
 
     /* the string as one 1-bit template, origin at x0 */
     tbpr = ((x1 - x0 + 7) >> 3) + 4;          /* fast glyph path writes 4 bytes */
     size = tbpr * tf->tf_YSize;
-    if (size <= sizeof(stackbuf))
+    if (size <= TEXT_TMPL)
         tmpl = stackbuf;
-    else if (!(tmpl = AllocVec(size, MEMF_ANY)))
+    else if (!(tmpl = AllocVec(size, MEMF_ANY))) {
+        text_buf_put(pool);
         return 1;
+    }
     memset(tmpl, 0, size);
     cx = 0;
     for (i = 0; i < count; i++) {
@@ -2241,6 +2302,7 @@ LONG h_Text(struct Regs *r)
               (LONG)(x1 - x0) * tf->tf_YSize <= QUICK_AREA);
     if (tmpl != stackbuf)
         FreeVec(tmpl);
+    text_buf_put(pool);
     rp->cp_x += width;
     return 1;
 }

@@ -1,0 +1,4 @@
+# Indirect calls the disassembly cannot see (stack_audit.py). Every jsr
+# through a register already counts as reaching every *_cb render callback
+# and every driver function (INDIRECT); list here only what that misses.
+# caller: callee callee ...
