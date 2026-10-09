@@ -188,10 +188,18 @@ machine two days earlier. The two right-hand columns were measured on
 9 October, alternating 1.0.2 and 1.1 beta 4 over four boots (two runs per
 boot, mean shown), to show what the code added since 1.0 costs. Speeds vary
 by up to 5-10% from one boot to the next on this machine, so only the
-differences larger than that mean much. Beta 4's one clear loss is short
-text: each `Text` call now takes its work buffers from a small shared pool
-instead of a large stack frame, which fixed a crash on Kickstart 3.1 but
-costs about 11% on 4-character strings.
+differences larger than that mean much.
+
+Beta 4's clearest loss here is short text (about 11% on 4-character
+strings). It is not a text problem: on the cycle-exact 68030 + Picasso II+
+emulation, where runs repeat within 1%, beta 4 is 5-7% slower than 1.0.2 on
+most small drawing calls (small fills, WritePixel, ReadPixel, short text,
+small blits), while long lines got faster. Short operations show it most
+because a fixed cost per call is a bigger share of them. Measuring the
+builds in between puts it in two steps: the 1.1 beta 1 driver work
+(WritePixel and ReadPixel) and the move to format-aware board surfaces
+(every blitter operation, partly spent waiting for the blitter). Recovering
+it is the next piece of work, and this table will be updated when it is.
 
 | Test | Picasso96 | PrismRTG 1.0 | 1.0.2 (9 Oct) | 1.1 beta 4 (9 Oct) |
 |---|---|---|---|---|
