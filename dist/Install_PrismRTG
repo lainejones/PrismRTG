@@ -134,7 +134,7 @@
             (choices "Install anyway" "Cancel")
             (default 0)))
         (exit "Nothing was installed." (quiet))))
-(if (or (= card "1") (= card "5") (= card "6") (= card "7"))
+(if (or (= card "1") (= card "5") (= card "6") (= card "7") (= card "8"))
     (message "PrismRTG has been tested on this kind of card (" cardname ") only in an "
              "emulator, never on the real hardware.\n\n"
              "It may work, or the picture may be wrong. Picasso96 is not touched "

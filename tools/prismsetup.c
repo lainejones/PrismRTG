@@ -10,7 +10,8 @@
  *       DEVS:Monitors is set up for it. Read-only. Sets
  *         ENV:PrismCard      0 none, 1 Picasso II, 2 GBAPII++,
  *                            3 ZZ9000 (Zorro III), 4 ZZ9000 (Zorro II),
- *                            5 Piccolo SD64, 6 Piccolo, 7 Spectrum 28/24
+ *                            5 Piccolo SD64, 6 Piccolo, 7 Spectrum 28/24,
+ *                            8 Graffity
  *         ENV:PrismCardName  the card's name, or ""
  *         ENV:PrismP96Mon    the Picasso96 monitor file's name, or ""
  *       and returns the same number as PrismCard.
@@ -319,7 +320,7 @@ static int detect(void)
 {
     static const char *names[] = { "", "Picasso II", "GBAPII++", "ZZ9000 (Zorro III)",
                                    "ZZ9000 (Zorro II)", "Piccolo SD64", "Piccolo",
-                                   "Spectrum 28/24" };
+                                   "Spectrum 28/24", "Graffity" };
     int card = 0;
     char num[4], mon[108];
 
@@ -331,6 +332,7 @@ static int detect(void)
         else if (FindConfigDev(NULL, 2195, 11) && FindConfigDev(NULL, 2195, 10)) card = 5;
         else if (FindConfigDev(NULL, 2195, 6) && FindConfigDev(NULL, 2195, 5))   card = 6;
         else if (FindConfigDev(NULL, 2193, 2) && FindConfigDev(NULL, 2193, 1))   card = 7;
+        else if (FindConfigDev(NULL, 2092, 33) && FindConfigDev(NULL, 2092, 34)) card = 8;
         CloseLibrary((struct Library *)ExpansionBase);
     }
     {

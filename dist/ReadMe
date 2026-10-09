@@ -3,7 +3,7 @@ PrismRTG - RTG for AmigaOS 3.x
 
 A from-scratch retargetable-graphics system for two boards:
   * Village Tronic Picasso II / GBAPII++ (Cirrus GD542x), Zorro II
-  * Piccolo, Piccolo SD64, GVP Spectrum 28/24 (Zorro II) - emulator-tested only
+  * Piccolo, Piccolo SD64, GVP Spectrum 28/24, Ateo Graffity - emulator-tested only
   * MNT ZZ9000, Zorro III
 
 It takes the place of Picasso96: the two cannot both be active on one

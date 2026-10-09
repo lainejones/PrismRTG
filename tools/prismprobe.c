@@ -30,6 +30,8 @@ static const char *known(UWORD mfr, UBYTE prod)
     if (mfr == 2195 && prod == 6)    return "Piccolo registers -> picasso2 driver (emulation-tested)";
     if (mfr == 2193 && prod == 1)    return "Spectrum 28/24 VRAM -> picasso2 driver (emulation-tested)";
     if (mfr == 2193 && prod == 2)    return "Spectrum 28/24 registers -> picasso2 driver (emulation-tested)";
+    if (mfr == 2092 && prod == 34)   return "Graffity VRAM -> picasso2 driver (emulation-tested)";
+    if (mfr == 2092 && prod == 33)   return "Graffity registers -> picasso2 driver (emulation-tested)";
     return NULL;
 }
 

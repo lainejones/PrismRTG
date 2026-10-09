@@ -22,6 +22,7 @@ the native drivers do not need them.
 | MNT ZZ9000, Zorro III | firmware 2.8 | A4000, 68060 | Real hardware. Blitter fills, copies, text, lines; hardware pointer. 8/16/32-bit up to 1280x1024. |
 | GBAPII++ (Picasso II remake) | Cirrus GD5434, 2 MB | A2000, 68030 | Real hardware. Blitter fills, copies, text (8/16/32-bit); hardware pointer. 8/16-bit up to 1024x768, 24-bit 640x480, 32-bit 800x600. |
 | Village Tronic Picasso II / II+ | Cirrus GD5426/28 | WinUAE only | Emulation only: never run on a real card. 8/16-bit, 24-bit 640x480. |
+| Ateo Concepts Graffity (Zorro II and III) | Cirrus GD5428 | WinUAE only | Emulation only, from WinUAE's description of the board. Same as the Picasso II+. |
 | Piccolo SD64, Zorro II | Cirrus GD5434 | WinUAE only | Emulation only. 8/16/24/32-bit, blitter as on the GBAPII++. |
 | Piccolo, Zorro II | Cirrus GD5426 | WinUAE only | Emulation only. 8/16-bit, 24-bit 640x480. |
 | GVP Spectrum 28/24, Zorro II | Cirrus GD5428 | WinUAE only | Emulation only. 8/16-bit, 24-bit 640x480. |
@@ -302,7 +303,7 @@ blitter off.
   a second, which is slow on a 68030. Off, they cost nothing.
 * Vertical dragging composes the front and next RTG screen; native-chipset
   screens cannot be mixed into the split. No monitor detection (see above).
-* The Picasso II, Piccolo, Piccolo SD64 and Spectrum have only run in WinUAE.
+* The Picasso II, Piccolo, Piccolo SD64, Spectrum and Graffity have only run in WinUAE.
   A real card can differ from its emulation (the GBAPII++ did, in three
   places). If 256-colour screens on a real Piccolo or Spectrum show red and
   blue exchanged, tick **Swap red/blue** in PrismPrefs.

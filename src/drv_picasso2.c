@@ -53,6 +53,9 @@ extern struct ExpansionBase *ExpansionBase;
 #define PASS_PICASSO 0        /* byte writes at +$A000 / +$B000           */
 #define PASS_4F6F    1        /* +$8000: $6F card, $4F Amiga, $1F wake    */
 #define PASS_BIT5    2        /* +$8000 bit 5: 1 card, 0 Amiga; bit 4 wake */
+#define PASS_GRAFFITY 3       /* a byte write at +$8060 card, +$8040 Amiga
+                                 (address bits 5-6; WinUAE gfxboard.cpp,
+                                 the only public description of the board) */
 
 /* chip ids (CR27, §2.2) */
 #define CL_GD5426  0x90
@@ -1136,6 +1139,11 @@ static void p2_SetSwitch(struct PrismBoard *b, BOOL rtg)
         *sw = rtg ? (*sw | 0x20) : (*sw & 0xdf);
         return;
     }
+    if (p->pass == PASS_GRAFFITY) {
+        /* Graffity: the address, not the data, carries the setting */
+        *(volatile UBYTE *)(b->regs + (rtg ? 0x8060 : 0x8040)) = 0;
+        return;
+    }
     /* §1.6: a byte write at +$A000 routes the card's output to the
      * monitor, +$B000 gives it back to the Amiga. (+$8000/+$9000 on boards
      * that ignore A13; the GBAPII++ aliases both.) */
@@ -1309,6 +1317,12 @@ static const struct P2Board {
     { 2195, 10, 11, PASS_4F6F,    FALSE, TRUE,  "Piccolo SD64" },
     { 2195,  5,  6, PASS_BIT5,    FALSE, TRUE,  "Piccolo" },
     { 2193,  1,  2, PASS_4F6F,    FALSE, TRUE,  "Spectrum 28/24" },
+    /* Ateo Concepts Graffity: a GD5428 with plain ports and a 128 KB
+     * register window; only ever run in WinUAE */
+    { 2092, 34, 33, PASS_GRAFFITY, FALSE, FALSE, "Graffity" },
+    /* ...and as a Zorro III board: one 16 MB node holding the register
+     * window at +$800000 and 2 MB of VRAM at +$C00000 (memProd 0) */
+    { 2092,  0, 33, PASS_GRAFFITY, FALSE, FALSE, "Graffity Z3" },
 };
 
 /* Reject an operation before writing registers if the chip cannot encode
@@ -1393,8 +1407,14 @@ BOOL Picasso2_Probe(struct PrismBoard *b)
 
     for (i = 0; i < sizeof(p2_boards) / sizeof(p2_boards[0]); i++) {
         bd = &p2_boards[i];
-        if ((regs = FindConfigDev(NULL, bd->mfr, bd->regProd)) &&
-            (mem = FindConfigDev(NULL, bd->mfr, bd->memProd)))
+        if (!bd->memProd) {              /* one node with both inside */
+            if ((regs = FindConfigDev(NULL, bd->mfr, bd->regProd)) &&
+                regs->cd_BoardSize >= 0x1000000) {
+                mem = regs;
+                break;
+            }
+        } else if ((regs = FindConfigDev(NULL, bd->mfr, bd->regProd)) &&
+                   (mem = FindConfigDev(NULL, bd->mfr, bd->memProd)))
             break;
         regs = mem = NULL;
     }
@@ -1404,6 +1424,10 @@ BOOL Picasso2_Probe(struct PrismBoard *b)
     b->configDev = regs;
     b->regs      = (volatile UBYTE *)regs->cd_BoardAddr;
     b->vram      = (UBYTE *)mem->cd_BoardAddr;
+    if (!bd->memProd) {                  /* Graffity Z3: windows inside the node */
+        b->regs += 0x800000;
+        b->vram += 0xc00000;
+    }
     b->priv      = p;
     p->memDev    = mem;
     p->pass      = bd->pass;
@@ -1413,7 +1437,7 @@ BOOL Picasso2_Probe(struct PrismBoard *b)
 
     /* Piccolo and Spectrum boards have their own wake-up at the control
      * byte, before the chip's (NetBSD waits 0.2 s after it). */
-    if (bd->pass != PASS_PICASSO) {
+    if (bd->pass == PASS_4F6F || bd->pass == PASS_BIT5) {
         volatile UBYTE *sw = b->regs + 0x8000;
         volatile ULONG n;
         if (bd->pass == PASS_4F6F) *sw = 0x1f;
@@ -1450,7 +1474,7 @@ BOOL Picasso2_Probe(struct PrismBoard *b)
     /* the top 64 KB of VRAM is driver scratch: blitter fill pattern now,
      * hardware cursor image later. More than 2 MB (a 4 MB Piccolo SD64)
      * is not used: the DRAM set-up here is for 1 or 2 MB. */
-    vsize = mem->cd_BoardSize;
+    vsize = bd->memProd ? mem->cd_BoardSize : 0x200000;
     if (vsize > 0x200000)
         vsize = 0x200000;
     p->scratch   = vsize - 0x10000;
