@@ -35,7 +35,8 @@ better. No FPU needed. On Kickstart 3.0 PrismD does not start.
 
 PrismD, the driver, takes about 330 KB, in fast RAM when there is any and
 none of it in chip RAM; since the board drivers became separate modules
-(after 1.1 beta 2) it is about 40 KB more. Measured in WinUAE on an emulated Picasso II+ (2 MB
+(after 1.1 beta 2) it is about 40 KB more, and the buffers that are only
+allocated when used (after beta 3) take 35 KB back. Measured in WinUAE on an emulated Picasso II+ (2 MB
 on the card), with Workbench 3.2 on a PrismRTG 800x600 16-bit screen and MUI
 and a TCP/IP stack loaded, each program started on a freshly booted machine:
 
