@@ -70,9 +70,11 @@ A driver for another board is one C file built with
 `sh tools/mkdriver.sh NAME src/drv_name.c`; `BOARD=NAME` selects it, and
 with the board on Auto PrismD tries every other `.driver` in `LIBS:Prism`
 after its own. The minimal driver is a mode set and a display start;
-`src/drv_template.c` is the starting point and
+`src/drv_template.c` is the starting point,
 [docs/writing-a-driver.md](docs/writing-a-driver.md) the guide, with
-`PrismTest` to check a driver before PrismD runs on it.
+`PrismTest` to check a driver before PrismD runs on it, and
+[docs/driver-development.md](docs/driver-development.md) the full
+contract and how to submit a finished driver.
 
 Each loaded module uses its own 16 KB process stack and keeps its callbacks
 alive until PrismD stops. The memory measurements above describe the

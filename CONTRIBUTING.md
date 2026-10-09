@@ -45,6 +45,10 @@ build with `sh tools/mkdriver.sh NAME src/drv_name.c`, and follow
 [docs/writing-a-driver.md](docs/writing-a-driver.md): it tests the driver
 with `PrismTest` before PrismD ever runs on it. `src/drv_zz9000.c` is the
 complete example with a blitter and sprite.
+[docs/driver-development.md](docs/driver-development.md) is the full
+contract and the submission process: what a driver submission contains,
+the testing ladder, licence and provenance rules, and the checklist the
+maintainers run through.
 
 ## Credit
 

@@ -35,7 +35,7 @@
  * hooks (fast paths for small blits; ops alone is fine to begin with).
  *
  * Built with -DTEMPLATE_FAKE, this file is a complete driver for a board
- * that does not exist: 1 MB of fast RAM stands in for VRAM and nothing is
+ * that does not exist: 4 MB of fast RAM stands in for VRAM and nothing is
  * displayed. The test suite loads it, and PrismD runs on it in an
  * emulator (every drawing test passes without a card), which is how the
  * minimal contract above is kept honest.
@@ -221,14 +221,15 @@ static BOOL tpl_probe(struct PrismBoard *b)
 {
     struct TemplatePriv *p = &priv;
 #ifdef TEMPLATE_FAKE
-    /* no hardware: a megabyte of fast RAM is the "VRAM" */
-    if (!(p->fakeVram = AllocVec(1024 * 1024, MEMF_ANY | MEMF_CLEAR)))
+    /* no hardware: 4 MB of fast RAM is the "VRAM" (room for a screen, a
+     * picture-in-picture buffer and some off-screen bitmaps) */
+    if (!(p->fakeVram = AllocVec(4UL << 20, MEMF_ANY | MEMF_CLEAR)))
         return FALSE;
     b->name      = "Template board (fake)";
     b->configDev = NULL;
     b->regs      = NULL;
     b->vram      = p->fakeVram;
-    b->vramSize  = 1024 * 1024;
+    b->vramSize  = 4UL << 20;
 #else
     struct ConfigDev *cd = FindConfigDev(NULL, TEMPLATE_MFR, TEMPLATE_PROD);
     if (!cd)

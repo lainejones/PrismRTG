@@ -16,7 +16,7 @@ cp src/drv_template.c src/drv_myboard.c
 
 `src/drv_template.c` is a complete driver with `TODO` marks at each
 place that depends on the hardware. It builds and loads as it is; built
-with `-DTEMPLATE_FAKE` it even runs PrismD on a megabyte of fast RAM, which
+with `-DTEMPLATE_FAKE` it even runs PrismD on 4 MB of fast RAM, which
 is how the contract below is checked by the tests.
 
 ## 2. The minimal driver
@@ -126,6 +126,9 @@ Without them PrismD draws a software pointer, which costs a few percent.
 
 ## Where to look
 
+* [driver-development.md](driver-development.md) - the full contract
+  (which task calls what, under which lock; VRAM offsets; result rules;
+  ABI) and the submission process with the maintainers' checklist.
 * `src/prismboard.h` - the whole driver interface, commented.
 * `src/boardops.h` - the operation table and result rules.
 * `src/drv_zz9000.c` - a complete native driver with blitter and sprite
