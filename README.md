@@ -184,20 +184,27 @@ anyone can repeat the measurements on their own machine.
 ### A4000, 68060, ZZ9000 - 800x600, 8-bit
 
 PrismRTG 1.0 as released (5 October 2026); Picasso96 measured on the same
-machine two days earlier.
+machine two days earlier. The two right-hand columns were measured on
+9 October, alternating 1.0.2 and 1.1 beta 4 over four boots (two runs per
+boot, mean shown), to show what the code added since 1.0 costs. Speeds vary
+by up to 5-10% from one boot to the next on this machine, so only the
+differences larger than that mean much. Beta 4's one clear loss is short
+text: each `Text` call now takes its work buffers from a small shared pool
+instead of a large stack frame, which fixed a crash on Kickstart 3.1 but
+costs about 11% on 4-character strings.
 
-| Test | Picasso96 | PrismRTG 1.0 |
-|---|---|---|
-| RectFill 100x100 | 19,933 | **22,046** |
-| RectFill 8x8 | 26,148 | **35,484** |
-| Text, 40 characters | 4,894 | **5,387** |
-| Text, 4 characters | 9,844 | **15,433** |
-| ClipBlit 200x100 | 5,493 | **8,695** |
-| ScrollRaster 400x100 | 5,520 | **11,149** |
-| Line, ~390 pixels | 18,134 | **26,761** |
-| WritePixel | 92,941 | **117,717** |
-| Planar blit 64x32 (icons) | 241 | **1,007** |
-| Bitmap-to-screen blit 64x32 | 11,178 | **24,271** |
+| Test | Picasso96 | PrismRTG 1.0 | 1.0.2 (9 Oct) | 1.1 beta 4 (9 Oct) |
+|---|---|---|---|---|
+| RectFill 100x100 | 19,933 | **22,046** | **21,157** | **21,402** |
+| RectFill 8x8 | 26,148 | **35,484** | **33,810** | **33,275** |
+| Text, 40 characters | 4,894 | **5,387** | **5,473** | **5,291** |
+| Text, 4 characters | 9,844 | **15,433** | **16,098** | **14,273** |
+| ClipBlit 200x100 | 5,493 | **8,695** | **8,618** | **8,882** |
+| ScrollRaster 400x100 | 5,520 | **11,149** | **10,736** | **10,737** |
+| Line, ~390 pixels | 18,134 | **26,761** | **25,877** | **26,289** |
+| WritePixel | 92,941 | **117,717** | **117,680** | **118,218** |
+| Planar blit 64x32 (icons) | 241 | **1,007** | **1,010** | **1,005** |
+| Bitmap-to-screen blit 64x32 | 11,178 | **24,271** | **22,923** | **24,883** |
 
 16-bit and 32-bit show the same pattern (WritePixel at 32-bit: 92,875 /
 99,498). Screen flips (`ScreenToFront` between two PrismRTG screens) run at
