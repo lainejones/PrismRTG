@@ -374,10 +374,35 @@ noted in every commit. With thanks to:
 * **Toni Wilen** - WinUAE, in which every Cirrus board here was tested,
   and whose source is the only public description of the Graffity.
 
+### Where the hardware knowledge came from
+
+PrismRTG's drivers are its own code, written from hardware facts: register
+numbers, bit meanings and command sequences. No board's data book was
+available, so those facts were read from these public sources (licences in
+brackets; the exact files and revisions are listed in
+[docs/cirrus-picasso2-hw.md](docs/cirrus-picasso2-hw.md) §10 and
+[docs/zz9000-hw.md](docs/zz9000-hw.md)):
+
+* **MNT Research / Lukas F. Hartmann** - the ZZ9000 card driver and
+  firmware (GPL-3.0-or-later), for the ZZ9000's registers and mailbox.
+* **NetBSD** `grf_cl` (BSD), **Linux** `cirrusfb` (GPL-2.0),
+  **xf86-video-cirrus** (MIT), **QEMU** `cirrus_vga` (MIT), **86Box** and
+  **PCem** via WinUAE (GPL-2.0) - the Cirrus GD542x/543x registers and
+  blitter.
+* **Matthias Heinrichs** - the GBAPII++ / A500-GraKa design files, for
+  that board's bus and monitor switch.
+* **Individual Computers** - the P96 driver development headers (above),
+  which also define the Picasso96 API numbers PrismRTG's own
+  `Picasso96API.library` implements.
+
+Programs talk to PrismRTG through the cybergraphics and Picasso96
+interfaces: their function and tag numbers are reproduced so that existing
+programs work; the implementations behind them are PrismRTG's own.
+
 Contributions are welcome; everyone whose code or findings go into PrismRTG
 is named here and in the release notes.
 
 ## Licence
 
-GNU General Public License, version 3 (GPL-3.0-only). Copyright (c) 2026 Laine Jones.
+GNU General Public License, version 3 (GPL-3.0-only). Copyright (c) 2026 Laine Jones and Stefan Reinauer; each source file names its authors.
 See [LICENSE](LICENSE) and [CONTRIBUTING.md](CONTRIBUTING.md).

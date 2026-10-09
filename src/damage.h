@@ -1,4 +1,5 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer */
 #ifndef PRISM_DAMAGE_H
 #define PRISM_DAMAGE_H
 /* Exact byte comparison also catches stores through pointers retained by

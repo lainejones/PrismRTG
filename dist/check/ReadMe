@@ -31,4 +31,4 @@ is lost with the reset - in that case, say which step was on the screen.
 
 Tools/ holds the test programs; each can also be run on its own.
 
-Licence: GNU General Public License version 3. (c) 2026 Laine Jones.
+Licence: GNU General Public License version 3. (c) 2026 Laine Jones, Stefan Reinauer.

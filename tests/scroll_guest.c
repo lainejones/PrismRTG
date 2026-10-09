@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Laine Jones */
 /* scroll_guest : ScrollRaster in a smart-refresh window that another window
  * partly covers. Content has to move between visible pieces and backing
  * store. After the cover goes away every pixel is checked. */

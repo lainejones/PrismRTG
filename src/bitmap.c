@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Laine Jones */
+ * Copyright (C) 2026 Laine Jones
+ * Copyright (C) 2026 Stefan Reinauer */
 /*
  * bitmap.c - Prism's chunky bitmaps (see prismint.h) and the AllocBitMap,
  * FreeBitMap and GetBitMapAttr patches.

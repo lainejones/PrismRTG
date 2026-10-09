@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer
+ * Copyright (C) 2026 Laine Jones */
 /*
  * Native Prism UAE RTG candidate. Modern UAE exposes its host traps through
  * the emulator-resident uaegfx.card library. This driver binds that firmware

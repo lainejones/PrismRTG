@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer
+ * Copyright (C) 2026 Laine Jones */
 /* Launch C:ModuleCheck with output redirected to RAM:module.log, then
  * inspect that file and report over serial from the dedicated boot task. */
 #include <proto/exec.h>

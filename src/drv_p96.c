@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer
+ * Copyright (C) 2026 Laine Jones */
 /*
  * P96 card-driver adapter. The P96 core is not loaded: Prism owns screens,
  * bitmaps and software rendering, and calls the card ABI directly.

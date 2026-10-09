@@ -1,4 +1,5 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer */
 /* A loadable fixture for driver_module_guest, never installed as a driver. */
 #include <proto/exec.h>
 #include <proto/dos.h>

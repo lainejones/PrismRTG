@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Laine Jones
 """stack_audit.py OUTDIR BUDGET : worst-case stack below every patch entry point.
 
 Frames come from gcc's .su files and calls from its assembly (.s):

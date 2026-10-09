@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer
+ * Copyright (C) 2026 Laine Jones */
 #include <exec/memory.h>
 #include <graphics/rastport.h>
 #include <proto/exec.h>

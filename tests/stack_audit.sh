@@ -1,5 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Laine Jones
 # Stack audit: PrismD's patches run on the CALLING program's stack (Workbench,
 # IPrefs, input.device, any application), often 4 KB and already deep in
 # Intuition and layers. This compiles PrismD to assembly with -fstack-usage,

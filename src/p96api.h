@@ -1,13 +1,15 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Laine Jones */
+ * Copyright (C) 2026 Laine Jones
+ * Copyright (C) 2026 Stefan Reinauer */
 /*
  * p96api.h - the interface of "Picasso96API.library" as Prism provides it.
  *
  * Prism has its own library of that name so that programs written for the
- * Picasso96 API find one. Nothing here comes from Picasso96 itself: these
- * are the interface's published numbers (function order, tag values, pixel
- * format codes, structure layouts) written down for this implementation,
- * which is Prism code from top to bottom.
+ * Picasso96 API find one. What is here is that interface's published
+ * numbers (function order, tag values, pixel format codes, structure
+ * layouts), written down for this implementation; the implementation is
+ * Prism's own. The numbers come from the P96Develop headers (Individual
+ * Computers, CC-BY; the same files are in src/p96sdk with their notices).
  */
 #ifndef PRISM_P96API_H
 #define PRISM_P96API_H
@@ -113,81 +115,61 @@ enum {
     P96SA_Exclusive, P96SA_ConstantBytesPerRow, P96SA_ConstantByteSwapping
 };
 
-/* P96 memory-window tags and errors. */
-#define P96PIP_Dummy				(TAG_USER + 0x30000 + 96)
-#define P96PIP_SourceFormat	(P96PIP_Dummy+1)	/* RGBFTYPE (I) */
-#define P96PIP_SourceBitMap	(P96PIP_Dummy+2)	/* struct BitMap * (G) */
-#define P96PIP_SourceRPort		(P96PIP_Dummy+3)	/* struct RastPort * (G) */
-#define P96PIP_SourceWidth		(P96PIP_Dummy+4)	/* ULONG (I) */
-#define P96PIP_SourceHeight	(P96PIP_Dummy+5)	/* ULONG (I) */
-#define P96PIP_Type				(P96PIP_Dummy+6)	/* ULONG (I) default: PIPT_MemoryWindow */
-#define P96PIP_ErrorCode		(P96PIP_Dummy+7)	/* LONG* (I) */
-#define P96PIP_Brightness		(P96PIP_Dummy+8)	/* ULONG (IGS) default: 0 */
-#define P96PIP_Left				(P96PIP_Dummy+9)	/* ULONG (I) default: 0 */
-#define P96PIP_Top				(P96PIP_Dummy+10)	/* ULONG (I) default: 0 */
-#define P96PIP_Width				(P96PIP_Dummy+11)	/* ULONG (I) default: inner width of window */
-#define P96PIP_Height			(P96PIP_Dummy+12)	/* ULONG (I) default: inner height of window */
-#define P96PIP_Relativity		(P96PIP_Dummy+13)	/* ULONG (I) default: PIPRel_Width|PIPRel_Height */
-#define P96PIP_Colors			(P96PIP_Dummy+14)	/* struct ColorSpec * (IS)
-																 * ti_Data is an array of struct ColorSpec,
-																 * terminated by ColorIndex = -1.  Specifies
-																 * initial screen palette colors.
-																 * Also see P96PIP_Colors32.
-																 * This only works with CLUT PIPs on non-CLUT
-																 * screens. For CLUT PIPs on CLUT screens the
-																 * PIP colors share the screen palette.
-																 */
-#define P96PIP_Colors32			(P96PIP_Dummy+15)	/* ULONG* (IS)
-																 * Tag to set the palette colors at 32 bits-per-gun.
-																 * ti_Data is a pointer * to a table to be passed to
-																 * the graphics.library/LoadRGB32() function.
-																 * This format supports both runs of color
-																 * registers and sparse registers.  See the
-																 * autodoc for that function for full details.
-																 * Any color set here has precedence over
-																 * the same register set by P96PIP_Colors.
-																 * This only works with CLUT PIPs on non-CLUT
-																 * screens. For CLUT PIPs on CLUT screens the
-																 * PIP colors share the screen palette.
-																 */
-#define P96PIP_NoMemory						(P96PIP_Dummy+16)
-#define P96PIP_RenderFunc					(P96PIP_Dummy+17)
-#define P96PIP_SaveFunc						(P96PIP_Dummy+18)
-#define P96PIP_UserData						(P96PIP_Dummy+19)
-#define P96PIP_Alignment					(P96PIP_Dummy+20)
-#define P96PIP_ConstantBytesPerRow		(P96PIP_Dummy+21)
-#define P96PIP_AllowCropping				(P96PIP_Dummy+22)
-#define P96PIP_InitialIntScaling			(P96PIP_Dummy+23)
-#define P96PIP_ClipLeft						(P96PIP_Dummy+24)	/* ULONG (IS) */
-#define P96PIP_ClipTop						(P96PIP_Dummy+25)	/* ULONG (IS) */
-#define P96PIP_ClipWidth					(P96PIP_Dummy+26)	/* ULONG (IS) */
-#define P96PIP_ClipHeight					(P96PIP_Dummy+27)	/* ULONG (IS) */
-#define P96PIP_ConstantByteSwapping		(P96PIP_Dummy+28)
+/* Memory windows ("picture in picture"): p96PIP_OpenTagList and friends.
+ * The tag numbers, the window types, the relativity bits and the error
+ * codes are the published values of the Picasso96 API (the P96Develop
+ * Picasso96.h, Individual Computers, CC-BY - see src/p96sdk/README), so
+ * that programs written against that API work. The comments are ours. */
+#define P96PIP_Dummy               (TAG_USER + 0x30000 + 96)
+#define P96PIP_SourceFormat        (P96PIP_Dummy + 1)   /* pixel format of the source       */
+#define P96PIP_SourceBitMap        (P96PIP_Dummy + 2)   /* get: the source bitmap           */
+#define P96PIP_SourceRPort         (P96PIP_Dummy + 3)   /* get: a RastPort on it            */
+#define P96PIP_SourceWidth         (P96PIP_Dummy + 4)
+#define P96PIP_SourceHeight        (P96PIP_Dummy + 5)
+#define P96PIP_Type                (P96PIP_Dummy + 6)   /* PIPT_*                           */
+#define P96PIP_ErrorCode           (P96PIP_Dummy + 7)   /* where to store a PIPERR_*        */
+#define P96PIP_Brightness          (P96PIP_Dummy + 8)
+#define P96PIP_Left                (P96PIP_Dummy + 9)   /* placement in the window...       */
+#define P96PIP_Top                 (P96PIP_Dummy + 10)
+#define P96PIP_Width               (P96PIP_Dummy + 11)
+#define P96PIP_Height              (P96PIP_Dummy + 12)
+#define P96PIP_Relativity          (P96PIP_Dummy + 13)  /* ...see PIPRel_*                  */
+#define P96PIP_Colors              (P96PIP_Dummy + 14)  /* palette, ColorSpec array         */
+#define P96PIP_Colors32            (P96PIP_Dummy + 15)  /* palette, LoadRGB32 table         */
+#define P96PIP_NoMemory            (P96PIP_Dummy + 16)
+#define P96PIP_RenderFunc          (P96PIP_Dummy + 17)
+#define P96PIP_SaveFunc            (P96PIP_Dummy + 18)
+#define P96PIP_UserData            (P96PIP_Dummy + 19)
+#define P96PIP_Alignment           (P96PIP_Dummy + 20)
+#define P96PIP_ConstantBytesPerRow (P96PIP_Dummy + 21)
+#define P96PIP_AllowCropping       (P96PIP_Dummy + 22)
+#define P96PIP_InitialIntScaling   (P96PIP_Dummy + 23)
+#define P96PIP_ClipLeft            (P96PIP_Dummy + 24)  /* the part of the source shown     */
+#define P96PIP_ClipTop             (P96PIP_Dummy + 25)
+#define P96PIP_ClipWidth           (P96PIP_Dummy + 26)
+#define P96PIP_ClipHeight          (P96PIP_Dummy + 27)
+#define P96PIP_ConstantByteSwapping (P96PIP_Dummy + 28)
 
-enum {
-	PIPT_MemoryWindow,		/* default */
-	PIPT_VideoWindow,
-	PIPT_NUMTYPES
-};
+enum { PIPT_MemoryWindow, PIPT_VideoWindow, PIPT_NUMTYPES };
+#define P96PIPT_MemoryWindow PIPT_MemoryWindow
+#define P96PIPT_VideoWindow  PIPT_VideoWindow
 
-#define	P96PIPT_MemoryWindow	PIPT_MemoryWindow
-#define	P96PIPT_VideoWindow	PIPT_VideoWindow
+/* P96PIP_Relativity: which of left/top/width/height count from the far
+ * edge of the window's inner area instead of its origin */
+#define PIPRel_Right   1
+#define PIPRel_Bottom  2
+#define PIPRel_Width   4
+#define PIPRel_Height  8
 
-#define	PIPRel_Right		1	/* P96PIP_Left is relative to the right side (negative value) */
-#define	PIPRel_Bottom		2	/* P96PIP_Top is relative to the bottom (negative value) */
-#define	PIPRel_Width		4	/* P96PIP_Width is amount of pixels not used by PIP at the
-										   right side of the window (negative value) */
-#define	PIPRel_Height		8	/* P96PIP_Height is amount of pixels not used by PIP at the
-										   window bottom (negative value) */
-
-#define	PIPERR_NOMEMORY		(1)	/* couldn't get normal memory */
-#define	PIPERR_ATTACHFAIL		(2)	/* Failed to attach to a screen */
-#define	PIPERR_NOTAVAILABLE	(3)	/* PIP not available for other reason	*/
-#define	PIPERR_OUTOFPENS		(4)	/* couldn't get a free pen for occlusion */
-#define	PIPERR_BADDIMENSIONS	(5)	/* type, width, height or format invalid */
-#define	PIPERR_NOWINDOW		(6)	/* couldn't open window */
-#define	PIPERR_BADALIGNMENT	(7)	/* specified alignment is not ok */
-#define	PIPERR_CROPPED			(8)	/* pip would be cropped, but isn't allowed to */
+/* P96PIP_ErrorCode values */
+#define PIPERR_NOMEMORY      1
+#define PIPERR_ATTACHFAIL    2
+#define PIPERR_NOTAVAILABLE  3
+#define PIPERR_OUTOFPENS     4
+#define PIPERR_BADDIMENSIONS 5
+#define PIPERR_NOWINDOW      6
+#define PIPERR_BADALIGNMENT  7
+#define PIPERR_CROPPED       8
 
 /* p96GetRTGDataTagList / p96GetBoardDataTagList */
 #define P96RD_Dummy              (TAG_USER + 0x40000 + 96)

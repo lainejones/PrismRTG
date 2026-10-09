@@ -1,5 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Stefan Reinauer
+# Copyright (C) 2026 Laine Jones
 # P96 adapter fixture: drv_p96.c's 68k register ABI, software fallbacks and
 # mode setup, run as an Amiga program under vamos. Run inside WSL from the
 # repository root (tests/architecture.sh runs it too).

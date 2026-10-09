@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Laine Jones */
+ * Copyright (C) 2026 Laine Jones
+ * Copyright (C) 2026 Stefan Reinauer */
 /*
  * prefs.h - Prism's settings (ENV:Prism.prefs), shared by PrismD and the
  * PrismPrefs editor.

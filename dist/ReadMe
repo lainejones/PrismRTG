@@ -38,7 +38,9 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
-New in 1.1 beta 4 "Tequila"
+New in 1.1 beta 4 "Tequila" - please update from beta 3
+  Fixes a crash beta 3 could hit: drawing text used almost 2 KB of the
+  calling program's stack (Workbench, IPrefs - often 4 KB in all).
   Thirteen bugs from a code review fixed: among them ScrollRaster in a
   partly covered window, a pointer that could be copied with the screen,
   a stale palette cache, and quitting PrismD while programs still draw.
@@ -111,9 +113,14 @@ Credits
   modules, P96 memory pools, software pointer and PIPs, build fixes),
   Dimitris Panokostas (UAE driver review, Amiberry pointer default), polluks
   and yelworC (MiSTer test), and Individual Computers, A. Kneer, T. Abt and
-  T. Richter (P96 driver headers, CC-BY). The README on GitHub has the full list.
+  T. Richter (P96 driver headers, CC-BY). The drivers are PrismRTG's own
+  code, written from register facts in public sources: MNT's ZZ9000
+  driver, NetBSD, Linux, QEMU, 86Box/PCem, WinUAE (Toni Wilen) and the
+  GBAPII++ design (Matthias Heinrichs). The README on GitHub has the full
+  list.
 
-Licence: GNU General Public License version 3. (c) 2026 Laine Jones.
+Licence: GNU General Public License version 3. (c) 2026 Laine Jones,
+Stefan Reinauer.
 
 Board modules
 -------------

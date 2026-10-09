@@ -1,4 +1,5 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer */
 /* Copyright (C) 2026 Laine Jones */
 /* p96test: exercise Prism's Picasso96API.library - every function, with
  * the results read back and checked. Prints one line per check and the

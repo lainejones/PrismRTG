@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer
+ * Copyright (C) 2026 Laine Jones */
 /* Run as an Amiga executable (or with vamos) to exercise the actual 68k
  * register ABI, rather than compiling register callbacks away on a host. */
 #include <assert.h>

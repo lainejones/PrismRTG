@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer
+ * Copyright (C) 2026 Laine Jones */
 /* P96 wire ABI shared by the card adapter and UAE firmware backend.
  * BoardInfo is the first field in their private state. The board lock
  * serializes operations, including the shared planar colour table. */

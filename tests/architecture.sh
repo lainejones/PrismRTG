@@ -1,5 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 Stefan Reinauer
+# Copyright (C) 2026 Laine Jones
 # Host test suite: builds each fixture with amiga-gcc and runs it as an
 # AmigaOS CLI program under vamos (amitools). Guest exercisers that need a
 # real Amiga boot are built, so they keep compiling, and reported as SKIP.

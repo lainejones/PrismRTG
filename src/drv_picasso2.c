@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Laine Jones */
+ * Copyright (C) 2026 Laine Jones
+ * Copyright (C) 2026 Stefan Reinauer */
 /*
  * drv_picasso2.c - Village Tronic Picasso II / II+ and GBAPII++ driver.
  *

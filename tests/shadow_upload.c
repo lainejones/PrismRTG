@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer
+ * Copyright (C) 2026 Laine Jones */
 /* Exercise bitmap.c itself, with a device that can schedule a direct writer
  * during an upload and can fail after transferring only part of a span. */
 #include <assert.h>

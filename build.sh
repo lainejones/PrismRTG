@@ -1,6 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Laine Jones
+# Copyright (C) 2026 Stefan Reinauer
 # Build Prism with amiga-gcc. Run inside WSL:
 #   cd /mnt/c/projects/PrismRTG && ./build.sh
 # Targets 68020+ (A2000 = 68030, A4000 = 68060); -m68020-60 avoids 64-bit

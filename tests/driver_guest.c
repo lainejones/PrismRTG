@@ -1,4 +1,5 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer */
 /* Dedicated-boot module lifecycle and API exerciser; reports over serial. */
 #ifndef DRIVER_ARGUMENTS
 #define DRIVER_ARGUMENTS "BOARD=UAEGFX"

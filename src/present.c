@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer
+ * Copyright (C) 2026 Laine Jones */
 /* The compositor: screen dragging and picture-in-picture. A frame of the
  * card's mode is composed from the front screen at its dragged position,
  * the screen behind it, their PIPs and the pointer, and shown instead of

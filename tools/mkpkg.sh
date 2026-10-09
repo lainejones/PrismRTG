@@ -1,6 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Laine Jones
+# Copyright (C) 2026 Stefan Reinauer
 # Stage the release drawer out/pkg/PrismRTG (+ PrismRTG.info) from out/ and
 # dist/. ./build.sh runs it last, after every program is built.
 #

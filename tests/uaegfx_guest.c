@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer
+ * Copyright (C) 2026 Laine Jones */
 /* Dedicated-boot guest exerciser. Binds UAE firmware directly and emits results
  * on the Amiga serial port. The native context stays resident until reset. */
 #include "../src/drv_uaegfx.c"

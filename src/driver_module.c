@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer
+ * Copyright (C) 2026 Laine Jones */
 /* Each .driver is an executable whose process keeps callbacks and private
  * data alive. It borrows PrismD's output until the final acknowledgement.
  *

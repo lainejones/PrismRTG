@@ -1,4 +1,6 @@
-/* SPDX-License-Identifier: GPL-3.0-only */
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Stefan Reinauer
+ * Copyright (C) 2026 Laine Jones */
 #include <assert.h>
 #include "../src/drv_picasso2.c"
 struct ExpansionBase *ExpansionBase=NULL; /* not common: keeps libnix from auto-opening it */

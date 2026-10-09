@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
- * Copyright (C) 2026 Laine Jones */
+ * Copyright (C) 2026 Laine Jones
+ * Copyright (C) 2026 Stefan Reinauer */
 /*
  * PrismSetup - the installer's helper. The Installer script can't look at
  * expansion boards, read icon tooltypes or write a ScreenMode prefs file,
