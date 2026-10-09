@@ -41,6 +41,41 @@ static ULONG rtg_colour(UBYTE f,ULONG rgb)
     return f==PF_RGB565LE || f==PF_RGB555LE || f==PF_BGR565LE || f==PF_BGR555LE ?
         (UWORD)((v<<8)|(v>>8)) : v;
 }
+/* One pixel in memory order (P96 hands 24-bit pens first byte low). */
+static void rtg_put(UBYTE *dst,ULONG pen,UBYTE bpp,UBYTE mask)
+{
+    UBYTE i;
+    if(bpp==1) { *dst=(*dst&~mask)|((UBYTE)pen&mask);return; }
+    pen=rtg_pen(pen,bpp);
+    for(i=0;i<bpp;i++) dst[i]=pen>>(8*(bpp-i-1));
+}
+/* BlitTemplateDefault: what a card driver calls for a template it cannot
+ * expand itself. Also what the adapters install before InitCard, so a
+ * card that leaves BlitTemplate alone still has one (P96 register ABI). */
+void rtg_template_default(struct BoardInfo *bi __asm("a0"),struct RenderInfo *ri __asm("a1"),
+    struct Template *t __asm("a2"),WORD x __asm("d0"),WORD y __asm("d1"),WORD w __asm("d2"),
+    WORD h __asm("d3"),UBYTE mask __asm("d4"),RGBFTYPE fmt __asm("d7"))
+{
+    UBYTE bpp=rtg_bpp(fmt);
+    WORD xx,yy;
+    rtg_wait(bi);
+    if(!bpp || w<=0 || h<=0) return;
+    for(yy=0;yy<h;yy++) {
+        const UBYTE *s=(const UBYTE *)t->Memory+(LONG)yy*t->BytesPerRow;
+        UBYTE *d=(UBYTE *)ri->Memory+(LONG)(y+yy)*ri->BytesPerRow+(LONG)x*bpp;
+        for(xx=0;xx<w;xx++,d+=bpp) {
+            ULONG bit=xx+t->XOffset;
+            BOOL set=(s[bit>>3]&(0x80>>(bit&7)))!=0;
+            if(t->DrawMode&INVERSVID) set=!set;
+            if(t->DrawMode&COMPLEMENT) {
+                UBYTE i;
+                if(set) for(i=0;i<bpp;i++) d[i]^=bpp==1 ? mask : 0xff;
+            } else if(set || (t->DrawMode&JAM2)) {
+                rtg_put(d,set ? t->FgPen : t->BgPen,bpp,mask);
+            }
+        }
+    }
+}
 static UBYTE rtg_index(const struct BitMap *bm,UWORD x,UWORD y)
 {
     UBYTE i,v=0,bit=0x80>>(x&7);

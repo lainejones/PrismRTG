@@ -57,9 +57,11 @@ did not include.
   about 1,590 through the P96 adapter on the same emulated card and
   about 1,400 on the Cirrus boards. Same machine, same card: the
   native driver's text path is five times slower than the adapter's.
-  That is a real finding to chase (the adapter uses uaegfx.card's
-  template expansion; the native driver draws text on the CPU into
-  the card's memory).
+  Cause, found the next morning: the native driver never installed a
+  `BlitTemplateDefault`, and `rtg_expand` declines without one, so every
+  string went to the CPU. Fixed (one line): 1,500 strings/s at 8 and
+  16 bits, every text check still 0 wrong. The figures in the table are
+  from before the fix.
 * The Cirrus boards all measure the same because WinUAE emulates one
   blitter for all of them at host speed; the differences between the
   real boards (bus width, clock, DAC) are not emulated.

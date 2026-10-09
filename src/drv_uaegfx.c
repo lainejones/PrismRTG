@@ -313,6 +313,10 @@ BOOL UAEGFX_Probe(struct PrismBoard *b)
     bi->SoftInterrupt.is_Data = bi; bi->SoftInterrupt.is_Code = soft_interrupt;
     bi->BlitPlanar2ChunkyDefault = rtg_planar_chunky;
     bi->BlitPlanar2DirectDefault = rtg_planar_direct;
+    /* rtg_expand uses the card's BlitTemplate only when a default exists
+     * for it to fall back on; without this line every string was drawn
+     * on the CPU (five times slower than through the P96 adapter) */
+    bi->BlitTemplateDefault = rtg_template_default;
     bi->MouseImage = p->sprite;
     bi->FillRectDefault = fill_default; bi->BlitRectDefault = copy_default;
     InitSemaphore(&p->owner);
