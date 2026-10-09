@@ -565,6 +565,7 @@ static void palette_update(struct ViewPort *vp)
     for (i = 0; i < n; i++)
         ps->rgbTab[i] = ((palTab[i * 3] >> 8) & 0xff0000) | ((palTab[i * 3 + 1] >> 16) & 0xff00) |
                         (palTab[i * 3 + 2] >> 24);
+    paletteGen++;                            /* after the writes: pen_nearest's cache */
     if (ps->mode->bpp == 2)
         for (i = 0; i < n; i++)
             ps->penTab[i] = rgb16(ps->mode->m.format, palTab[i * 3] >> 24,
@@ -997,6 +998,7 @@ static void palette_one(struct ViewPort *vp, ULONG n, ULONG r, ULONG g, ULONG b)
             UBYTE c[3];
             c[0] = r >> 24; c[1] = g >> 24; c[2] = b >> 24;
             ps->rgbTab[n] = ((ULONG)c[0] << 16) | ((ULONG)c[1] << 8) | c[2];
+            paletteGen++;
             if (ps->mode->bpp == 2)
                 ps->penTab[n] = rgb16(ps->mode->m.format, c[0], c[1], c[2]);
             if (vp == shownVP) {

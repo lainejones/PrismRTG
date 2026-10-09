@@ -136,12 +136,20 @@ void sw_clear(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1)
 
 /* Draw the software pointer into the shown bitmap at the sprite position,
  * keeping what was under it (lock held, not drawn now). */
+static WORD swPX, swPY;                         /* position it was drawn for */
+
 static void sw_draw(struct PBitMap *p)
 {
     UBYTE pixels[4][4];
-    WORD x0 = posX, y0 = posY, x1 = posX + imgW, y1 = posY + imgH, x, y;
+    WORD px, py, x0, y0, x1, y1, x, y;
     UBYTE pen, k, bpp = p->bpp;
     ULONG n;
+    /* MoveSprite and the image decode run in input.device without the
+     * lock: take the position once, and clear the flag first so a change
+     * made meanwhile draws again on the next tick */
+    swDirty = FALSE;
+    px = posX; py = posY;
+    x0 = px; y0 = py; x1 = px + imgW; y1 = py + imgH;
     if (x0 < 0) x0 = 0;
     if (y0 < 0) y0 = 0;
     if (x1 > (WORD)p->w) x1 = p->w;
@@ -157,7 +165,7 @@ static void sw_draw(struct PBitMap *p)
     n = (ULONG)swW * bpp;
     for (y = y0; y < y1; y++) {
         UBYTE *row = p->pix + (ULONG)y * p->bpr + (ULONG)x0 * bpp;
-        const UBYTE *img = image + (y - posY) * CURSOR_SIZE + (x0 - posX);
+        const UBYTE *img = image + (y - py) * CURSOR_SIZE + (x0 - px);
         CopyMem(row, swSave + (y - y0) * n, n);
         for (x = 0; x < swW; x++)
             if ((pen = img[x]))
@@ -165,7 +173,7 @@ static void sw_draw(struct PBitMap *p)
                     row[x * bpp + k] = pixels[pen][k];
     }
     swOn = p;
-    swDirty = FALSE;
+    swPX = px; swPY = py;
 }
 
 /* PrismD's tick: is the software sprite wanted, and where? (lock held) */
@@ -182,8 +190,7 @@ static void sw_tick(void)
         swSeen = prismActivity;
         return;
     }
-    if (swOn && !swDirty && swOn == p && swX == (posX < 0 ? 0 : posX) &&
-        swY == (posY < 0 ? 0 : posY))
+    if (swOn && !swDirty && swOn == p && swPX == posX && swPY == posY)
         return;
     sw_hide();
     sw_draw(p);
@@ -192,7 +199,7 @@ static void sw_tick(void)
 void pointer_compose(struct PBitMap *dst,WORD top)
 {
     UBYTE pixels[4][4];
-    WORD x,y;UBYTE pen,k;
+    WORD x,y,px=posX,py=posY;UBYTE pen,k;     /* position taken once (see sw_draw) */
     if (!haveImage || !pointer_software()) return;
     /* Quantize the three sprite colours once, rather than once per pixel. */
     for(pen=1;pen<4;pen++) {
@@ -201,7 +208,7 @@ void pointer_compose(struct PBitMap *dst,WORD top)
         composite_put(dst,pixels[pen],rgb);
     }
     for(y=0;y<CURSOR_SIZE;y++) for(x=0;x<CURSOR_SIZE;x++) {
-        LONG dx=(LONG)posX+x,dy=(LONG)posY+y+top;
+        LONG dx=(LONG)px+x,dy=(LONG)py+y+top;
         UBYTE *d;
         pen=image[y*CURSOR_SIZE+x];
         if(!pen || dx<0 || dy<0 || dx>=dst->w || dy>=dst->h) continue;

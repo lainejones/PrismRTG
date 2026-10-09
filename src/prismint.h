@@ -33,6 +33,14 @@ UBYTE pen_nearest(const ULONG *rgbTab, ULONG rgb);   /* render.c */
 void sw_clear(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1);
 #define LOCK() do { ObtainSemaphore(&lock); prismActivity++; \
                     if (swOn) sw_hide(); } while (0)
+/* The lock for work on one known bitmap: the pointer leaves only if that is
+ * the bitmap it is drawn into (a game locking its back buffer every frame
+ * must not keep it away). */
+#define LOCK_FOR(p) do { ObtainSemaphore(&lock); \
+                         if (swOn && (p) == swOn) { prismActivity++; sw_hide(); } } while (0)
+extern volatile ULONG paletteGen;
+/* sw_clear only while the software pointer is drawn: no call otherwise */
+#define SW_CLEAR(p, x0, y0, x1, y1) do { if (swOn && (p)) sw_clear((p), (x0), (y0), (x1), (y1)); } while (0)      /* bumped when a palette changes in place */
 extern struct SignalSemaphore lock;     /* card registers, VRAM allocator,
                                            render buffers, bitmap table */
 

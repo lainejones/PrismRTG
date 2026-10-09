@@ -710,7 +710,7 @@ static APTR C_LockBitMapTagList(APTR bm __asm("a0"), struct TagItem *tags __asm(
         return NULL;
     /* the caller gets the pixels' address: they must not move (VRAM
      * paging) until UnLockBitMap */
-    LOCK();
+    LOCK_FOR(p);
     p->locks++;
     ReleaseSemaphore(&lock);
     while ((ti = NextTagItem(&tl))) {
@@ -729,7 +729,7 @@ static APTR C_LockBitMapTagList(APTR bm __asm("a0"), struct TagItem *tags __asm(
     }
     /* the caller writes the pixels itself: no blit may be running */
     if (p->inVram && board.waitBlit) {
-        LOCK();
+        LOCK_FOR(p);
         board.waitBlit(&board);
         ReleaseSemaphore(&lock);
     }
@@ -739,7 +739,7 @@ static APTR C_LockBitMapTagList(APTR bm __asm("a0"), struct TagItem *tags __asm(
 static void unlock_pbm(APTR handle)
 {
     struct PBitMap *p = handle;
-    LOCK();
+    ObtainSemaphore(&lock);              /* unlocking touches no pixels */
     if (p && pbm_get(p->bm) == p && p->locks)
         p->locks--;
     ReleaseSemaphore(&lock);

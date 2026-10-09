@@ -235,7 +235,7 @@ static LONG P_LockBitMap(struct BitMap *bm __asm("a0"), UBYTE *buf __asm("a1"),
     LOG("LockBitMap %lx -> %s\n", (ULONG)bm, p ? "ours" : "not ours");
     if (!p)
         return 0;
-    LOCK();
+    LOCK_FOR(p);
     p->locks++;
     if (p->inVram && board.waitBlit)
         board.waitBlit(&board);
@@ -252,7 +252,7 @@ static LONG P_LockBitMap(struct BitMap *bm __asm("a0"), UBYTE *buf __asm("a1"),
 static void P_UnlockBitMap(struct BitMap *bm __asm("a0"), LONG handle __asm("d0"))
 {
     struct PBitMap *p = (struct PBitMap *)handle;
-    LOCK();
+    ObtainSemaphore(&lock);              /* unlocking touches no pixels */
     if (p && pbm_get(bm) == p && p->locks)
         p->locks--;
     ReleaseSemaphore(&lock);

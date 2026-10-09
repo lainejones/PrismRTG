@@ -68,17 +68,19 @@ static ULONG rowWbuf[MAXW + 8];
 /* Nearest pen to an RGB colour (format conversions into pen bitmaps, the
  * software pointer, composition): green weighs most, blue least. The last
  * answer is kept - conversions ask for the same colour many times. */
+volatile ULONG paletteGen;
+
 UBYTE pen_nearest(const ULONG *tab, ULONG c)
 {
     static const ULONG *lastTab;
-    static ULONG lastC;
+    static ULONG lastC, lastGen;
     static UBYTE lastPen;
     UWORD i, best = 0;
     LONG bd = 0x7fffffff;
     if (!tab)
         return 0;
     c &= 0xffffff;
-    if (tab == lastTab && c == lastC)
+    if (tab == lastTab && c == lastC && lastGen == paletteGen)
         return lastPen;
     for (i = 0; i < 256; i++) {
         LONG dr = (LONG)((tab[i] >> 16) & 255) - ((c >> 16) & 255);
@@ -91,7 +93,7 @@ UBYTE pen_nearest(const ULONG *tab, ULONG c)
                 break;
         }
     }
-    lastTab = tab; lastC = c; lastPen = best;
+    lastTab = tab; lastC = c; lastPen = best; lastGen = paletteGen;
     return best;
 }
 
@@ -479,9 +481,14 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
         (mask == 0xff || d->bpp >= 2)) {
         /* plain copy, same chunky format */
         ULONG bytes = (ULONG)w * d->bpp;
-        if (s->p && d->p && w * h > 64 &&
-            pbm_copy(s->p,d->p,sx,sy,dx,dy,w,h) != PR_DECLINED)
-            return;
+        if (s->p && d->p && w * h > 64) {
+            enum PrismResult res = pbm_copy(s->p,d->p,sx,sy,dx,dy,w,h);
+            /* a copy that failed part way can be done again on the CPU
+             * unless it overlaps itself (then the source is half moved) */
+            if (res == PR_DONE ||
+                (res != PR_DECLINED && same && sx < dx + w && dx < sx + w && sy < dy + h && dy < sy + h))
+                return;
+        }
         if (same && dy > sy) {
             for (y = h - 1; y >= 0; y--)
                 memmove(d->pix + (ULONG)(dy + y) * d->bpr + dx * d->bpp,
@@ -2222,7 +2229,13 @@ LONG h_BltBitMap(struct Regs *r)
         (LONG)RW(4), (LONG)RW(5), (ULONG)(UBYTE)r->d[6], (ULONG)(UBYTE)r->d[7]);
     if (!s.pix || !d.pix)
         blit_settle();                       /* a planar side: let the blitter finish with it */
-    LOCK();
+    ObtainSemaphore(&lock);
+    /* again under the lock: VRAM paging may have moved either bitmap
+     * while this task waited (a screen coming to the front) */
+    surf_of(sb, &s);
+    surf_of(db, &d);
+    SW_CLEAR(s.p, RW(0), RW(1), RW(0) + RW(4) - 1, RW(1) + RW(5) - 1);
+    SW_CLEAR(d.p, RW(2), RW(3), RW(2) + RW(4) - 1, RW(3) + RW(5) - 1);
     blit(&s, RW(0), RW(1), &d, RW(2), RW(3), RW(4), RW(5), (UBYTE)r->d[6], (UBYTE)r->d[7]);
     ReleaseSemaphore(&lock);
     r->d[0] = 8;
@@ -2272,14 +2285,19 @@ LONG h_BitMapScale(struct Regs *r)
     if (dw > MAXW) dw = MAXW;
     if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0)
         return 1;
-    /* which source column each destination column shows */
+    if (!s.pix || !d.pix)
+        blit_settle();                       /* a planar side: let the blitter finish with it */
+    ObtainSemaphore(&lock);
+    surf_of(sb, &s);                         /* again under the lock (VRAM paging) */
+    surf_of(db, &d);
+    SW_CLEAR(s.p, a->bsa_SrcX, a->bsa_SrcY, a->bsa_SrcX + sw - 1, a->bsa_SrcY + sh - 1);
+    SW_CLEAR(d.p, dx0, dy0, dx0 + dw - 1, dy0 + dh - 1);
+    /* which source column each destination column shows (col[] is shared:
+     * filled under the lock) */
     for (x = 0; x < dw; x++) {
         ULONG c = (ULONG)x * xs / xd;
         col[x] = c < (ULONG)sw ? c : sw - 1;
     }
-    if (!s.pix || !d.pix)
-        blit_settle();                       /* a planar side: let the blitter finish with it */
-    LOCK();
     if (s.p && s.p->inVram && board.waitBlit)
         board.waitBlit(&board);
     if (d.p && d.p->inVram && board.waitBlit)
@@ -2324,6 +2342,7 @@ LONG h_BitMapScale(struct Regs *r)
 
 struct BlitCtx {
     struct Surf src;
+    struct BitMap *srcbm;        /* read src again under the lock (NULL: a buffer) */
     WORD sx, sy;                 /* source (0,0) of the rp destination ... */
     WORD dx, dy;                 /* ... which is at rp (dx, dy)            */
     UBYTE mt, mask;
@@ -2340,6 +2359,12 @@ static void blit_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
     ULONG mbpr;
 
     surf_of(p->bm, &d);
+    /* the lock is held now: the source may have moved (VRAM paging)
+     * since blit_rp looked, and if it is the shown bitmap the software
+     * pointer must not be copied along */
+    if (b->srcbm && b->src.p && b->src.pix != b->src.p->pix)
+        surf_of(b->srcbm, &b->src);
+    SW_CLEAR(b->src.p, sx, sy, sx + w - 1, sy + h - 1);
     if (!b->amask) {
         blit(&b->src, sx, sy, &d, bx0, by0, w, h, b->mt, b->mask);
         return;
@@ -2433,6 +2458,7 @@ static LONG blit_rp(struct Regs *r, const UBYTE *amask)
     b.mt = (UBYTE)r->d[6];
     b.mask = rp->Mask;
     b.amask = amask;
+    b.srcbm = (struct BitMap *)r->a[0];
     clip_rp_q(rp, b.dx, b.dy, b.dx + w - 1, b.dy + h - 1, blit_cb, &b,
               b.src.pix && !amask && (LONG)w * h <= QUICK_AREA);
     return 1;
@@ -2525,8 +2551,10 @@ LONG h_ClipBlit(struct Regs *r)
                  in_one_piece(L, dx, dy, dx + w - 1, dy + h - 1, &ox2, &oy2);
         if (direct) {
             struct Surf s;
-            surf_of(srp->BitMap, &s);
-            LOCK();
+            ObtainSemaphore(&lock);
+            surf_of(srp->BitMap, &s);        /* under the lock (VRAM paging) */
+            SW_CLEAR(s.p, sx + ox, sy + oy, sx + ox + w - 1, sy + oy + h - 1);
+            SW_CLEAR(s.p, dx + ox, dy + oy, dx + ox + w - 1, dy + oy + h - 1);
             blit(&s, sx + ox, sy + oy, &s, dx + ox, dy + oy, w, h, (UBYTE)r->d[6], drp->Mask);
             ReleaseSemaphore(&lock);
         }
@@ -2549,7 +2577,7 @@ LONG h_ClipBlit(struct Regs *r)
     clip_rp(srp, sx, sy, sx + w - 1, sy + h - 1, grab_cb, &g);
     b.src = tmp;
     b.sx = 0; b.sy = 0; b.dx = dx; b.dy = dy;
-    b.mt = (UBYTE)r->d[6]; b.mask = drp->Mask; b.amask = NULL;
+    b.mt = (UBYTE)r->d[6]; b.mask = drp->Mask; b.amask = NULL; b.srcbm = NULL;
     clip_rp(drp, dx, dy, dx + w - 1, dy + h - 1, blit_cb, &b);
     FreeVec(tmp.pix);
     return 1;
@@ -2581,17 +2609,96 @@ static void scroll_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
     if (c->dx < 0) fill(p, bx0, by0, bx0 + (adx < w ? adx : w) - 1, by1, c->bgpen, 0xff, FALSE);
 }
 
+static void bgfill_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
+                      WORD ox, WORD oy, void *ctx)
+{
+    fill(p, bx0, by0, bx1, by1, ((struct ScrollCtx *)ctx)->bgpen, 0xff, FALSE);
+}
+
+/* A rectangle split over several ClipRects (a window partly covered):
+ * content has to move from one piece into another, and out of or into
+ * backing store. The whole rectangle is read through the clipping into a
+ * buffer, written back shifted, and the strip that scrolled in cleared.
+ * Simple-refresh windows get no damage list for the parts that were
+ * hidden, as before. */
+static BOOL scroll_pieces(struct RastPort *rp, WORD x0, WORD y0, WORD x1, WORD y1,
+                          struct ScrollCtx *c)
+{
+    WORD w = x1 - x0 + 1, h = y1 - y0 + 1;
+    WORD adx = c->dx < 0 ? -c->dx : c->dx, ady = c->dy < 0 ? -c->dy : c->dy;
+    struct PBitMap *p = pbm_get(rp->BitMap);
+    struct Surf tmp;
+    struct GrabCtx g;
+    struct BlitCtx b;
+
+    if (adx < w && ady < h) {
+        memset(&tmp, 0, sizeof(tmp));
+        tmp.bpp = p->bpp;
+        tmp.penTab = p->penTab;
+        tmp.rgbTab = p->rgbTab;
+        tmp.fmt = p->fmt;
+        tmp.bpr = (ULONG)w * tmp.bpp;
+        tmp.w = w;
+        tmp.h = h;
+        if (!(tmp.pix = AllocVec(tmp.bpr * h, MEMF_ANY | MEMF_CLEAR)))
+            return FALSE;
+        g.dst = &tmp; g.x0 = x0; g.y0 = y0;
+        clip_rp(rp, x0, y0, x1, y1, grab_cb, &g);
+        b.src = tmp;
+        b.sx = c->dx > 0 ? c->dx : 0;
+        b.sy = c->dy > 0 ? c->dy : 0;
+        b.dx = x0 + (c->dx < 0 ? adx : 0);
+        b.dy = y0 + (c->dy < 0 ? ady : 0);
+        b.mt = 0xc0; b.mask = 0xff; b.amask = NULL; b.srcbm = NULL;
+        clip_rp(rp, b.dx, b.dy, b.dx + w - adx - 1, b.dy + h - ady - 1, blit_cb, &b);
+        FreeVec(tmp.pix);
+    }
+    if (ady > h) ady = h;
+    if (adx > w) adx = w;
+    if (c->dy > 0) clip_rp(rp, x0, y1 - ady + 1, x1, y1, bgfill_cb, c);
+    if (c->dy < 0) clip_rp(rp, x0, y0, x1, y0 + ady - 1, bgfill_cb, c);
+    if (c->dx > 0) clip_rp(rp, x1 - adx + 1, y0, x1, y1, bgfill_cb, c);
+    if (c->dx < 0) clip_rp(rp, x0, y0, x0 + adx - 1, y1, bgfill_cb, c);
+    return TRUE;
+}
+
 static LONG do_scroll(struct Regs *r, BOOL bf)
 {
     struct RastPort *rp = (struct RastPort *)r->a[1];
+    struct Layer *L = rp->Layer;
     struct ScrollCtx c;
+    WORD x0 = RW(2), y0 = RW(3), x1 = RW(4), y1 = RW(5), ox, oy;
 
     if (!rp_is_prism(rp))
         return 0;
     c.dx = RW(0);
     c.dy = RW(1);
     c.bgpen = bf ? 0 : rp->BgPen;
-    clip_rp(rp, RW(2), RW(3), RW(4), RW(5), scroll_cb, &c);
+    /* (a layer that is one unobscured ClipRect is always one piece) */
+    if (L && !L->SuperBitMap && x0 <= x1 && y0 <= y1 && (c.dx || c.dy) &&
+        !(L->ClipRect && !L->ClipRect->Next && !L->ClipRect->obscured)) {
+        BOOL one;
+        LockLayerRom(L);
+        /* the part inside the layer: outside it there is nothing to move */
+        if (x0 < L->Scroll_X) x0 = L->Scroll_X;
+        if (y0 < L->Scroll_Y) y0 = L->Scroll_Y;
+        if (x1 > L->Scroll_X + L->bounds.MaxX - L->bounds.MinX)
+            x1 = L->Scroll_X + L->bounds.MaxX - L->bounds.MinX;
+        if (y1 > L->Scroll_Y + L->bounds.MaxY - L->bounds.MinY)
+            y1 = L->Scroll_Y + L->bounds.MaxY - L->bounds.MinY;
+        if (x0 > x1 || y0 > y1) {
+            UnlockLayerRom(L);
+            return 1;
+        }
+        one = in_one_piece(L, x0, y0, x1, y1, &ox, &oy);
+        /* the layer stays locked: clip_rp locks it again (nests) */
+        if (!one && scroll_pieces(rp, x0, y0, x1, y1, &c)) {
+            UnlockLayerRom(L);
+            return 1;
+        }
+        UnlockLayerRom(L);
+    }
+    clip_rp(rp, x0, y0, x1, y1, scroll_cb, &c);
     return 1;
 }
 

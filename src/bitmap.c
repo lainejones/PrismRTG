@@ -171,7 +171,7 @@ struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE format, UWORD *penT
     }
     size = p->bpr * h;
 
-    LOCK();
+    LOCK_FOR(p);
     for (i = 0; i < PBM_MAX; i++)
         if (!table[i]) { slot = i; break; }
     if (slot < PBM_MAX) {
@@ -187,7 +187,7 @@ struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE format, UWORD *penT
         /* VRAM if it fits (evicting hidden bitmaps), else fast RAM until
          * the bitmap is shown */
         LONG off;
-        LOCK();
+        LOCK_FOR(p);
         /* vram 2 = free VRAM only (off-screen bitmaps never evict) */
         off = (vram == 2) ? vram_alloc(pbm_bytes(p),p->fmt,p->bpr,p->w,p->h) : vram_get(p, NULL);
         ReleaseSemaphore(&lock);
@@ -217,7 +217,7 @@ struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE format, UWORD *penT
     p->bm->pad = PBM_PAD_MAGIC | slot;
 
     if (clear && p->inVram) {
-        LOCK();
+        LOCK_FOR(p);
         if (pbm_hw_fill(p, 1, 0, 0, p->bpr, h, 0) != PR_DONE) {
             memset(p->pix, 0, size);
         }
@@ -234,7 +234,7 @@ void pbm_free(struct PBitMap *p)
 {
     if (!p)
         return;
-    LOCK();
+    LOCK_FOR(p);
     if (p->index < PBM_MAX && table[p->index] == p) {
         pbm_gone(p);
         table[p->index] = NULL;

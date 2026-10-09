@@ -49,6 +49,7 @@ dedicated boot with serial output captured, never on a working system.
 | `driver_guest` | `driver_guest.c` (`-DDRIVER_ARGUMENTS='"BOARD=..."'`, default `BOARD=UAEGFX`) | Starts `C:PrismD`, runs `C:p96test DEPTH=8/16/24/32`, stops PrismD, checks its semaphore is gone. Needs the real modules in `LIBS:Prism/` |
 | `driver_module_guest` | `driver_module_guest.c` | Boot task: runs `C:ModuleCheck >RAM:module.log` and checks the log for each expected message |
 | `ModuleCheck` | `driver_module_guest.c -DMODULE_CHECK` + `src/driver_loader.c` | Loads `MissingFixture` (absent), `OldFixture`, `FailedFixture` and `Fixture` (twice) through `driver_open` |
+| `scroll_guest` | `scroll_guest.c` | ScrollRaster in a smart-refresh window another window partly covers (content crosses ClipRects and backing store); checks every pixel after the cover closes. Run on a Prism Workbench |
 | `Drivers/Fixture.driver` | `module_fixture.c` | Module that answers READY, reports its stack size as `vramSize`, writes final output on STOP |
 | `Drivers/FailedFixture.driver` | `module_fixture.c -DFIXTURE_NOT_FOUND` | Module whose probe fails (`PRD_NOT_FOUND`) |
 | `Drivers/OldFixture.driver` | `module_fixture.c -DPRISM_DRIVER_ABI=2` | Module built for an older ABI (mismatch path) |

@@ -97,9 +97,12 @@ sprites remain preferred otherwise. The pointer does not set shadow mode
 and does not need the compositor.
 
 Drawing takes the pointer out only when it would touch it. `LOCK()` removes
-it before any drawing, and `draw_lock()` and `sw_clear()` in the render
-paths remove it only when the drawn rectangle overlaps the pointer on the
-shown bitmap. PrismD's tick restores it once a tick has passed without
+it before any drawing, `LOCK_FOR(p)` only when `p` is the bitmap it is
+drawn into (bitmap locks, allocation, freeing), and `draw_lock()` and
+`SW_CLEAR()` in the render paths remove it only when the drawn rectangle,
+or a copy's source rectangle, overlaps the pointer on the shown bitmap.
+Copies read their surfaces again once the lock is held, since VRAM paging
+can move a bitmap while a task waits for it. PrismD's tick restores it once a tick has passed without
 drawing. The sprite keeps all 64x64 decoded pixels and clips at the screen
 edges; it is not drawn into a locked bitmap.
 
