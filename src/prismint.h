@@ -220,6 +220,18 @@ static inline enum PrismResult pbm_copy(struct PBitMap *s, struct PBitMap *d, UW
     return pbm_hw_copy(s, d, sx, sy, dx, dy, w, h);
 }
 
+/* Lines: the driver's direct drawLine hook (the ZZ9000's), as 1.0 called
+ * it - through the surface layer a 390-pixel line took a third longer on
+ * the A4000. Everything else goes through the operation table. */
+static inline enum PrismResult pbm_line(struct PBitMap *p, WORD x, WORD y, WORD dx, WORD dy, ULONG c)
+{
+    if (HW_OK(p) && board.drawLine && (!board.blitMaxPitch || p->bpr <= board.blitMaxPitch)) {
+        board.drawLine(&board, p->vramOff, p->bpr, p->bpp, x, y, dx, dy, c);
+        return hw_direct();
+    }
+    return pbm_hw_line(p, x, y, dx, dy, c);
+}
+
 /* Text: a timeout while the CPU feeds the template only turns blitter text
  * off (the driver counts it in faults and stops expanding), so it comes
  * back as PR_RETRY and this string is drawn on the CPU. */

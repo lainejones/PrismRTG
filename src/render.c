@@ -1577,7 +1577,7 @@ static __attribute__((noinline)) BOOL line_hw(struct PBitMap *p, WORD x, WORD y,
         pf_put(p->fmt, pen_rgb(p->rgbTab, pen), px);
         c = ((ULONG)px[0] << 24) | ((ULONG)px[1] << 16) | ((ULONG)px[2] << 8) | px[3];
     }
-    return pbm_hw_line(p, x, y, x1 - x, y1 - y, c) == PR_DONE;
+    return pbm_line(p, x, y, x1 - x, y1 - y, c) == PR_DONE;
 }
 
 static void line_solid(struct PBitMap *p, struct LineCtx *l, WORD bx0, WORD by0,
