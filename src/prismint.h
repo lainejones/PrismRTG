@@ -43,12 +43,20 @@ void render_quit(void);
 /* is p one of the live Prism bitmaps? (a handle from a program; the
  * pointer is compared, never read) */
 BOOL pbm_live(const struct PBitMap *p);
-/* sw_clear only while the software pointer is drawn: no call otherwise */
-#define SW_CLEAR(p, x0, y0, x1, y1) do { if (swOn && (p)) sw_clear((p), (x0), (y0), (x1), (y1)); } while (0)      /* bumped when a palette changes in place */
+extern WORD swX, swY, swW, swH;        /* where it is drawn (pointer.c) */
+/* Take the software pointer out if the rectangle touches it; p NULL means
+ * "whatever is being drawn": always. The test is inline so the hot paths
+ * (WritePixel, every clipped rectangle) make no call while the pointer
+ * is elsewhere. */
+#define SW_CLEAR(p, x0, y0, x1, y1) do { \
+        if (swOn && (!(p) || ((p) == swOn && (x1) >= swX && (x0) < swX + swW && \
+                                 (y1) >= swY && (y0) < swY + swH))) \
+            sw_clear((p), (x0), (y0), (x1), (y1)); } while (0)      /* bumped when a palette changes in place */
 extern struct SignalSemaphore lock;     /* card registers, VRAM allocator,
                                            render buffers, bitmap table */
 
 void dbg(const char *fmt, ...);
+extern UBYTE dbgOn;                     /* prefs.log: the hot paths test this before calling dbg */
 
 /* call trace for the debug log: each patched call's name, with the
  * RastPort's bitmap (TRACE=... build only: it is a lot of output) */
@@ -104,7 +112,26 @@ struct PBitMap {
     ULONG          lastShown;   /* LRU stamp for VRAM eviction           */
 };
 
-struct PBitMap *pbm_get(const struct BitMap *bm);
+/* The Prism bitmap behind a BitMap, or NULL (bitmap.c keeps the table).
+ * Inline: two to four of these per drawing call. */
+extern struct PBitMap *pbmTable[PBM_MAX];
+static inline struct PBitMap *pbm_get(const struct BitMap *bm)
+{
+    struct PBitMap *p;
+    UWORD i;
+
+    if (!bm || !(bm->Flags & BMF_PRISM) || (bm->pad & 0xf000) != PBM_PAD_MAGIC)
+        return NULL;
+    i = bm->pad & 0x0fff;
+    /* (no dummy yet: pbm_new still building it in this slot, and a stale
+     * copy of an earlier bitmap's struct carries the slot number) */
+    if (i >= PBM_MAX || !(p = pbmTable[i]) || !p->dummy)
+        return NULL;
+    /* a copy of the struct still points at the same dummy plane - or, for
+     * a bitmap made in a pixel format (see h_AllocBitMap), at its pixels */
+    return (p->dummy->Planes[0] == bm->Planes[0] || (p->direct && bm->Planes[0] == p->pix))
+           ? p : NULL;
+}
 /* prismd.c: the displayable bitmap of a screen Intuition is opening on a
  * Prism mode, or NULL */
 struct PBitMap *screen_bitmap_hook(ULONG w, ULONG h, ULONG depth, ULONG flags);
@@ -259,7 +286,7 @@ void clip_rp(struct RastPort *rp, WORD x0, WORD y0, WORD x1, WORD y1, rect_cb cb
 /* 4096 longs of row space, render.c's. The cgx.c and p96.c callbacks
  * borrow it: every rect_cb runs with `lock` held, so only one at a time
  * (two private 16 KB copies were a tenth of PrismD's memory). */
-extern ULONG rgbRow[4096];
+extern ULONG rgbRow[4096 + 8];
 #define PRISM_ROWBUF ((UBYTE *)rgbRow)
 
 /* 16-bit pixel for an 8-bit R,G,B, as the 68k stores it. */

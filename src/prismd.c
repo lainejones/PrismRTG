@@ -77,7 +77,8 @@ static struct PrismPrefs prefs;
 
 BOOL prism_dragging(void) { return prefs.dragging; }
 BOOL prism_software_pointer(void) { return prefs.softwarePointer; }
-static char dbgRing[8192];
+#define DBG_RING 8192
+static char *dbgRing;                   /* allocated when LOG is on */
 static volatile UWORD dbgHead, dbgTail;
 static struct Task *dbgMain;
 
@@ -87,7 +88,7 @@ void dbg(const char *fmt, ...)
     va_list ap;
     int i;
 
-    if (!prefs.log)
+    if (!prefs.log || !dbgRing)
         return;
     va_start(ap, fmt);
     vsnprintf(tmp, sizeof(tmp), fmt, ap);
@@ -97,7 +98,7 @@ void dbg(const char *fmt, ...)
     Disable();
     for (i = 0; tmp[i]; i++) {
         dbgRing[dbgHead] = tmp[i];
-        dbgHead = (dbgHead + 1) % sizeof(dbgRing);
+        dbgHead = (dbgHead + 1) % DBG_RING;
     }
     Enable();
     /* LOG=SYNC: wake the main loop (running at priority 10 then) to write
@@ -128,7 +129,7 @@ static void dbg_flush_file(void)
 
     while (dbgTail != dbgHead && n < (int)sizeof(chunk)) {
         chunk[n++] = dbgRing[dbgTail];
-        dbgTail = (dbgTail + 1) % sizeof(dbgRing);
+        dbgTail = (dbgTail + 1) % DBG_RING;
     }
     if (!n)
         return;
@@ -152,7 +153,7 @@ static void dbg_flush(void)
     }
     while (dbgTail != dbgHead) {
         putchar(dbgRing[dbgTail]);
-        dbgTail = (dbgTail + 1) % sizeof(dbgRing);
+        dbgTail = (dbgTail + 1) % DBG_RING;
     }
     fflush(stdout);
 }
@@ -2129,6 +2130,8 @@ int main(void)
     prefs_load(&prefs, args[1] ? (const char *)args[1] : PREFS_ENV);
     /* LOG=SYNC is for a machine that dies during boot, where PrismD is
      * started with no output: the log goes to SYS:PrismD.log (dbg_flush) */
+    if (prefs.log && !dbgRing)
+        dbgRing = AllocVec(DBG_RING, MEMF_PUBLIC | MEMF_CLEAR);
     if (prefs.log == 2)
     {
         dbg("PrismD %s starting\n", __DATE__ " " __TIME__);
@@ -2136,6 +2139,9 @@ int main(void)
     }
     if (args[2])
         prefs.log = 1;
+    if (prefs.log && !dbgRing && !(dbgRing = AllocVec(DBG_RING, MEMF_PUBLIC | MEMF_CLEAR)))
+        prefs.log = 0;
+    dbgOn = prefs.log != 0;
     want = args[0] ? (const char *)args[0] :
            prefs.board == PB_OTHER && prefs.boardName[0] ? prefs.boardName :
            pbName[prefs.board < PB_COUNT ? prefs.board : 0];

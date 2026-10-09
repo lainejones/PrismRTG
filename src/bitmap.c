@@ -13,26 +13,9 @@
 #include "prismint.h"
 #include "damage.h"
 
-static struct PBitMap *table[PBM_MAX];
+struct PBitMap *pbmTable[PBM_MAX];     /* pbm_get (prismint.h) reads it inline */
+#define table pbmTable
 static ULONG used;
-
-struct PBitMap *pbm_get(const struct BitMap *bm)
-{
-    struct PBitMap *p;
-    UWORD i;
-
-    if (!bm || !(bm->Flags & BMF_PRISM) || (bm->pad & 0xf000) != PBM_PAD_MAGIC)
-        return NULL;
-    i = bm->pad & 0x0fff;
-    /* (no dummy yet: pbm_new still building it in this slot, and a stale
-     * copy of an earlier bitmap's struct carries the slot number) */
-    if (i >= PBM_MAX || !(p = table[i]) || !p->dummy)
-        return NULL;
-    /* a copy of the struct still points at the same dummy plane - or, for
-     * a bitmap made in a pixel format (see h_AllocBitMap), at its pixels */
-    return (p->dummy->Planes[0] == bm->Planes[0] || (p->direct && bm->Planes[0] == p->pix))
-           ? p : NULL;
-}
 
 ULONG pbm_count(void)
 {

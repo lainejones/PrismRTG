@@ -19,6 +19,7 @@
 #include <graphics/sprite.h>
 #include <graphics/view.h>
 #include <intuition/intuitionbase.h>
+#include <exec/memory.h>
 #include <proto/exec.h>
 #include <proto/graphics.h>
 #include <string.h>
@@ -42,10 +43,10 @@ static WORD  imgW, imgH;                         /* extent of the image    */
 /* Software sprite: drawn into the shown bitmap, with what was under it. */
 struct PBitMap *swOn;
 volatile ULONG prismActivity;
-static WORD  swX, swY, swW, swH;                 /* drawn rectangle        */
+WORD swX, swY, swW, swH;                        /* drawn rectangle (prismint.h) */
 static ULONG swSeen;
 static BOOL  swDirty;
-static UBYTE swSave[CURSOR_SIZE * CURSOR_SIZE * 4];
+static UBYTE *swSave;                   /* allocated at the first draw */
 
 /* Decode Amiga sprite data: control words, then per line ww words of
  * plane 0 and ww words of plane 1 (ww = 1, 2 or 4 for 16/32/64 wide). */
@@ -156,6 +157,8 @@ static void sw_draw(struct PBitMap *p)
     if (y1 > (WORD)p->h) y1 = p->h;
     if (x0 >= x1 || y0 >= y1)
         return;
+    if (!swSave && !(swSave = AllocVec(CURSOR_SIZE * CURSOR_SIZE * 4, MEMF_PUBLIC)))
+        return;                          /* no save-under, no pointer */
     for (pen = 1; pen < 4; pen++)
         composite_put(p, pixels[pen], ((ULONG)colours[(pen - 1) * 3] << 16) |
                       ((ULONG)colours[(pen - 1) * 3 + 1] << 8) | colours[(pen - 1) * 3 + 2]);

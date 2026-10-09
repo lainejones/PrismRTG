@@ -60,9 +60,11 @@ static ULONG rowAbuf[MAXW / 4 + 2];
 static UBYTE rowB[MAXW], rowC[MAXW], rowT[MAXW];
 static UWORD wA[MAXW], wB[MAXW];
 /* also the row buffer of the cgx and Picasso96 callbacks (prismint.h) */
-ULONG rgbRow[MAXW];
+ULONG rgbRow[MAXW + 8];              /* blits' RGB row; text's row buffer too */
 /* rowW is long-aligned with room for a whole last group of 8 pixels */
-static ULONG rowWbuf[MAXW + 8];
+#define rowWbuf rgbRow                /* text runs under the lock like a blit:
+                                         never while rgbRow is in use */
+UBYTE dbgOn;
 #define rowW ((UBYTE *)rowWbuf)
 
 /* Nearest pen to an RGB colour (format conversions into pen bitmaps, the
@@ -948,14 +950,14 @@ static inline BOOL draw_lock(struct Layer *L, BOOL quick, struct PBitMap *p,
         const struct Task *me = SysBase->ThisTask;
         QUICK_FORBID();
         if ((!L || sem_ours(&L->Lock, me)) && sem_ours(&lock, me)) {
-            if (swOn) sw_clear(p, x0, y0, x1, y1);
+            SW_CLEAR(p, x0, y0, x1, y1);
             return TRUE;
         }
         QUICK_PERMIT();
     }
     if (L) LockLayerRom(L);
     ObtainSemaphore(&lock);
-    if (swOn) sw_clear(p, x0, y0, x1, y1);
+    SW_CLEAR(p, x0, y0, x1, y1);
     return FALSE;
 }
 
@@ -1371,7 +1373,7 @@ LONG f_WritePixel(struct RastPort *rp, LONG ax, LONG ay)
     } else if (x < 0 || y < 0 || x >= p->w || y >= p->h) {
         goto out;
     }
-    if (swOn) sw_clear(p, x, y, x, y);
+    SW_CLEAR(p, x, y, x, y);
     {
         UBYTE *row = p->pix + (ULONG)y * p->bpr;
         if (p->bpp == 1)
@@ -1552,6 +1554,23 @@ static void line_fast(struct PBitMap *p, struct LineCtx *l, WORD ox, WORD oy, UB
  * Bresenham steps as line_cb, but the pixel's bytes are worked out once,
  * the row pointer moves with y, and nothing is read back from VRAM - a
  * read across Zorro II costs far more than the write. */
+/* The blitter attempt, out of line: with it inlined next to line_fast
+ * the compiler spilled the colour and the run count to the stack inside
+ * the 16-bit per-run loop (-12%). */
+static __attribute__((noinline)) BOOL line_hw(struct PBitMap *p, WORD x, WORD y, WORD x1, WORD y1,
+                                              UBYTE pen)
+{
+    UBYTE b = p->bpp, px[4] = { 0, 0, 0, 0 };
+    ULONG c;
+    if (b == 1)      c = pen;
+    else if (b == 2) c = pixval(p, pen);
+    else {
+        pf_put(p->fmt, pen_rgb(p->rgbTab, pen), px);
+        c = ((ULONG)px[0] << 24) | ((ULONG)px[1] << 16) | ((ULONG)px[2] << 8) | px[3];
+    }
+    return pbm_hw_line(p, x, y, x1 - x, y1 - y, c) == PR_DONE;
+}
+
 static void line_solid(struct PBitMap *p, struct LineCtx *l, WORD bx0, WORD by0,
                        WORD bx1, WORD by1, WORD ox, WORD oy, UBYTE pen)
 {
@@ -1577,16 +1596,8 @@ static void line_solid(struct PBitMap *p, struct LineCtx *l, WORD bx0, WORD by0,
         (y < y1 ? y : y1) >= by0 && (y < y1 ? y1 : y) <= by1) {
         /* long enough to be worth a blitter command */
         if (BOARD_CAN(line) && p->inVram && b != 3 && (dx > 40 || dy > 40) &&
-            (b != 4 || (board.flags & PBF_BLIT_32))) {
-            ULONG c;
-            if (b == 1)      c = pen;
-            else if (b == 2) c = pixval(p, pen);
-            else {
-                pf_put(p->fmt, pen_rgb(p->rgbTab, pen), px);
-                c = ((ULONG)px[0] << 24) | ((ULONG)px[1] << 16) | ((ULONG)px[2] << 8) | px[3];
-            }
-            if (pbm_hw_line(p,x,y,x1-x,y1-y,c) == PR_DONE) return;
-        }
+            (b != 4 || (board.flags & PBF_BLIT_32)) && line_hw(p, x, y, x1, y1, pen))
+            return;
         line_fast(p, l, ox, oy, pen);
         return;
     }
@@ -2241,7 +2252,7 @@ LONG h_BltBitMap(struct Regs *r)
         return 0;
     surf_of(sb, &s);
     surf_of(db, &d);
-    dbg("BltBitMap: src %s bpp %lu depth %lu -> dst %s bpp %lu depth %lu, %ldx%ld mt %02lx mask %02lx\n",
+    if (dbgOn) dbg("BltBitMap: src %s bpp %lu depth %lu -> dst %s bpp %lu depth %lu, %ldx%ld mt %02lx mask %02lx\n",
         s.pix ? "chunky" : "planar", (ULONG)s.bpp, (ULONG)sb->Depth,
         d.pix ? "chunky" : "planar", (ULONG)d.bpp, (ULONG)db->Depth,
         (LONG)RW(4), (LONG)RW(5), (ULONG)(UBYTE)r->d[6], (ULONG)(UBYTE)r->d[7]);
@@ -2289,7 +2300,7 @@ LONG h_BitMapScale(struct Regs *r)
     a->bsa_DestHeight = dh;
     surf_of(sb, &s);
     surf_of(db, &d);
-    dbg("BitMapScale: %ux%u at %u,%u (%s bpp %lu) -> %ldx%ld at %u,%u (%s bpp %lu)\n",
+    if (dbgOn) dbg("BitMapScale: %ux%u at %u,%u (%s bpp %lu) -> %ldx%ld at %u,%u (%s bpp %lu)\n",
         a->bsa_SrcWidth, a->bsa_SrcHeight, a->bsa_SrcX, a->bsa_SrcY,
         s.pix ? "chunky" : "planar", (ULONG)s.bpp, dw, dh, a->bsa_DestX, a->bsa_DestY,
         d.pix ? "chunky" : "planar", (ULONG)d.bpp);
@@ -2444,13 +2455,13 @@ static LONG blit_rp(struct Regs *r, const UBYTE *amask)
     if (w <= 0 || h <= 0)
         return 1;
     surf_of((struct BitMap *)r->a[0], &b.src);
-    dbg("blit_rp: src %s bpp %lu depth %lu %ldx%ld -> rp, mt %02lx mask %lx rpmask %02lx\n",
+    if (dbgOn) dbg("blit_rp: src %s bpp %lu depth %lu %ldx%ld -> rp, mt %02lx mask %lx rpmask %02lx\n",
         b.src.pix ? "chunky" : "planar", (ULONG)b.src.bpp,
         (ULONG)((struct BitMap *)r->a[0])->Depth, (LONG)w, (LONG)h, (ULONG)(UBYTE)r->d[6],
         (ULONG)amask, (ULONG)rp->Mask);
     b.sx = RW(0); b.sy = RW(1);
     b.dx = RW(2); b.dy = RW(3);
-    if (amask)
+    if (amask && dbgOn)
         dbg("  masked: src bitmap %ldx%ld BytesPerRow %lu, from %ld,%ld to %ld,%ld\n",
             (LONG)b.src.w, (LONG)b.src.h, (ULONG)((struct BitMap *)r->a[0])->BytesPerRow,
             (LONG)b.sx, (LONG)b.sy, (LONG)b.dx, (LONG)b.dy);
