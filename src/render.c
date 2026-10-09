@@ -698,21 +698,14 @@ static inline void vcopy(UBYTE *d, const UBYTE *src, LONG n)
 
 /* ---- solid fills ---------------------------------------------------- */
 
-/* Fill a bitmap-coordinate rectangle: dst = pen (xor = FALSE) or
- * complement (xor = TRUE). Caller holds lock. */
-static void fill(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1,
-                 UBYTE pen, UBYTE mask, BOOL xor)
+/* 24- and 32-bit fills (fill below), out of line: inlined there they made
+ * every 8- and 16-bit fill save twice the registers - a third of fill()'s
+ * time on the 68030, measured 2026-10-09. */
+static void __attribute__((noinline)) fill_rgb(struct PBitMap *p, WORD x0, WORD y0, WORD x1,
+                                              WORD y1, WORD w, UBYTE pen, BOOL xor)
 {
-    WORD x, y, w;
-
-    if (x0 < 0) x0 = 0;
-    if (y0 < 0) y0 = 0;
-    if (x1 >= p->w) x1 = p->w - 1;
-    if (y1 >= p->h) y1 = p->h - 1;
-    if (x1 < x0 || y1 < y0 || !mask)
-        return;
-    w = x1 - x0 + 1;
-    if (p->bpp >= 3) {
+    WORD x, y;
+    {
         UBYTE px[4] = { 0, 0, 0, 0 }, b = p->bpp;
         UBYTE *r;
         pf_put(p->fmt, pen_rgb(p->rgbTab, pen), px);
@@ -761,9 +754,35 @@ static void fill(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1,
         }
         for (y = y0; y <= y1; y++)
             vcopy(p->pix + (ULONG)y * p->bpr + (ULONG)x0 * b, rowW, (LONG)w * b);
+    }
+}
+
+/* Fill a bitmap-coordinate rectangle: dst = pen (xor = FALSE) or
+ * complement (xor = TRUE). Caller holds lock. */
+static void fill(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1,
+                 UBYTE pen, UBYTE mask, BOOL xor)
+{
+    WORD x, y, w;
+
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 >= p->w) x1 = p->w - 1;
+    if (y1 >= p->h) y1 = p->h - 1;
+    if (x1 < x0 || y1 < y0 || !mask)
+        return;
+    w = x1 - x0 + 1;
+    if (p->bpp >= 3) {
+        fill_rgb(p, x0, y0, x1, y1, w, pen, xor);
         return;
     }
-    if (!xor && (mask == 0xff || p->bpp == 2) && p->inVram && BOARD_CAN(fill) &&
+    /* the common case, as 1.0 did it: straight to the board's fill hook
+     * (pbm_fill's checks, with the limits known to fit for the bitmap) */
+    if (!xor && (mask == 0xff || p->bpp == 2) && p->blitFits && HW_OK(p) && board.fillRect &&
+        w * (y1 - y0 + 1) >= 12) {
+        board.fillRect(&board, p->vramOff, p->bpr, p->bpp, x0, y0, w, y1 - y0 + 1, pixval(p, pen));
+        if (hw_direct() == PR_DONE)
+            return;
+    } else if (!xor && (mask == 0xff || p->bpp == 2) && p->inVram && BOARD_CAN(fill) &&
         w * (y1 - y0 + 1) >= 12) {
         if (pbm_fill(p, p->bpp, x0, y0, w, y1 - y0 + 1,
                        pixval(p, pen)) == PR_DONE) return;
