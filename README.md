@@ -299,9 +299,11 @@ blitter off.
   It costs a few percent of drawing speed (WritePixel about 14%), and while a
   program draws over the pointer itself it is taken away and comes back a
   moment later.
-* **Experimental, off unless switched on:** screen dragging (`DRAGGING=ON`)
-  and Picasso96 PIP windows compose the screen again in fast RAM many times
-  a second, which is slow on a 68030. Off, they cost nothing.
+* **Off unless switched on:** screen dragging (`DRAGGING=ON`) and
+  Picasso96 PIP windows go through a compositor that redoes only what
+  changed and copies the dragged screen with the card's blitter; a program
+  drawing on a dragged screen keeps most of its speed on a 68030. Off,
+  they cost nothing. Few programs have used it yet.
 * Vertical dragging composes the front and next RTG screen; native-chipset
   screens cannot be mixed into the split. No monitor detection (see above).
 * The Picasso II, Piccolo, Piccolo SD64, Spectrum and Graffity have only run in WinUAE.

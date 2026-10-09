@@ -62,10 +62,12 @@ Software pointer
   screen; SOFTWAREPOINTER=ON in ENV:Prism.prefs forces it (e.g. a MiSTer).
   It costs a few percent of drawing speed.
 
-Dragging and PIP windows (experimental)
+Dragging and PIP windows
   Vertical dragging between RTG screens (DRAGGING=ON) and P96 memory-window
-  PIPs are composed in fast RAM, which is slow on a 68030. Switched off
-  (the default) they cost nothing.
+  PIPs go through a compositor that redoes only what changed and copies the
+  dragged screen with the card's blitter; drawing on a dragged screen keeps
+  most of its speed on a 68030. Switched off (dragging's default) they
+  cost nothing. Few programs have used it yet - please report.
 
 24-bit or 32-bit?
   Both are true colour. On the GBAPII++ the card's blitter can draw text

@@ -35,7 +35,7 @@ static UBYTE shifted[CURSOR_SIZE * CURSOR_SIZE];
 static UBYTE colours[9];
 static BOOL  haveImage, on;
 static volatile BOOL dirtyImage, dirtyPos;
-static volatile WORD posX, posY;                 /* sprite position        */
+volatile WORD posX, posY;                        /* sprite position (prismint.h) */
 static WORD loadedDX = -1, loadedDY = -1;        /* clip shift now loaded  */
 static struct ViewPort *vpOn;
 static WORD  imgW, imgH;                         /* extent of the image    */
@@ -197,6 +197,13 @@ static void sw_tick(void)
         return;
     sw_hide();
     sw_draw(p);
+}
+
+BOOL pointer_compose_rows(WORD top,WORD *y0,WORD *y1)
+{
+    if (!haveImage || !pointer_software()) return FALSE;
+    *y0=posY+top;*y1=*y0+CURSOR_SIZE;
+    return TRUE;
 }
 
 void pointer_compose(struct PBitMap *dst,WORD top)

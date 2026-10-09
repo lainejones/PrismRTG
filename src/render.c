@@ -950,6 +950,8 @@ static inline BOOL draw_lock(struct Layer *L, BOOL quick, struct PBitMap *p,
         const struct Task *me = SysBase->ThisTask;
         QUICK_FORBID();
         if ((!L || sem_ours(&L->Lock, me)) && sem_ours(&lock, me)) {
+            prismActivity++;             /* the compositor and the pointer watch it */
+            if (p) p->modified = prismActivity;
             SW_CLEAR(p, x0, y0, x1, y1);
             return TRUE;
         }
@@ -957,6 +959,8 @@ static inline BOOL draw_lock(struct Layer *L, BOOL quick, struct PBitMap *p,
     }
     if (L) LockLayerRom(L);
     ObtainSemaphore(&lock);
+    prismActivity++;
+    if (p) p->modified = prismActivity;
     SW_CLEAR(p, x0, y0, x1, y1);
     return FALSE;
 }
@@ -1006,7 +1010,8 @@ void clip_rp_q(struct RastPort *rp, WORD x0, WORD y0, WORD x1, WORD y1,
 
     lx = L->bounds.MinX - L->Scroll_X;
     ly = L->bounds.MinY - L->Scroll_Y;
-    fb = draw_lock(L, quick, swOn ? pbm_get(rp->BitMap) : NULL, x0 + lx, y0 + ly, x1 + lx, y1 + ly);
+    p = pbm_get(rp->BitMap);             /* once: the ClipRects share it */
+    fb = draw_lock(L, quick, p, x0 + lx, y0 + ly, x1 + lx, y1 + ly);
     for (cr = L->ClipRect; cr; cr = cr->Next) {
         WORD sx0 = x0 + lx, sy0 = y0 + ly, sx1 = x1 + lx, sy1 = y1 + ly;
         WORD ox, oy;
@@ -1018,18 +1023,20 @@ void clip_rp_q(struct RastPort *rp, WORD x0, WORD y0, WORD x1, WORD y1,
         if (sx0 > sx1 || sy0 > sy1)
             continue;
         if (!cr->obscured) {
-            if ((p = pbm_get(rp->BitMap))) {
+            if (p) {
                 shadow_load(p, sy0, sy1);
                 cb(p, sx0, sy0, sx1, sy1, lx, ly, ctx);
             }
         } else if (cr->BitMap) {
+            struct PBitMap *bp;
             /* backing store: its x origin is the ClipRect's 16-pixel
              * aligned left edge */
             WORD bx = cr->bounds.MinX & ~15;
             ox = lx - bx;
             oy = ly - cr->bounds.MinY;
-            if ((p = pbm_get(cr->BitMap))) {
-                cb(p, sx0 - bx, sy0 - cr->bounds.MinY, sx1 - bx, sy1 - cr->bounds.MinY,
+            if ((bp = pbm_get(cr->BitMap))) {
+                bp->modified = prismActivity;
+                cb(bp, sx0 - bx, sy0 - cr->bounds.MinY, sx1 - bx, sy1 - cr->bounds.MinY,
                    ox, oy, ctx);
             } else {
                 static BOOL told;
@@ -1373,6 +1380,8 @@ LONG f_WritePixel(struct RastPort *rp, LONG ax, LONG ay)
     } else if (x < 0 || y < 0 || x >= p->w || y >= p->h) {
         goto out;
     }
+    prismActivity++;
+    p->modified = prismActivity;
     SW_CLEAR(p, x, y, x, y);
     {
         UBYTE *row = p->pix + (ULONG)y * p->bpr;
@@ -2259,12 +2268,14 @@ LONG h_BltBitMap(struct Regs *r)
     if (!s.pix || !d.pix)
         blit_settle();                       /* a planar side: let the blitter finish with it */
     ObtainSemaphore(&lock);
+    prismActivity++;
     /* again under the lock: VRAM paging may have moved either bitmap
      * while this task waited (a screen coming to the front) */
     surf_of(sb, &s);
     surf_of(db, &d);
     SW_CLEAR(s.p, RW(0), RW(1), RW(0) + RW(4) - 1, RW(1) + RW(5) - 1);
     SW_CLEAR(d.p, RW(2), RW(3), RW(2) + RW(4) - 1, RW(3) + RW(5) - 1);
+    if (d.p) d.p->modified = prismActivity;
     blit(&s, RW(0), RW(1), &d, RW(2), RW(3), RW(4), RW(5), (UBYTE)r->d[6], (UBYTE)r->d[7]);
     ReleaseSemaphore(&lock);
     r->d[0] = 8;
@@ -2317,10 +2328,12 @@ LONG h_BitMapScale(struct Regs *r)
     if (!s.pix || !d.pix)
         blit_settle();                       /* a planar side: let the blitter finish with it */
     ObtainSemaphore(&lock);
+    prismActivity++;
     surf_of(sb, &s);                         /* again under the lock (VRAM paging) */
     surf_of(db, &d);
     SW_CLEAR(s.p, a->bsa_SrcX, a->bsa_SrcY, a->bsa_SrcX + sw - 1, a->bsa_SrcY + sh - 1);
     SW_CLEAR(d.p, dx0, dy0, dx0 + dw - 1, dy0 + dh - 1);
+    if (d.p) d.p->modified = prismActivity;
     /* which source column each destination column shows (col[] is shared:
      * filled under the lock) */
     for (x = 0; x < dw; x++) {
@@ -2581,9 +2594,11 @@ LONG h_ClipBlit(struct Regs *r)
         if (direct) {
             struct Surf s;
             ObtainSemaphore(&lock);
+            prismActivity++;
             surf_of(srp->BitMap, &s);        /* under the lock (VRAM paging) */
             SW_CLEAR(s.p, sx + ox, sy + oy, sx + ox + w - 1, sy + oy + h - 1);
             SW_CLEAR(s.p, dx + ox, dy + oy, dx + ox + w - 1, dy + oy + h - 1);
+            if (s.p) s.p->modified = prismActivity;
             blit(&s, sx + ox, sy + oy, &s, dx + ox, dy + oy, w, h, (UBYTE)r->d[6], drp->Mask);
             ReleaseSemaphore(&lock);
         }

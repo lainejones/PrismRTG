@@ -29,6 +29,15 @@ struct Screen *prism_display_layers(struct PBitMap **f,struct PBitMap **b,
     WORD *top,WORD *bt,UWORD *w,UWORD *h)
 { *f=&front;*b=nativeBehind ? NULL : &back;*top=screenTop;*bt=backTop;*w=*h=2;return &screen; }
 BOOL p96_pip_active(struct Screen *s) { (void)s;return overlay; }
+volatile ULONG paletteGen; ULONG pipGen;
+BOOL p96_pip_volatile(struct Screen *s) { (void)s;return FALSE; }
+/* the fixture's PIP sits on row 1 of the frame */
+BOOL p96_pip_rows(struct Screen *s,WORD top,WORD *y0,WORD *y1)
+{ if(s!=&screen || !overlay)return FALSE;*y0=1+top;*y1=2+top;return TRUE; }
+/* the front's VRAM is source[] here: a band copy reads it from there */
+static ULONG bandCopies;
+static void copy_between(struct PrismBoard *b,ULONG src,ULONG spitch,ULONG dst,ULONG dpitch,UWORD w,UWORD h)
+{ UWORD r;(void)b;for(r=0;r<h;r++)memcpy(video+dst+r*dpitch,(src<16 ? source : video)+src+r*spitch,w);bandCopies++; }
 void p96_pip_compose(struct PBitMap *p,struct Screen *s,WORD top)
 {
     (void)top;
@@ -79,6 +88,10 @@ int main(void)
     InitSemaphore(&lock);
     screen.NextScreen=&behindScreen;
     board.vram=video;board.vramSize=sizeof(video);board.ops=&ops;board.setDisplayStart=pan;
+    board.copyBetween=copy_between;
+    /* the front and back are written into directly here (no PrismD call):
+     * what a LockBitMap client does - composed every tick */
+    front.direct=back.direct=TRUE;
     front.w=front.h=back.w=back.h=2;front.bpp=back.bpp=3;
     front.fmt=back.fmt=PF_RGB24;front.bpr=back.bpr=8;
     front.pix=source;back.pix=background;front.inVram=TRUE;
@@ -107,6 +120,7 @@ int main(void)
     board.flags=0;screenTop=1;present_tick();
     assert(display==128 && pf_get(PF_RGB24,video+128)==0x123456);
     assert(pf_get(PF_RGB24,video+136)==0xabcdef);
+    assert(bandCopies==1);               /* the front's row came by blitter */
     backTop=1;present_tick();
     assert(pf_get(PF_RGB24,video+128)==0);
     backTop=-1;

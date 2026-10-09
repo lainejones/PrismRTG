@@ -742,6 +742,7 @@ static ULONG c_a0a1d0d1d2(APTR fn, APTR base, APTR x, APTR y, ULONG a, ULONG b, 
 /* Patches can be running in other tasks when PrismD wants to quit
  * (stubs.S counts its handler calls here too). */
 volatile LONG inPatch;
+
 /* one instruction each, so a task switch can't split the update */
 #define ENTER() __asm volatile ("addq.l #1,_inPatch" ::: "cc", "memory")
 #define LEAVE() __asm volatile ("subq.l #1,_inPatch" ::: "cc", "memory")

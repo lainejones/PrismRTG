@@ -831,7 +831,7 @@ static struct Window *P_PIP_OpenTagList(struct TagItem *tags __asm("a0"))
     if (!present_reserve(p->window->WScreen)) {
         ReleaseSemaphore(&lock);error=PIPERR_NOMEMORY;goto fail;
     }
-    p->next=pips;pips=p;
+    p->next=pips;pips=p;pipGen++;
     ReleaseSemaphore(&lock);
     if(err)*err=0;
     return p->window;
@@ -851,7 +851,7 @@ static BOOL P_PIP_Close(struct Window *w __asm("a0"))
     for(link=&pips;*link && (*link)->window!=w;link=&(*link)->next);
     p=*link;
     if(!p || p->source->locks) { ReleaseSemaphore(&lock);return FALSE; }
-    *link=p->next;
+    *link=p->next;pipGen++;
     ReleaseSemaphore(&lock);
     CloseWindow(w);pbm_free(p->source);FreeVec(p);
     return TRUE;
@@ -859,7 +859,7 @@ static BOOL P_PIP_Close(struct Window *w __asm("a0"))
 static LONG P_PIP_SetTagList(struct Window *w __asm("a0"),struct TagItem *tags __asm("a1"))
 {
     struct PrismPIP *p;LONG n=0;
-    LOCK();p=pip_find(w);if(p)n=pip_set(p,tags);ReleaseSemaphore(&lock);
+    LOCK();p=pip_find(w);if(p) { n=pip_set(p,tags);pipGen++; } ReleaseSemaphore(&lock);
     return n;
 }
 static LONG P_PIP_GetTagList(struct Window *w __asm("a0"),struct TagItem *tags __asm("a1"))
@@ -896,6 +896,29 @@ static struct IntuiMessage *P_PIP_GetIMsg(struct MsgPort *port __asm("a0"))
 static void P_PIP_ReplyIMsg(struct IntuiMessage *msg __asm("a1"))
 { if(msg)ReplyMsg((struct Message *)msg); }
 
+ULONG pipGen;
+
+BOOL p96_pip_rows(struct Screen *s,WORD screenTop,WORD *y0,WORD *y1)
+{
+    struct PrismPIP *p;
+    BOOL any=FALSE;
+    for(p=pips;p;p=p->next) {
+        struct Window *w=p->window;
+        WORD a,b;
+        if(w->WScreen!=s)continue;
+        a=w->TopEdge+screenTop;b=a+w->Height;
+        if(!any) { *y0=a;*y1=b;any=TRUE; }
+        else { if(a<*y0)*y0=a; if(b>*y1)*y1=b; }
+    }
+    return any;
+}
+BOOL p96_pip_volatile(struct Screen *s)
+{
+    struct PrismPIP *p;
+    for(p=pips;p;p=p->next)
+        if(p->window->WScreen==s && (p->source->locks || p->source->direct))return TRUE;
+    return FALSE;
+}
 BOOL p96_pip_active(struct Screen *s)
 {
     struct PrismPIP *p;
