@@ -2083,7 +2083,7 @@ static BOOL uninstall(void)
 int main(void)
 {
     LONG args[5] = { 0 };
-    static const char *const pbName[PB_COUNT] = { NULL, "PICASSO2", "ZZ9000", "P96", "UAEGFX" };
+    static const char *const pbName[PB_COUNT] = { NULL, "PICASSO2", "ZZ9000", "P96", "UAEGFX", NULL };
     struct RDArgs *rda;
     const char *want;
     BOOL found = FALSE;
@@ -2136,7 +2136,9 @@ int main(void)
     }
     if (args[2])
         prefs.log = 1;
-    want = args[0] ? (const char *)args[0] : pbName[prefs.board < PB_COUNT ? prefs.board : 0];
+    want = args[0] ? (const char *)args[0] :
+           prefs.board == PB_OTHER && prefs.boardName[0] ? prefs.boardName :
+           pbName[prefs.board < PB_COUNT ? prefs.board : 0];
     {
         struct PrismDriverConfig config;
         const char *card=args[3] ? (const char *)args[3] : prefs.p96card;
@@ -2151,6 +2153,9 @@ int main(void)
         else {
             found=driver_open(&board,"PICASSO2",&config);
             if(!found) found=driver_open(&board,"ZZ9000",&config);
+            /* then any other driver installed (a new board's): the P96
+             * and UAE adapters stay explicit choices, they claim contexts */
+            if(!found) found=driver_scan(&board,&config);
         }
     }
     if (!found) {
@@ -2158,6 +2163,7 @@ int main(void)
         rc = 5;
         goto out;
     }
+    board_defaults(&board);
     if (!prefs.blitter)
         board.flags |= PBF_SOFTWARE;        /* every blitter path checks it */
     build_modes();

@@ -76,3 +76,33 @@ enum PrismResult board_planar(struct PrismBoard *b,const struct PrismPlanar *s,
     if ((ULONG)sx+w>row*8 || (ULONG)sy+h>s->bitmap->Rows) return PR_DECLINED;
     return finish(b,b->ops->planar(b,s,d,sx,sy,dx,dy,w,h,minterm,mask));
 }
+
+/* ---- defaults for the optional board callbacks --------------------------
+ * A driver with only setMode and setDisplayStart gets these. */
+static BOOL default_checkMode(struct PrismBoard *b, struct PrismMode *m)
+{
+    UBYTE bpp = board_bpp(m->format);
+    if (!bpp || !(b->formats & PF_BIT(m->format)))
+        return FALSE;
+    if (!m->width || !m->height || m->width > b->maxWidth || m->height > b->maxHeight)
+        return FALSE;
+    m->bytesPerRow = (ULONG)m->width * bpp;
+    return TRUE;
+}
+static void default_setPalette(struct PrismBoard *b, UWORD first, UWORD count, const UBYTE *rgb)
+{
+}
+static void default_setSwitch(struct PrismBoard *b, BOOL rtg)
+{
+}
+static void default_nothing(struct PrismBoard *b)
+{
+}
+void board_defaults(struct PrismBoard *b)
+{
+    if (!b->checkMode)  b->checkMode  = default_checkMode;
+    if (!b->setPalette) b->setPalette = default_setPalette;
+    if (!b->setSwitch)  b->setSwitch  = default_setSwitch;
+    if (!b->waitVBlank) b->waitVBlank = default_nothing;
+    if (!b->shutdown)   b->shutdown   = default_nothing;
+}

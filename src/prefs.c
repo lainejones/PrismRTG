@@ -24,7 +24,7 @@ const UWORD prefs_sizes[PREFS_NSIZES][2] = {
 const UBYTE prefs_depths[PREFS_NDEPTHS] = { 8, 16, 24, 32 };
 const UBYTE prefs_rates[PREFS_NRATES] = { 0, 60, 70, 72, 75 };
 
-static const char *const boardNames[PB_COUNT] = { "AUTO", "PICASSO2", "ZZ9000", "P96", "UAEGFX" };
+static const char *const boardNames[PB_COUNT] = { "AUTO", "PICASSO2", "ZZ9000", "P96", "UAEGFX", "" };
 
 void prefs_default(struct PrismPrefs *p)
 {
@@ -87,9 +87,17 @@ BOOL prefs_load(struct PrismPrefs *p, const char *path)
             continue;
         *v++ = 0;
         if (same(line, "BOARD")) {
-            for (i = 0; i < PB_COUNT; i++)
+            /* one of the supplied drivers by its name, else the name of
+             * another LIBS:Prism/<name>.driver */
+            p->board = PB_AUTO;
+            for (i = 0; i < PB_OTHER; i++)
                 if (same(v, boardNames[i]))
                     p->board = i;
+            if (p->board == PB_AUTO && !same(v, "AUTO") && *v &&
+                strlen(v) <= PREFS_BOARDNAME && !strpbrk(v, "/:\\ ")) {
+                p->board = PB_OTHER;
+                strcpy(p->boardName, v);
+            }
         } else if (same(line, "P96CARD") || same(line, "P96MONITOR")) {
             char *dest = same(line, "P96CARD") ? p->p96card : p->p96monitor;
             if (strlen(v) < sizeof(p->p96card))
@@ -120,7 +128,8 @@ BOOL prefs_save(const struct PrismPrefs *p, const char *path)
     if (!(f = fopen(path, "w")))
         return FALSE;
     fprintf(f, "; Prism RTG settings - written by PrismPrefs\n");
-    fprintf(f, "BOARD=%s\n", boardNames[p->board < PB_COUNT ? p->board : PB_AUTO]);
+    fprintf(f, "BOARD=%s\n", p->board == PB_OTHER && p->boardName[0] ? p->boardName :
+                              boardNames[p->board < PB_OTHER ? p->board : PB_AUTO]);
     if (p->p96card[0]) fprintf(f, "P96CARD=%s\n", p->p96card);
     if (p->p96monitor[0]) fprintf(f, "P96MONITOR=%s\n", p->p96monitor);
     fprintf(f, "SOFTWAREPOINTER=%s\n", p->softwarePointer ? "ON" : "OFF");

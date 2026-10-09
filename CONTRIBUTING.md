@@ -37,10 +37,14 @@ descriptions, behaviour measured on the card. Notes on each card live in
 
 ## New card drivers
 
-A driver fills in a `struct PrismBoard` (`src/prismboard.h`): mode set,
-display start, palette and monitor switch are required; blitter, line and
-cursor hooks are optional and PrismRTG draws on the CPU without them. See
-`src/drv_picasso2.c` and `src/drv_zz9000.c`.
+A driver is one C file that fills in a `struct PrismBoard`
+(`src/prismboard.h`); only a mode set and a display start are required,
+everything else (palette, monitor switch, blitter, cursor) is optional and
+PrismRTG draws on the CPU without it. Start from `src/drv_template.c`,
+build with `sh tools/mkdriver.sh NAME src/drv_name.c`, and follow
+[docs/writing-a-driver.md](docs/writing-a-driver.md): it tests the driver
+with `PrismTest` before PrismD ever runs on it. `src/drv_zz9000.c` is the
+complete example with a blitter and sprite.
 
 ## Credit
 

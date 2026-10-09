@@ -5,8 +5,16 @@ Board drivers are separate Amiga executables (#8). PrismD loads one from
 uses its own modules, then from `LIBS:Prism/<name>.driver`. At boot PrismD
 runs as `C:PrismD`, so the installed modules are used. The supplied names
 are PICASSO2, ZZ9000, P96 and UAEGFX. Automatic selection tries PICASSO2,
-then ZZ9000. P96 and UAEGFX remain explicit choices. Each module carries a
+then ZZ9000, then every other `.driver` in those two drawers in directory
+order (`driver_scan`). P96 and UAEGFX remain explicit choices: they need
+settings, or claim the emulator's card for good. Each module carries a
 `$VER` string with its name and release, so `Version` can report it.
+
+Every module is `src/driver_module.c` plus the driver's own sources,
+built by `tools/mkdriver.sh NAME sources...`, which defines `DRIVER_NAME`.
+The driver supplies `driver_probe()` and `driver_retain()`
+(`prismboard.h`); `src/drv_template.c` is the model, and
+[writing-a-driver.md](writing-a-driver.md) the guide.
 
 Each module runs as an AmigaDOS process with a 16 KB stack, its own C
 runtime and library bases. It exports its `PrismBoard` callbacks and its

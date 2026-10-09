@@ -125,3 +125,43 @@ void driver_close(void)
     }
     DeleteMsgPort(replies);FreeVec(active);active=NULL;replies=NULL;stalled=FALSE;
 }
+
+/* The board is on Auto and the supplied native drivers found nothing: try
+ * every other .driver installed, in directory order. The P96 and UAE
+ * adapters need settings (or claim the emulator's card for good), so they
+ * stay explicit choices. */
+static BOOL scan_dir(struct PrismBoard *b,const struct PrismDriverConfig *config,
+                     const char *dir,char tried[][33],int *ntried)
+{
+    struct FileInfoBlock *fib;
+    BPTR lock;
+    BOOL found=FALSE;
+    if(!(lock=Lock(dir,ACCESS_READ))) return FALSE;
+    if((fib=AllocDosObject(DOS_FIB,NULL))) {
+        if(Examine(lock,fib))
+            while(!found && ExNext(lock,fib)) {
+                char name[33];
+                size_t n=strlen(fib->fib_FileName);
+                int i;
+                if(fib->fib_DirEntryType>0 || n<8 || n-7>32 ||
+                   stricmp(fib->fib_FileName+n-7,".driver")) continue;
+                memcpy(name,fib->fib_FileName,n-7);name[n-7]=0;
+                if(!stricmp(name,"PICASSO2") || !stricmp(name,"ZZ9000") ||
+                   !stricmp(name,"P96") || !stricmp(name,"UAEGFX")) continue;
+                for(i=0;i<*ntried;i++) if(!stricmp(tried[i],name)) break;
+                if(i<*ntried) continue;
+                if(*ntried<16) strcpy(tried[(*ntried)++],name);
+                found=driver_open(b,name,config);
+            }
+        FreeDosObject(DOS_FIB,fib);
+    }
+    UnLock(lock);
+    return found;
+}
+BOOL driver_scan(struct PrismBoard *b,const struct PrismDriverConfig *config)
+{
+    char tried[16][33];
+    int ntried=0;
+    return scan_dir(b,config,"PROGDIR:Drivers",tried,&ntried) ||
+           scan_dir(b,config,"LIBS:Prism",tried,&ntried);
+}

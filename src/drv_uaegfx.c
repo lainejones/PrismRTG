@@ -25,6 +25,9 @@
 /* GCC 13 otherwise overwrites the a0 argument in indirect tail calls. */
 #pragma GCC optimize ("no-optimize-sibling-calls")
 #include "rtg_ops.h"
+#ifdef PRISM_DRIVER_MODULE
+#include "driver_module.h"
+#endif
 _Static_assert(offsetof(struct BoardInfo, SetGC) == 294, "UAE BoardInfo ABI");
 _Static_assert(offsetof(struct BoardInfo, MouseImage) == 1390, "UAE sprite ABI");
 _Static_assert(sizeof(struct CLUTEntry) == 3, "UAE palette ABI");
@@ -380,3 +383,15 @@ void UAEGFX_KeepResident(void)
 #endif
     for (;;) Wait(SIGBREAKF_CTRL_C);
 }
+
+/* ---- as a loadable module (driver_module.c) --------------------------- */
+#ifdef PRISM_DRIVER_MODULE
+BOOL driver_probe(struct PrismBoard *b, const struct PrismDriverConfig *config)
+{
+    return UAEGFX_Probe(b);
+}
+void driver_retain(void)
+{
+    UAEGFX_KeepResident();
+}
+#endif

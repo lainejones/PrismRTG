@@ -1,17 +1,22 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Laine Jones */
 /*
- * PrismTest - M0 bare-metal spike.
+ * PrismTest - a board driver on its own, without PrismD.
  *
- * Borrows an RTG board from whatever owns it, sets a mode, draws a test
- * pattern, shows it for a while, then gives the display back:
+ * Loads a driver module (PROGDIR:Drivers/NAME.driver, then
+ * LIBS:Prism/NAME.driver), sets a mode, draws a test pattern, shows it
+ * for a while, then gives the display back:
  *
- *   PrismTest [BOARD=ZZ9000|PICASSO2] [WIDTH=640] [HEIGHT=480] [DEPTH=8]
- *             [SECS=10] [OFFSET=<vram offset>]
+ *   PrismTest [BOARD=NAME] [WIDTH=640] [HEIGHT=480] [DEPTH=8]
+ *             [SECS=10] [OFFSET=<vram offset>] [BLIT] [DUMP]
  *
+ * Without BOARD it tries PICASSO2, ZZ9000 and then every other driver
+ * installed. BLIT checks the driver's fills and copies against the CPU.
+ * This is the first thing to run on a new driver (docs/writing-a-driver.md).
  * Ctrl-C ends the display early. The VRAM it draws into is saved first and
  * put back afterwards, and the card's own state is restored, so Picasso96
- * (if running) finds its screen the way it left it.
+ * (if running) finds its screen the way it left it. PrismD must not be
+ * running: two owners of one card.
  */
 #include <exec/types.h>
 #include <exec/memory.h>
@@ -25,28 +30,17 @@
 #include <string.h>
 #include <stdio.h>
 #include "prismboard.h"
+#include "driver_module.h"
 
 struct ExpansionBase *ExpansionBase;
 struct IntuitionBase *IntuitionBase;
 
-UWORD ZZ9000_FirmwareVersion(struct PrismBoard *b);
-
 static const char version[] __attribute__((used)) = "$VER: PrismTest 1.1b3 (08.10.2026)";
 
-#define TEMPLATE "BOARD/K,WIDTH/K/N,HEIGHT/K/N,DEPTH/K/N,SECS/K/N,OFFSET/K,DUMP/S,BLIT/S,XTEST/S"
-enum { A_BOARD, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_OFFSET, A_DUMP, A_BLIT, A_XTEST, A_COUNT };
-void Picasso2_TranspTest(struct PrismBoard *b, UBYTE bpp);
-
-void Picasso2_Dump(struct PrismBoard *b);
-extern UWORD Picasso2_LastID;
+#define TEMPLATE "BOARD/K,WIDTH/K/N,HEIGHT/K/N,DEPTH/K/N,SECS/K/N,OFFSET/K,DUMP/S,BLIT/S"
+enum { A_BOARD, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_OFFSET, A_DUMP, A_BLIT, A_COUNT };
 
 static struct PrismBoard board;
-
-static int stricmp_ascii(const char *a, const char *b)
-{
-    for (; *a && ((*a | 0x20) == (*b | 0x20)); a++, b++) ;
-    return *a - *b;
-}
 
 /* ---- pixel helpers -------------------------------------------------- */
 
@@ -185,19 +179,33 @@ int main(void)
     IntuitionBase = (struct IntuitionBase *)OpenLibrary("intuition.library", 37);
     if (!ExpansionBase) goto out;
 
+    if (FindSemaphore((STRPTR)"prism")) {          /* PRISM_SEMNAME, prism.h */
+        printf("PrismTest: PrismD is running and owns the board - stop it first (Ctrl-C)\n");
+        goto out;
+    }
     want = args[A_BOARD] ? (const char *)args[A_BOARD] : NULL;
-    if (!want || !stricmp_ascii(want, "ZZ9000"))
-        found = ZZ9000_Probe(&board);
-    if (!found && (!want || !stricmp_ascii(want, "PICASSO2")))
-        found = Picasso2_Probe(&board);
+    {
+        struct PrismDriverConfig config;
+        memset(&config, 0, sizeof(config));
+        if (want)
+            found = driver_open(&board, want, &config);
+        else {
+            found = driver_open(&board, "PICASSO2", &config);
+            if (!found) found = driver_open(&board, "ZZ9000", &config);
+            if (!found) found = driver_scan(&board, &config);
+        }
+    }
     if (!found) {
         printf("PrismTest: no usable board found%s%s\n", want ? " for " : "", want ? want : "");
-        if (Picasso2_LastID)
-            printf("PrismTest: Picasso II board present but chip id %02x unknown\n",
-                   Picasso2_LastID & 0xff);
         rc = 5;
         goto out;
     }
+    board_defaults(&board);
+    printf("PrismTest: driver %s: formats $%lx flags $%lx, %s%s%s%s%s\n", board.name,
+           (unsigned long)board.formats, (unsigned long)board.flags,
+           board.ops ? "ops " : "", board.fillRect ? "fillRect " : "",
+           board.copyRect ? "copyRect " : "", board.expandRect ? "expandRect " : "",
+           board.cursorImage ? "cursor" : "no cursor");
 
     memset(&mode, 0, sizeof(mode));
     mode.width  = args[A_WIDTH]  ? *(LONG *)args[A_WIDTH]  : 640;
@@ -224,7 +232,7 @@ int main(void)
      * the ZZ9000; the start of VRAM on the 2 MB Picasso II. */
     off = 0;
     limit = board.vramSize;
-    if (board.configDev->cd_Rom.er_Manufacturer == 0x6d6e &&
+    if (board.configDev && board.configDev->cd_Rom.er_Manufacturer == 0x6d6e &&
         board.configDev->cd_Rom.er_Product == 4) {
         /* Zorro III ZZ9000: the card window runs on past what Prism uses,
          * up to the firmware's SDK heap. $2000000 is above the capture
@@ -281,7 +289,11 @@ int main(void)
         board.setPalette(&board, 0, 256, pal);
     }
     draw_pattern(fb, mode.bytesPerRow, mode.width, mode.height, mode.format);
-    if (args[A_BLIT] && board.fillRect && board.copyRect) {
+    if (args[A_BLIT] && !((board.fillRect && board.copyRect) ||
+                          (board.ops && board.ops->fill && board.ops->copy)))
+        printf("PrismTest: the driver has no blitter to check\n");
+    if (args[A_BLIT] && ((board.fillRect && board.copyRect) ||
+                         (board.ops && board.ops->fill && board.ops->copy))) {
         /* Blitter check, all inside the test pattern:
          *  1. three solid boxes across the hue bars (red, green, blue)
          *  2. copy the left of the grey ramp into the checkerboard
@@ -306,17 +318,39 @@ int main(void)
         copies[1].dx = 24; copies[1].dy = mode.height / 4;
         copies[1].w = mode.width - 32; copies[1].h = 16;
 
+        /* the surface the PrismOps path sees: the whole test framebuffer */
+        struct PrismSurface sf;
+        memset(&sf, 0, sizeof(sf));
+        sf.memory = fb; sf.offset = off; sf.allocation = size; sf.pitch = mode.bytesPerRow;
+        sf.width = mode.width; sf.height = mode.height; sf.format = mode.format;
+        sf.bpp = bpp; sf.flags = PSF_VRAM;
+
         if (shadow)
             CopyMem(fb, shadow, size);
         /* the 5426/28 can't colour-expand at 24 bits (Prism fills those by
          * row doubling): only copies are tested there */
-        for (k = 0; k < 3 && bpp != 3; k++)
-            board.fillRect(&board, off, mode.bytesPerRow, bpp, fills[k].x, fills[k].y,
-                           fills[k].w, fills[k].h, fills[k].c);
-        for (k = 0; k < 2; k++)
-            board.copyRect(&board, off, mode.bytesPerRow, bpp, copies[k].sx, copies[k].sy,
-                           copies[k].dx, copies[k].dy, copies[k].w, copies[k].h);
-        board.waitBlit(&board);
+        for (k = 0; k < 3 && bpp != 3; k++) {
+            enum PrismResult r = PR_DONE;
+            if (board.fillRect)
+                board.fillRect(&board, off, mode.bytesPerRow, bpp, fills[k].x, fills[k].y,
+                               fills[k].w, fills[k].h, fills[k].c);
+            else
+                r = board.ops->fill(&board, &sf, fills[k].x, fills[k].y, fills[k].w, fills[k].h, fills[k].c);
+            if (r != PR_DONE)
+                printf("PrismTest: fill %d: the driver answered %d (1 = done)\n", k, (int)r);
+        }
+        for (k = 0; k < 2; k++) {
+            enum PrismResult r = PR_DONE;
+            if (board.copyRect)
+                board.copyRect(&board, off, mode.bytesPerRow, bpp, copies[k].sx, copies[k].sy,
+                               copies[k].dx, copies[k].dy, copies[k].w, copies[k].h);
+            else
+                r = board.ops->copy(&board, &sf, &sf, copies[k].sx, copies[k].sy,
+                                    copies[k].dx, copies[k].dy, copies[k].w, copies[k].h);
+            if (r != PR_DONE)
+                printf("PrismTest: copy %d: the driver answered %d (1 = done)\n", k, (int)r);
+        }
+        if (board.waitBlit) board.waitBlit(&board);
         printf("PrismTest: blitter fills + copies done\n");
 
         /* the same operations on the shadow copy by the CPU, then compare */
@@ -377,16 +411,12 @@ int main(void)
     }
     board.setDisplayStart(&board, off);
     board.setSwitch(&board, TRUE);
-    if (args[A_XTEST] && board.configDev->cd_Rom.er_Manufacturer != 0x6d6e)
-        Picasso2_TranspTest(&board, bytes_pp(mode.format));
     if (args[A_DUMP]) {
         printf("VRAM readback:");
         for (i = 0; i < 8; i++) printf(" %02x", fb[i]);
         printf(" ... row 200:");
         for (i = 0; i < 8; i++) printf(" %02x", fb[200 * mode.bytesPerRow + i]);
         printf("\n");
-        if (board.configDev->cd_Rom.er_Manufacturer != 0x6d6e)      /* a Cirrus board */
-            Picasso2_Dump(&board);
     }
 
     printf("PrismTest: showing for %lu s (Ctrl-C to stop)\n", (unsigned long)secs);
@@ -406,6 +436,7 @@ int main(void)
     rc = 0;
 
 out:
+    driver_close();
     if (save) FreeVec(save);
     if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);
     if (ExpansionBase) CloseLibrary((struct Library *)ExpansionBase);

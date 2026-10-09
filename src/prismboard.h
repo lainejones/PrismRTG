@@ -70,7 +70,12 @@ struct PrismBoard {
     UWORD             maxWidth, maxHeight;
     void             *priv;          /* driver-private state             */
 
-    /* Mandatory */
+    /* Mandatory: setMode and setDisplayStart (with name, vram, vramSize,
+     * formats, maxWidth and maxHeight above). The five after them get a
+     * default from board_defaults() when left NULL: checkMode accepts
+     * any size up to maxWidth x maxHeight in one of `formats` with
+     * unpadded rows; the others do nothing. src/drv_template.c is the
+     * worked example, docs/writing-a-driver.md the guide. */
     BOOL (*setMode)(struct PrismBoard *b, struct PrismMode *m);
     BOOL (*checkMode)(struct PrismBoard *b, struct PrismMode *m); /* dry run:
                                          validates and fills bytesPerRow */
@@ -139,6 +144,16 @@ struct PrismBoard {
 };
 
 #define CURSOR_SIZE 64
+
+/* What every loadable driver supplies (driver_module.c calls them; the
+ * request's config carries the PrismPrefs settings the adapters use):
+ * probe the board and fill *b, and park if something cannot be released. */
+struct PrismDriverConfig;
+BOOL driver_probe(struct PrismBoard *b, const struct PrismDriverConfig *config);
+void driver_retain(void);
+/* Fill the optional callbacks a driver left NULL (boardops.c). PrismD and
+ * PrismTest call it on the board a driver returned. */
+void board_defaults(struct PrismBoard *b);
 
 /* Driver probes: return TRUE and fill *b if the board is present. */
 BOOL Picasso2_Probe(struct PrismBoard *b);

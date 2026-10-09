@@ -74,6 +74,9 @@ static inline BOOL driver_compatible(const struct PrismDriverRequest *r)
         r->opsABI==PRISM_OPS_ABI && r->opsSize==PRISM_OPS_SIZE;
 }
 BOOL driver_open(struct PrismBoard *, const char *, const struct PrismDriverConfig *);
+/* Try every other .driver in PROGDIR:Drivers and LIBS:Prism (not the
+ * supplied four) until one finds its board. */
+BOOL driver_scan(struct PrismBoard *, const struct PrismDriverConfig *);
 void driver_close(void);
 /* Used by a claimed P96/UAE context after its final diagnostic is flushed. */
 void driver_module_done(void);

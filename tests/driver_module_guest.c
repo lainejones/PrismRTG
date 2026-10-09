@@ -33,6 +33,13 @@ int main(void)
     puts("parent output still open");fflush(stdout);
     if(!driver_open(&board,"Fixture",&config))return 5;
     driver_close();
+    /* the driver template, built on a fake board: the minimal contract */
+    if(!driver_open(&board,"TEMPLATE",&config))return 5;
+    board_defaults(&board);
+    if(strcmp(board.name,"Template board (fake)") || board.vramSize!=1024*1024 ||
+       !board.setMode || !board.setDisplayStart || !board.checkMode)return 5;
+    puts("template driver loaded");fflush(stdout);
+    driver_close();
     return 0;
 }
 #else
@@ -49,7 +56,8 @@ int main(void)
        !strstr(text,"OldFixture driver ABI/version or layout mismatch") ||
        !strstr(text,"module fixture: probe failed") ||
        !strstr(text,"module fixture: final output") ||
-       !strstr(text,"parent output still open")) {emit("FAIL module lifecycle\n");return 20;}
+       !strstr(text,"parent output still open") ||
+       !strstr(text,"template driver loaded")) {emit("FAIL module lifecycle\n");return 20;}
     emit("PASS\n");return 0;
 }
 #endif

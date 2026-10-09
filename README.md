@@ -66,6 +66,14 @@ copies the supplied PICASSO2, ZZ9000, P96 and UAEGFX modules. Keep PrismD
 and its modules from the same build; an incompatible module is rejected
 with an ABI/version or layout diagnostic.
 
+A driver for another board is one C file built with
+`sh tools/mkdriver.sh NAME src/drv_name.c`; `BOARD=NAME` selects it, and
+with the board on Auto PrismD tries every other `.driver` in `LIBS:Prism`
+after its own. The minimal driver is a mode set and a display start;
+`src/drv_template.c` is the starting point and
+[docs/writing-a-driver.md](docs/writing-a-driver.md) the guide, with
+`PrismTest` to check a driver before PrismD runs on it.
+
 Each loaded module uses its own 16 KB process stack and keeps its callbacks
 alive until PrismD stops. The memory measurements above describe the
 previous linked build. P96/UAE contexts still stay resident when their card
@@ -324,13 +332,13 @@ finished `.info` files in `dist/`.
 
 | Tool | What it does |
 |---|---|
-| `PrismD` | The driver. `PrismD [BOARD=ZZ9000|PICASSO2|P96|UAEGFX] [P96CARD=file] [P96MONITOR=icon] [PREFS=file] [LOG]`; Ctrl-C removes its patches when no PrismRTG screen is open. P96 and UAEGFX contexts remain resident until reboot. |
+| `PrismD` | The driver. `PrismD [BOARD=ZZ9000|PICASSO2|P96|UAEGFX|<name>] [P96CARD=file] [P96MONITOR=icon] [PREFS=file] [LOG]`; Ctrl-C removes its patches when no PrismRTG screen is open and no program holds a PrismRTG bitmap. P96 and UAEGFX contexts remain resident until reboot. |
 | `PrismPrefs` | Settings editor. `FROM= USE SAVE TEST=<slot>` work without the window. |
 | `Prism` (`out/PrismMon`) | `DEVS:Monitors` launcher with the boot failsafe. |
 | `PrismSetup` | Installer helper: `DETECT`, `WBMODE=<slot>`. |
 | `PrismProbe` | Lists expansion boards and marks the ones PrismRTG can drive. Read-only. |
 | `PrismBench` | Benchmark and pixel-exactness checks: `MODEID=$7A00xxxx`, `LIST`. |
-| `PrismTest` | Bare-metal board test: sets a mode, draws a pattern, checks the blitter against the CPU (`BLIT`). |
+| `PrismTest` | A driver on its own, without PrismD: loads `BOARD=NAME` (any `.driver`), sets a mode, draws a pattern, checks the driver's fills and copies against the CPU (`BLIT`). |
 | `PrismScreen`, `PrismShow`, `PrismMouse`, `prismdiag` | Test clients: screens, pictures, pointer, display database dump. |
 | `ddcprobe`, `zztime`, `iotime`, `memwhere`, `p2peek` | Hardware probes and timing tools. |
 

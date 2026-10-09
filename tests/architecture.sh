@@ -45,10 +45,12 @@ done
 $CC $GUEST_FLAGS -o $G/driver_guest tests/driver_guest.c
 $CC $GUEST_FLAGS -o $G/driver_module_guest tests/driver_module_guest.c
 $CC $GUEST_FLAGS -o $G/scroll_guest tests/scroll_guest.c
-$CC $GUEST_FLAGS -DMODULE_CHECK -o $G/ModuleCheck tests/driver_module_guest.c src/driver_loader.c
+$CC $GUEST_FLAGS -DMODULE_CHECK -o $G/ModuleCheck tests/driver_module_guest.c src/driver_loader.c src/boardops.c
 $CC $GUEST_FLAGS -o $G/Drivers/Fixture.driver tests/module_fixture.c
 $CC $GUEST_FLAGS -DFIXTURE_NOT_FOUND -o $G/Drivers/FailedFixture.driver tests/module_fixture.c
 $CC $GUEST_FLAGS -DPRISM_DRIVER_ABI=2 -o $G/Drivers/OldFixture.driver tests/module_fixture.c
+# the driver template, as a board that is only fast RAM (ModuleCheck loads it)
+CFLAGS="$GUEST_FLAGS" DRIVER_CFLAGS=-DTEMPLATE_FAKE OUT=$G/Drivers sh tools/mkdriver.sh TEMPLATE src/drv_template.c
 echo "== SKIP p96_guest, uaegfx_guest: need uaegfx.card / UAE RTG in a dedicated WinUAE boot (built in $G)"
 echo "== SKIP scroll_guest: needs PrismD running on a Prism Workbench (built in $G)"
 echo "== SKIP driver_guest: needs C:PrismD, C:p96test and a board in a dedicated boot (built in $G)"

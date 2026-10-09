@@ -677,3 +677,15 @@ BOOL ZZ9000_Probe(struct PrismBoard *b)
     b->restoreState    = zz_RestoreState;
     return TRUE;
 }
+
+/* ---- as a loadable module (driver_module.c) --------------------------- */
+#ifdef PRISM_DRIVER_MODULE
+#include "driver_module.h"
+BOOL driver_probe(struct PrismBoard *b, const struct PrismDriverConfig *config)
+{
+    return ZZ9000_Probe(b);
+}
+void driver_retain(void)
+{
+}
+#endif

@@ -6,7 +6,7 @@
  *
  * The file is plain text, one KEY=VALUE per line:
  *
- *   BOARD=AUTO|PICASSO2|ZZ9000|P96|UAEGFX
+ *   BOARD=AUTO|PICASSO2|ZZ9000|P96|UAEGFX|<name of any LIBS:Prism/<name>.driver>
  *   P96CARD=LIBS:Picasso96/uaegfx.card
  *   P96MONITOR=SYS:Storage/Monitors/UAEgfx  (optional icon tooltypes)
  *   SOFTWAREPOINTER=ON|OFF      (force the software sprite path)
@@ -43,10 +43,12 @@ extern const UBYTE prefs_rates[PREFS_NRATES];    /* 0 = driver's default   */
 #define PREFS_DEPTH(i)  ((i) / PREFS_NSIZES)
 #define PREFS_IDLOW(i)  ((ULONG)PREFS_DEPTH(i) << 8 | PREFS_SIZE(i))
 
-enum { PB_AUTO, PB_PICASSO2, PB_ZZ9000, PB_P96, PB_UAEGFX, PB_COUNT };
+enum { PB_AUTO, PB_PICASSO2, PB_ZZ9000, PB_P96, PB_UAEGFX, PB_OTHER, PB_COUNT };
+#define PREFS_BOARDNAME 32           /* driver_open's limit on a name       */
 
 struct PrismPrefs {
     UBYTE board;                     /* PB_*                               */
+    char boardName[PREFS_BOARDNAME + 1]; /* PB_OTHER: LIBS:Prism/<name>.driver */
     UBYTE blitter;                   /* use the card's blitter             */
     UBYTE log;                       /* PrismD prints its debug log        */
     UBYTE softwarePointer;          /* override advertised hardware sprite */

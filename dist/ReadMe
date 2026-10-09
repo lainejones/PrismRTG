@@ -24,7 +24,9 @@ Update or remove: run Install_PrismRTG again.
 What goes where
   C:PrismD               the driver; started at boot
   LIBS:Prism/#?.driver   one module per kind of board; PrismD loads the
-                         one it needs
+                         one it needs. A driver for another board is one
+                         more file here (docs/writing-a-driver.md on
+                         GitHub); BOARD=<name> selects it, Auto tries it
   C:PrismSetup           the installer's helper (card detection)
   C:PrismProbe           lists the expansion boards PrismRTG can drive
   DEVS:Monitors/Prism    starts PrismD before Workbench opens

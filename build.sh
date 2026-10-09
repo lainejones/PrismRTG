@@ -20,15 +20,17 @@ mkdir -p out
 echo "== M0 tools =="
 $CC $CFLAGS -s -o out/PrismProbe tools/prismprobe.c
 if [ -f tools/prismtest.c ]; then
-  $CC $CFLAGS -s -o out/PrismTest tools/prismtest.c src/boardops.c src/drv_picasso2.c src/drv_zz9000.c
+  $CC $CFLAGS -s -o out/PrismTest tools/prismtest.c src/boardops.c src/driver_loader.c
 fi
 
-echo "== Loadable board drivers =="
-mkdir -p out/Drivers
-$CC $CFLAGS $GC -s -DPRISM_DRIVER_MODULE -DDRIVER_PICASSO2 -o out/Drivers/PICASSO2.driver src/driver_module.c src/drv_picasso2.c src/boardops.c
-$CC $CFLAGS $GC -s -DPRISM_DRIVER_MODULE -DDRIVER_ZZ9000 -o out/Drivers/ZZ9000.driver src/driver_module.c src/drv_zz9000.c src/boardops.c
-$CC $CFLAGS $GC -s -DPRISM_DRIVER_MODULE -DDRIVER_P96 -o out/Drivers/P96.driver src/driver_module.c src/drv_p96.c src/boardops.c src/rtg_ops.c
-$CC $CFLAGS $GC -s -DPRISM_DRIVER_MODULE -DDRIVER_UAEGFX -o out/Drivers/UAEGFX.driver src/driver_module.c src/drv_uaegfx.c src/boardops.c src/rtg_ops.c
+echo "== Loadable board drivers (tools/mkdriver.sh NAME sources...) =="
+export CC CFLAGS
+sh tools/mkdriver.sh PICASSO2 src/drv_picasso2.c
+sh tools/mkdriver.sh ZZ9000 src/drv_zz9000.c
+sh tools/mkdriver.sh P96 src/drv_p96.c src/rtg_ops.c
+sh tools/mkdriver.sh UAEGFX src/drv_uaegfx.c src/rtg_ops.c
+# the template for new drivers must keep building (it is not packaged)
+OUT=out/template sh tools/mkdriver.sh TEMPLATE src/drv_template.c
 
 echo "== M1 =="
 $CC $CFLAGS $GC -s -o out/PrismD src/prismd.c src/prefs.c src/bitmap.c src/present.c src/render.c src/pointer.c src/cgx.c src/p96.c src/stubs.S src/p2c.S src/boardops.c src/driver_loader.c

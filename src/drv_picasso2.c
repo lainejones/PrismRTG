@@ -1529,3 +1529,16 @@ void Picasso2_Dump(struct PrismBoard *b)
     fflush(stdout);
 }
 #endif
+
+/* ---- as a loadable module (driver_module.c) --------------------------- */
+#ifdef PRISM_DRIVER_MODULE
+#include "driver_module.h"
+BOOL driver_probe(struct PrismBoard *b, const struct PrismDriverConfig *config)
+{
+    Picasso2_ClutBGR = config->clutBGR;
+    return Picasso2_Probe(b);
+}
+void driver_retain(void)
+{
+}
+#endif

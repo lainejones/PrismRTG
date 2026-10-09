@@ -31,6 +31,9 @@
  * the BoardInfo argument. Keep register-ABI calls as ordinary calls. */
 #pragma GCC optimize ("no-optimize-sibling-calls")
 #include "rtg_ops.h"
+#ifdef PRISM_DRIVER_MODULE
+#include "driver_module.h"
+#endif
 
 /* These are binary ABI offsets, not host C structure sizes. */
 _Static_assert(sizeof(BOOL) == 2, "P96 requires 16-bit BOOL");
@@ -830,3 +833,15 @@ void P96_KeepResident(void)
 #endif
     for (;;) Wait(SIGBREAKF_CTRL_C);
 }
+
+/* ---- as a loadable module (driver_module.c) --------------------------- */
+#ifdef PRISM_DRIVER_MODULE
+BOOL driver_probe(struct PrismBoard *b, const struct PrismDriverConfig *config)
+{
+    return P96_Probe(b, config->card, config->monitor);
+}
+void driver_retain(void)
+{
+    P96_KeepResident();
+}
+#endif
