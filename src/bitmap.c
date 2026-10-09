@@ -165,6 +165,7 @@ struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE format, UWORD *penT
         }
     }
     size = p->bpr * h;
+    pbm_fits(p);
 
     LOCK_FOR(p);
     for (i = 0; i < PBM_MAX; i++)

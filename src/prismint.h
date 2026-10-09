@@ -113,6 +113,9 @@ struct PBitMap {
     ULONG          lastShown;   /* LRU stamp for VRAM eviction           */
     ULONG          modified;    /* prismActivity when last drawn into (the
                                    compositor composes what changed)     */
+    UBYTE          blitFits;    /* the whole bitmap is within the board's
+                                   direct blit limits (pbm_fits), so any
+                                   rectangle in it is too               */
 };
 
 /* The Prism bitmap behind a BitMap, or NULL (bitmap.c keeps the table).
@@ -179,6 +182,15 @@ static inline BOOL hw_fits(ULONG bytes, UWORD h, ULONG pitch)
         (!board.blitMaxPitch || pitch <= board.blitMaxPitch);
 }
 
+/* Checking the limits for every blit cost 1.5-2.5% of a small fill or copy
+ * on the 68030; a bitmap that fits as a whole is checked once, when it is
+ * made (the board's limits are set before the first bitmap). */
+static inline void pbm_fits(struct PBitMap *p)
+{
+    p->blitFits = hw_fits((ULONG)p->w * p->bpp, p->h, p->bpr);
+}
+#define FITS(p, bytes, h) ((p)->blitFits || hw_fits(bytes, h, (p)->bpr))
+
 static inline enum PrismResult hw_direct(void)
 {
     if (!(board.flags & PBF_ACCEL_BROKEN))
@@ -194,7 +206,7 @@ static inline enum PrismResult pbm_fill(struct PBitMap *p, UBYTE bpp, UWORD x, U
                                         UWORD w, UWORD h, ULONG c)
 {
     if (HW_OK(p) && board.fillRect && (bpp == p->bpp || bpp == 1) &&
-        hw_fits((UWORD)w * (UWORD)bpp, h, p->bpr)) {
+        FITS(p, (UWORD)w * (UWORD)bpp, h)) {
         board.fillRect(&board, p->vramOff, p->bpr, bpp, x, y, w, h, c);
         return hw_direct();
     }
@@ -204,8 +216,10 @@ static inline enum PrismResult pbm_fill(struct PBitMap *p, UBYTE bpp, UWORD x, U
 static inline enum PrismResult pbm_copy(struct PBitMap *s, struct PBitMap *d, UWORD sx, UWORD sy,
                                         UWORD dx, UWORD dy, UWORD w, UWORD h)
 {
-    if (HW_OK(s) && d->inVram && hw_fits((UWORD)w * (UWORD)s->bpp, h, s->bpr) &&
-        (!board.blitMaxPitch || d->bpr <= board.blitMaxPitch)) {
+    if (HW_OK(s) && d->inVram &&
+        ((s->blitFits && d->blitFits) ||
+         (hw_fits((UWORD)w * (UWORD)s->bpp, h, s->bpr) &&
+          (!board.blitMaxPitch || d->bpr <= board.blitMaxPitch)))) {
         if (s == d && board.copyRect) {
             board.copyRect(&board, s->vramOff, s->bpr, s->bpp, sx, sy, dx, dy, w, h);
             return hw_direct();
@@ -226,7 +240,7 @@ static inline enum PrismResult pbm_copy(struct PBitMap *s, struct PBitMap *d, UW
  * the A4000. Everything else goes through the operation table. */
 static inline enum PrismResult pbm_line(struct PBitMap *p, WORD x, WORD y, WORD dx, WORD dy, ULONG c)
 {
-    if (HW_OK(p) && board.drawLine && (!board.blitMaxPitch || p->bpr <= board.blitMaxPitch)) {
+    if (HW_OK(p) && board.drawLine && (p->blitFits || !board.blitMaxPitch || p->bpr <= board.blitMaxPitch)) {
         board.drawLine(&board, p->vramOff, p->bpr, p->bpp, x, y, dx, dy, c);
         return hw_direct();
     }
@@ -239,7 +253,7 @@ static inline enum PrismResult pbm_line(struct PBitMap *p, WORD x, WORD y, WORD 
 static inline enum PrismResult pbm_expand(struct PBitMap *p, UWORD x, UWORD y, UWORD w, UWORD h,
                                           const UBYTE *src, ULONG mod, ULONG fg, ULONG bg, BOOL tr)
 {
-    if (HW_OK(p) && board.expandRect && hw_fits((UWORD)w * (UWORD)p->bpp, h, p->bpr)) {
+    if (HW_OK(p) && board.expandRect && FITS(p, (UWORD)w * (UWORD)p->bpp, h)) {
         ULONG f = board.faults;
         BOOL done = board.expandRect(&board, p->vramOff, p->bpr, p->bpp, x, y, w, h,
                                      src, mod, fg, bg, tr);

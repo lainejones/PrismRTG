@@ -565,9 +565,10 @@ static inline void blt_run(struct PrismBoard *b, struct P2Priv *p)
     ULONG n;
     gr_out(b, p, 0x31, 0x02);
     /* poll here (GR31 is selected already); p2_WaitBlitFor only for the
-     * reset when it never finishes */
+     * reset when it never finishes (the status is read again only then:
+     * a Zorro II register read is a measurable part of a small blit) */
     for (n = 0; n < 1000000 && (*d & 0x01); n++) ;
-    if ((*d & 0x01) && !p2_WaitBlitFor(b, 0)) {
+    if (n >= 1000000 && (*d & 0x01) && !p2_WaitBlitFor(b, 0)) {
         /* a fill or copy that never finished: the chip is wedged. The
          * core's direct path sees the flag and redraws on the CPU. */
         p->failed = TRUE;

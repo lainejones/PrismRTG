@@ -98,7 +98,7 @@ static BOOL prepare(struct PBitMap *front,UWORD width,UWORD height)
     off=owned ? vram_get_size(size,front->fmt,pitch,width,height,front) : (LONG)front->vramOff;
     if (off<0) goto fail;
     frame.w=width;frame.h=height;frame.bpr=pitch;frame.bpp=front->bpp;
-    frame.fmt=front->fmt;frame.vramOff=off;frame.inVram=TRUE;
+    frame.fmt=front->fmt;frame.vramOff=off;frame.inVram=TRUE;pbm_fits(&frame);
     allocated=TRUE;input=front;valid=FALSE;
     if (!owned) {
         board.flags|=PBF_PRESENT;front->uploadValid=FALSE;
