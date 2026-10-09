@@ -738,8 +738,9 @@ static ULONG c_a0a1d0d1d2(APTR fn, APTR base, APTR x, APTR y, ULONG a, ULONG b, 
     return d0;
 }
 
-/* Patches can be running in other tasks when PrismD wants to quit. */
-static volatile LONG inPatch;
+/* Patches can be running in other tasks when PrismD wants to quit
+ * (stubs.S counts its handler calls here too). */
+volatile LONG inPatch;
 /* one instruction each, so a task switch can't split the update */
 #define ENTER() __asm volatile ("addq.l #1,_inPatch" ::: "cc", "memory")
 #define LEAVE() __asm volatile ("subq.l #1,_inPatch" ::: "cc", "memory")
@@ -2285,6 +2286,15 @@ int main(void)
         }
         if (!cgx_remove()) {
             printf("PrismD: programs still have cybergraphics.library open\n");
+            continue;
+        }
+        /* a program still holding one of our bitmaps (an off-screen buffer
+         * made with a Prism friend) would free it through the original
+         * FreeBitMap later, with every plane aliasing one chip plane */
+        render_quit();
+        if (pbm_count()) {
+            printf("PrismD: programs still hold %lu Prism bitmaps - close them first\n",
+                   (unsigned long)pbm_count());
             continue;
         }
         Forbid();

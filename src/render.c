@@ -858,14 +858,19 @@ static void shadow_load(struct PBitMap *p, WORD y0, WORD y1)
 static LONG foreign(LONG (*h)(struct Regs *), struct Regs *r, struct RastPort *rp)
 {
     struct BitMap *bm = rp->BitMap;
+    struct Layer *L = rp->Layer;
     UWORD w = bm->BytesPerRow * 8, hgt = bm->Rows;
     struct Surf d;
     LONG res;
     WORD y;
 
+    /* layer first, then the lock: the order every drawing path uses
+     * (the handler below locks the layer again inside the lock) */
+    if (L) LockLayerRom(L);
     LOCK();
     if (shadowOf) {                      /* a handler calling a handler */
         ReleaseSemaphore(&lock);
+        if (L) UnlockLayerRom(L);
         return 0;
     }
     if (!shadow || shadow->w != w || shadow->h != hgt) {
@@ -875,6 +880,7 @@ static LONG foreign(LONG (*h)(struct Regs *), struct Regs *r, struct RastPort *r
     }
     if (!shadow) {
         ReleaseSemaphore(&lock);
+        if (L) UnlockLayerRom(L);
         return 0;
     }
     shadow->depth = bm->Depth;
@@ -890,7 +896,19 @@ static LONG foreign(LONG (*h)(struct Regs *), struct Regs *r, struct RastPort *r
         if (shadowRows[y >> 3] & (1 << (y & 7)))
             surf_write(&d, 0, y, w, shadow->pix + (ULONG)y * shadow->bpr, 0xff);
     ReleaseSemaphore(&lock);
+    if (L) UnlockLayerRom(L);
     return res;
+}
+
+/* PrismD is quitting: let go of the shadow (nothing draws any more). */
+void render_quit(void)
+{
+    LOCK();
+    if (shadow) {
+        pbm_free(shadow);
+        shadow = NULL;
+    }
+    ReleaseSemaphore(&lock);
 }
 
 #define FOREIGN(fn, reg) do { \

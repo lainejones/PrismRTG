@@ -118,8 +118,13 @@ static inline ULONG src_rgb(const UBYTE *s, UBYTE rf, const ULONG *ctab, struct 
     return p->rgbTab ? p->rgbTab[s[0]] : 0;
 }
 
-static UBYTE src_bpp(UBYTE rf)
+#ifndef RECTFMT_RAW
+#define RECTFMT_RAW 5                   /* the destination's own pixel layout */
+#endif
+
+static UBYTE src_bpp(UBYTE rf, const struct PBitMap *p)
 {
+    if (rf == RECTFMT_RAW) return p->bpp;
     return (rf == RECTFMT_RGB) ? 3 : (rf == RECTFMT_RGBA || rf == RECTFMT_ARGB) ? 4 : 1;
 }
 
@@ -179,7 +184,7 @@ static void write_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
                      WORD ox, WORD oy, void *ctx)
 {
     struct ArrayCtx *a = ctx;
-    UBYTE sb = src_bpp(a->rf), ro = 0, go = 0, bo = 0;
+    UBYTE sb = src_bpp(a->rf, p), ro = 0, go = 0, bo = 0;
     const ULONG *tab = NULL;
     WORD y, x, n = bx1 - bx0 + 1;
 
@@ -187,14 +192,16 @@ static void write_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
     switch (a->rf) {
     case RECTFMT_RGB: case RECTFMT_RGBA: go = 1; bo = 2; break;
     case RECTFMT_ARGB: ro = 1; go = 2; bo = 3; break;
-    case RECTFMT_GREY8: break;
+    case RECTFMT_GREY8: case RECTFMT_RAW: break;
     default: tab = a->ctab ? a->ctab : p->rgbTab; break;       /* LUT8 */
     }
     for (y = by0; y <= by1; y++) {
         const UBYTE *s = a->src + (LONG)(a->sy + (y - oy - a->dy)) * a->srcMod +
                          (LONG)(a->sx + (bx0 - ox - a->dx)) * sb;
         UBYTE *row = p->pix + (ULONG)y * p->bpr + bx0 * p->bpp;
-        if (p->bpp == 2) {
+        if (a->rf == RECTFMT_RAW) {
+            CopyMem((APTR)s, row, (ULONG)n * p->bpp);     /* already our layout */
+        } else if (p->bpp == 2) {
             UWORD *w = (UWORD *)rowbuf;
             if (a->rf == RECTFMT_LUT8 && !a->ctab && p->penTab)
                 for (x = 0; x < n; x++) w[x] = p->penTab[s[x]];
@@ -225,13 +232,18 @@ static void read_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
                     WORD ox, WORD oy, void *ctx)
 {
     struct ArrayCtx *a = ctx;
-    UBYTE db = src_bpp(a->rf);
+    UBYTE db = src_bpp(a->rf, p);
     WORD y, x, n = bx1 - bx0 + 1;
 
     for (y = by0; y <= by1; y++) {
         UBYTE *d = a->dst + (LONG)(a->sy + (y - oy - a->dy)) * a->srcMod +
                    (LONG)(a->sx + (bx0 - ox - a->dx)) * db;
         const UBYTE *row = p->pix + (ULONG)y * p->bpr + bx0 * p->bpp;
+        if (a->rf == RECTFMT_RAW) {
+            CopyMem((APTR)row, d, (ULONG)n * p->bpp);
+            a->count += n;
+            continue;
+        }
         for (x = 0; x < n; x++, d += db) {
             ULONG c;
             UBYTE pen = 0;
@@ -579,13 +591,14 @@ static LONG C_ScalePixelArray(UBYTE *src __asm("a0"), UWORD sw __asm("d0"), UWOR
                               UWORD dx __asm("d3"), UWORD dy __asm("d4"), UWORD dw __asm("d5"),
                               UWORD dh __asm("d6"), UBYTE fmt __asm("d7"))
 {
-    UBYTE sb = src_bpp(fmt), *line;
+    UBYTE sb, *line;
     UWORD x, y, *col;
     LONG n = 0, last = -1;
 
     LOG(F_ScalePixelArray, "ScalePixelArray %dx%d -> %dx%d fmt %u\n", sw, sh, dw, dh, fmt);
     if (!rp_ours(rp) || !src || !sw || !sh || !dw || !dh)
         return 0;
+    sb = src_bpp(fmt, pbm_get(rp->BitMap));
     /* one scaled line at a time, drawn with WritePixelArray's code. The
      * source column of each destination column is worked out once, and a
      * source line that fills several destination lines is scaled once
@@ -740,7 +753,7 @@ static void unlock_pbm(APTR handle)
 {
     struct PBitMap *p = handle;
     ObtainSemaphore(&lock);              /* unlocking touches no pixels */
-    if (p && pbm_get(p->bm) == p && p->locks)
+    if (p && pbm_live(p) && p->locks)    /* (a freed handle is never read) */
         p->locks--;
     ReleaseSemaphore(&lock);
 }

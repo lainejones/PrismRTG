@@ -39,6 +39,10 @@ void sw_clear(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1);
 #define LOCK_FOR(p) do { ObtainSemaphore(&lock); \
                          if (swOn && (p) == swOn) { prismActivity++; sw_hide(); } } while (0)
 extern volatile ULONG paletteGen;
+void render_quit(void);
+/* is p one of the live Prism bitmaps? (a handle from a program; the
+ * pointer is compared, never read) */
+BOOL pbm_live(const struct PBitMap *p);
 /* sw_clear only while the software pointer is drawn: no call otherwise */
 #define SW_CLEAR(p, x0, y0, x1, y1) do { if (swOn && (p)) sw_clear((p), (x0), (y0), (x1), (y1)); } while (0)      /* bumped when a palette changes in place */
 extern struct SignalSemaphore lock;     /* card registers, VRAM allocator,

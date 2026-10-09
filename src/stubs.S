@@ -8,10 +8,14 @@
 
         .text
 
+| _inPatch counts the tasks inside a handler, so PrismD can wait for them
+| before it quits (prismd.c ENTER/LEAVE); one instruction each way
         .macro BODY name
         movem.l d0-d7/a0-a6,-(sp)
         move.l  sp,-(sp)
+        addq.l  #1,_inPatch
         jsr     _h_\name
+        subq.l  #1,_inPatch
         addq.l  #4,sp
         tst.l   d0
         bne.s   1f
@@ -118,7 +122,9 @@ _stub_WritePixel:
 3:      move.l  d1,-(sp)
         move.l  d0,-(sp)
         move.l  a1,-(sp)
+        addq.l  #1,_inPatch
         jsr     _f_WritePixel
+        subq.l  #1,_inPatch
         movea.l (sp)+,a1
         subq.l  #2,d0
         beq.s   4f

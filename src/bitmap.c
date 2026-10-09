@@ -24,7 +24,9 @@ struct PBitMap *pbm_get(const struct BitMap *bm)
     if (!bm || !(bm->Flags & BMF_PRISM) || (bm->pad & 0xf000) != PBM_PAD_MAGIC)
         return NULL;
     i = bm->pad & 0x0fff;
-    if (i >= PBM_MAX || !(p = table[i]))
+    /* (no dummy yet: pbm_new still building it in this slot, and a stale
+     * copy of an earlier bitmap's struct carries the slot number) */
+    if (i >= PBM_MAX || !(p = table[i]) || !p->dummy)
         return NULL;
     /* a copy of the struct still points at the same dummy plane - or, for
      * a bitmap made in a pixel format (see h_AllocBitMap), at its pixels */
@@ -35,6 +37,15 @@ struct PBitMap *pbm_get(const struct BitMap *bm)
 ULONG pbm_count(void)
 {
     return used;
+}
+
+BOOL pbm_live(const struct PBitMap *p)
+{
+    UWORD i;
+    for (i = 0; i < PBM_MAX; i++)
+        if (table[i] == p)
+            return TRUE;
+    return FALSE;
 }
 
 /* ---- VRAM paging -----------------------------------------------------
@@ -177,11 +188,11 @@ struct PBitMap *pbm_new(UWORD w, UWORD h, UBYTE depth, UBYTE format, UWORD *penT
     if (slot < PBM_MAX) {
         table[slot] = p;               /* reserve the slot */
         used++;
+        p->index = slot;
     }
     ReleaseSemaphore(&lock);
     if (slot == PBM_MAX)
         goto fail;
-    p->index = slot;
 
     if (vram) {
         /* VRAM if it fits (evicting hidden bitmaps), else fast RAM until

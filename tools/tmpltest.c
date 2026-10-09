@@ -14,6 +14,9 @@
 #include <graphics/scale.h>
 #include <graphics/gfxmacros.h>
 #include <cybergraphx/cybergraphics.h>
+#ifndef RECTFMT_RAW
+#define RECTFMT_RAW 5                   /* missing from the NDK header */
+#endif
 #include <proto/cybergraphics.h>
 
 struct Library *CyberGfxBase;
@@ -278,6 +281,34 @@ int main(void)
                 }
             }
             printf("WritePixelArray %s: %d wrong of %d\n", fn[f], bad, 64 * 8);
+        }
+        /* RECTFMT_RAW: the bitmap's own layout. Read the RGB ramp back raw,
+         * write it raw somewhere else, read that as ARGB and compare. */
+        if (tol < 255) {
+            static UBYTE raw[64 * 8 * 4];
+            int bpp = GetCyberMapAttr(rp->BitMap, CYBRMATTR_BPPIX);
+            for (i = 0; i < 64 * 8; i++) {
+                src[i * 3] = i & 255; src[i * 3 + 1] = 255 - (i & 255); src[i * 3 + 2] = (i * 5) & 255;
+            }
+            SetRast(rp, 0);
+            WritePixelArray(src, 0, 0, 64 * 3, rp, 101, 50, 64, 8, RECTFMT_RGB);
+            memset(raw, 0, sizeof(raw));
+            ReadPixelArray(raw, 0, 0, 64 * bpp, rp, 101, 50, 64, 8, RECTFMT_RAW);
+            SetRast(rp, 0);
+            WritePixelArray(raw, 0, 0, 64 * bpp, rp, 37, 70, 64, 8, RECTFMT_RAW);
+            memset(back, 0, sizeof(back));
+            ReadPixelArray(back, 0, 0, 64 * 4, rp, 37, 70, 64, 8, RECTFMT_ARGB);
+            for (bad = shown = 0, i = 0; i < 64 * 8; i++) {
+                int r = i & 255, g = 255 - (i & 255), b = (i * 5) & 255;
+                int dr = back[i * 4 + 1] - r, dg = back[i * 4 + 2] - g, db = back[i * 4 + 3] - b;
+                if (dr < -tol || dr > tol || dg < -tol || dg > tol || db < -tol || db > tol) {
+                    bad++;
+                    if (shown++ < 4)
+                        printf("  pixel %d: wrote %d,%d,%d read %d,%d,%d\n", i, r, g, b,
+                               back[i * 4 + 1], back[i * 4 + 2], back[i * 4 + 3]);
+                }
+            }
+            printf("WritePixelArray RAW (%d bytes/pixel): %d wrong of %d\n", bpp, bad, 64 * 8);
         }
         CloseLibrary(CyberGfxBase);
     }
