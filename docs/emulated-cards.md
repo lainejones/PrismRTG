@@ -34,10 +34,10 @@ did not include.
 | Graffity (GD5428, Z3) | not detected: no PrismRTG driver for this chip | - | - | - | - | - | - | - | - | - | - | - | - | - |
 | Picasso IV (GD5446, Z2) | not detected: no PrismRTG driver for this chip | - | - | - | - | - | - | - | - | - | - | - | - | - |
 | Picasso IV (GD5446, Z3) | not detected: no PrismRTG driver for this chip | - | - | - | - | - | - | - | - | - | - | - | - | - |
-| UAE RTG, Zorro II (4 MB) | P96 | 8:no mode 16:no mode 24:no mode 32:no mode | 0 ok / 0 wrong | no library | - | - | - | - | - | - | - | - | - | - |
 | UAE RTG, Zorro II (4 MB) | UAEGFX | 8:ok 16:ok 24:no mode 32:ok | 65 ok / 0 wrong | 0/29 failed | 5839 | 305 | 5315 | 2382 | 18005 | 3356 | 5735 | 354 | 5306 | 17475 |
-| UAE RTG, Zorro III (16 MB) | P96 | 8:no mode 16:no mode 24:no mode 32:no mode | 0 ok / 0 wrong | no library | - | - | - | - | - | - | - | - | - | - |
+| UAE RTG, Zorro II (4 MB) | P96 | 8:ok 16:ok 24:no mode 32:ok | 65 ok / 0 wrong | 0/29 failed | 5731 | 1589 | 5358 | 2316 | 18349 | 3365 | 5662 | 1583 | 5340 | 18040 |
 | UAE RTG, Zorro III (16 MB) | UAEGFX | 8:ok 16:ok 24:no mode 32:ok | 65 ok / 0 wrong | 0/29 failed | 5763 | 301 | 5373 | 2325 | 18535 | 3347 | 5681 | 339 | 5380 | 18160 |
+| UAE RTG, Zorro III (16 MB) | P96 | 8:ok 16:ok 24:no mode 32:ok | 65 ok / 0 wrong | 0/29 failed | 5725 | 1593 | 5350 | 2325 | 18287 | 3370 | 5645 | 1587 | 5327 | 17973 |
 
 ## Notes
 
@@ -53,10 +53,13 @@ did not include.
   ran in its own boot: the native UAE driver keeps the emulator's card
   context after PrismD stops, so the two cannot follow each other in one
   session.
-* The UAE RTG rows' **text figure** (about 300 strings/s against about
-  1,400 on the Cirrus boards) is PrismRTG drawing text on the CPU into
-  the UAE card's memory: UAE's RTG has no template expansion, and the
-  write path to its VRAM is the slow part. Worth a look, not a fault.
+* **Text on the native UAE driver** is about 300 strings/s, against
+  about 1,590 through the P96 adapter on the same emulated card and
+  about 1,400 on the Cirrus boards. Same machine, same card: the
+  native driver's text path is five times slower than the adapter's.
+  That is a real finding to chase (the adapter uses uaegfx.card's
+  template expansion; the native driver draws text on the CPU into
+  the card's memory).
 * The Cirrus boards all measure the same because WinUAE emulates one
   blitter for all of them at host speed; the differences between the
   real boards (bus width, clock, DAC) are not emulated.
