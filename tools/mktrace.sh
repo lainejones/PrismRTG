@@ -23,7 +23,7 @@ fi
 m68k-amigaos-gcc -DPRISM_TRACE -DPRISM_DEBUG -O2 -m68020-60 -noixemul -Wall -Wno-pointer-sign \
   -fomit-frame-pointer -ffunction-sections -fdata-sections -Wl,--gc-sections \
   -Isrc -Isrc/p96sdk -s -o out/PrismD.trace out/trace/prismd_trace.c src/prefs.c src/bitmap.c \
-  src/present.c src/render.c src/gels.c src/pointer.c src/cgx.c src/p96.c src/stubs.S src/p2c.S \
+  src/present.c src/render.c src/gels.c src/selftest.c src/pointer.c src/cgx.c src/p96.c src/stubs.S src/p2c.S \
   src/boardops.c src/driver_loader.c
 rm -f out/trace/prismd_trace.c
 ls -l out/PrismD.trace

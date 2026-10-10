@@ -2194,6 +2194,7 @@ int main(void)
         struct PrismMode m = modes[0].m;
         if (!board.setMode(&board, &m)) { puts("PrismD: initial mode failed");goto out; }
         if (prefs.blitter && board.modeReady) board.modeReady(&board);
+        selftest_text();
         board.setSwitch(&board, FALSE);
         cardMode = &modes[0];
     }

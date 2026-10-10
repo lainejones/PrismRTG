@@ -44,6 +44,9 @@ void render_quit(void);
 /* gels.c: Bobs (DrawGList) on Prism bitmaps */
 void gels_init(void);
 void gels_quit(void);
+/* selftest.c: the board's text blit against a known answer (first mode set) */
+extern UBYTE textBad;                        /* bit n: wrong at n bytes/pixel */
+void selftest_text(void);
 /* is p one of the live Prism bitmaps? (a handle from a program; the
  * pointer is compared, never read) */
 BOOL pbm_live(const struct PBitMap *p);
@@ -256,6 +259,8 @@ static inline enum PrismResult pbm_line(struct PBitMap *p, WORD x, WORD y, WORD 
 static inline enum PrismResult pbm_expand(struct PBitMap *p, UWORD x, UWORD y, UWORD w, UWORD h,
                                           const UBYTE *src, ULONG mod, ULONG fg, ULONG bg, BOOL tr)
 {
+    if (textBad & (1 << p->bpp))
+        return PR_DECLINED;                  /* failed its self-test: CPU text */
     if (HW_OK(p) && board.expandRect && FITS(p, (UWORD)w * (UWORD)p->bpp, h)) {
         ULONG f = board.faults;
         BOOL done = board.expandRect(&board, p->vramOff, p->bpr, p->bpp, x, y, w, h,

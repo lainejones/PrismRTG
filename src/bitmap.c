@@ -548,6 +548,8 @@ enum PrismResult pbm_hw_expand(struct PBitMap *p,UWORD x,UWORD y,UWORD w,UWORD h
     const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr)
 {
     struct PrismSurface s;
+    if (textBad & (1 << p->bpp))
+        return PR_DECLINED;
     if (HW_FAST(p) && board.ops->expand && src && mod >= ((ULONG)w + 7) / 8 &&
         hw_rect(p,x,y,w,h)) {
         hw_surface(p,&s);
