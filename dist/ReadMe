@@ -112,7 +112,8 @@ Credits
   card-driver adapter, native UAE driver, surface operations, driver
   modules, P96 memory pools, software pointer and PIPs, build fixes),
   Dimitris Panokostas (UAE driver review, Amiberry pointer default), polluks
-  and yelworC (MiSTer test), and Individual Computers, A. Kneer, T. Abt and
+  and yelworC (MiSTer test), HANSolo-0007 (Vampire test and reports), and
+  Individual Computers, A. Kneer, T. Abt and
   T. Richter (P96 driver headers, CC-BY). The drivers are PrismRTG's own
   code, written from register facts in public sources: MNT's ZZ9000
   driver, NetBSD, Linux, QEMU, 86Box/PCem, WinUAE (Toni Wilen) and the

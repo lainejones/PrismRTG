@@ -81,7 +81,7 @@ and call `ReInitMemory` while preserving application shadows.
 
 Drivers with `BIF_INTERNALMODESONLY`, including uaegfx, supply their own
 mode lists. Other drivers receive standard timings for 640x400, 640x480,
-800x600, 1024x768, 1280x720 and 1280x1024. Only modes fitting the driver's
+800x600, 1024x768, 1280x720, 1280x1024 and 1920x1080. Only modes fitting the driver's
 limits and Prism's existing preferences grid are offered. P96 settings
 files and arbitrary user-defined timings are not imported. External
 drivers must provide a pixel-clock resolver; large clock deviations are

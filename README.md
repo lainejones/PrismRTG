@@ -27,6 +27,7 @@ the native drivers do not need them.
 | Piccolo, Zorro II | Cirrus GD5426 | WinUAE only | Emulation only. 8/16-bit, 24-bit 640x480. |
 | GVP Spectrum 28/24, Zorro II | Cirrus GD5428 | WinUAE only | Emulation only. 8/16-bit, 24-bit 640x480. |
 | MNT ZZ9000, Zorro II mode | | none | Untested. No blitter or pointer support in this mode. |
+| Apollo Vampire (SAGA), through its P96 driver | `vampiregfx.card` 1.61 | Vampire, reported by a user (#1) | Real hardware, not tested here. 1.1 beta 3 with `BOARD=P96`: every drawing test passes at 8, 16, 24 and 32 bits, `p96test` 0 of 29 failed, screens up to 1280x720 24-bit. One failure, planar blits at 16 bits, is handled from beta 5 (the card's own planar blit is checked first and replaced if wrong). |
 
 Needs Kickstart 3.1 or newer (the Workbench disks may be 3.0) and a 68020 or
 better. No FPU needed. On Kickstart 3.0 PrismD does not start.
@@ -104,8 +105,9 @@ See [P96 driver configuration and limits](docs/p96-drivers.md) before
 using this backend. It supports linear framebuffers, not every P96 memory
 model, and a claimed driver remains resident until reboot. This provides
 uaegfx through its P96 driver. A separate native candidate is available below.
-Tested so far with UAE's `uaegfx.card` in WinUAE 6.0.3 at 8, 16 and 32 bits
-(every PrismRTG test and `p96test`), not yet with a physical card's driver.
+Tested here with UAE's `uaegfx.card` in WinUAE 6.0.3 at 8, 16 and 32 bits
+(every PrismRTG test and `p96test`). The first physical card reported is
+the Apollo Vampire with `vampiregfx.card` (see the card table).
 
 ### Native UAE RTG candidate
 
@@ -383,6 +385,10 @@ noted in every commit. With thanks to:
   Amiberry's RTG hardware pointer the default so PrismRTG shows a pointer
   there ([amiberry#2388](https://github.com/BlitterStudio/amiberry/pull/2388)).
 * **polluks** and **yelworC** - the first test on a MiSTer FPGA (#2).
+* **HANSolo-0007** - the first real card through the P96 adapter, an Apollo
+  Vampire, with PrismCheck reports and the findings behind beta 5's
+  Workbench drag images, planar-blit check, 16:9 sizes and PrismPrefs
+  switches (#1).
 * **Individual Computers**, **Alexander Kneer**, **Tobias Abt** and **Thomas
   Richter** - the P96 driver development headers in `src/p96sdk` (CC-BY),
   which the P96 card-driver adapter is built with.
