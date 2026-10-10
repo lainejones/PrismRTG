@@ -175,6 +175,13 @@ void present_tick(void)
 
     frame.rgbTab=front->rgbTab;
     showBack=back && (top>0 || (LONG)top+front->h<height);
+    /* The card shows one mode: a screen behind of another size would come
+     * out cut off or magnified in the front's (issue #1). It stays black
+     * until it comes to the front; one of the same size shows through
+     * (another depth converted, which looks right). */
+    if (showBack && screen->NextScreen &&
+        (screen->NextScreen->Width!=screen->Width || screen->NextScreen->Height!=screen->Height))
+        showBack=FALSE;
     /* the front's band: rows of the frame it covers */
     if (top<height && (LONG)top+front->h>0) {
         bandY0=top<0 ? 0 : top;
