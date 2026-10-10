@@ -19,6 +19,10 @@ const UWORD prefs_sizes[PREFS_NSIZES][2] = {
     /* low resolution, for games that draw 320 pixels wide and assume the
      * screen is exactly that (ADoom, 2026-10-04) */
     { 320, 200 }, { 320, 240 },
+    /* 16:9 (issue #1, 2026-10-09): offered where the board can show them -
+     * the ZZ9000's firmware has 1920x1080, and P96 drivers with their own
+     * mode lists (the Vampire's) may have both */
+    { 960, 540 }, { 1920, 1080 },
 };
 /* New depths go at the END too. 24 = 3 bytes a pixel, 32 = 4: a card may
  * have either or both (see board_format in prismd.c). */

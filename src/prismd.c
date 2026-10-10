@@ -177,7 +177,7 @@ struct ModeRec {
 
 static const char version[] __attribute__((used)) = "$VER: PrismD 1.1b4 (09.10.2026)";
 
-#define MAX_MODES 32
+#define MAX_MODES PREFS_NMODES        /* every size at every depth */
 static struct ModeRec modes[MAX_MODES];
 static ULONG nmodes;
 
@@ -1466,7 +1466,7 @@ TRAMP(GetBitMapAttr) TRAMP(WriteChunkyPixels) TRAMP(WritePixelArray8)
 TRAMP(ReadPixelArray8) TRAMP(WritePixelLine8) TRAMP(ReadPixelLine8)
 TRAMP(SetRGB32CM) TRAMP(ObtainPen) TRAMP(ObtainBestPenA)
 TRAMP(MoveSprite) TRAMP(ChangeSprite) TRAMP(ChangeExtSpriteA) TRAMP(ChangeVPBitMap)
-TRAMP(CoerceMode) TRAMP(BitMapScale)
+TRAMP(CoerceMode) TRAMP(BitMapScale) TRAMP(DrawGList)
 #define GFX_T(n, lvo) { (struct Library **)&GfxBase, -(lvo), (APTR)stub_##n, &o_##n }
 
 LONG call_regs(APTR fn, struct Regs *r);
@@ -1872,6 +1872,7 @@ static struct Patch patches[] = {
     GFX_T(ScrollRaster,          0x18c),
     GFX_T(ScrollRasterBF,        0x3ea),
     GFX_T(EraseRect,             0x32a),
+    GFX_T(DrawGList,             0x072),
     GFX_T(AllocBitMap,           0x396),
     GFX_T(FreeBitMap,            0x39c),
     GFX_T(GetBitMapAttr,         0x3c0),
@@ -2046,6 +2047,7 @@ static BOOL p96_monitor_installed(void)
 static void install(void)
 {
     ULONG i;
+    gels_init();
     Forbid();
 #ifdef PRISM_TRACE
     trace_install();
@@ -2318,6 +2320,7 @@ int main(void)
          * made with a Prism friend) would free it through the original
          * FreeBitMap later, with every plane aliasing one chip plane */
         render_quit();
+        gels_quit();                  /* its saved backgrounds are Prism bitmaps */
         if (pbm_count()) {
             printf("PrismD: programs still hold %lu Prism bitmaps - close them first\n",
                    (unsigned long)pbm_count());

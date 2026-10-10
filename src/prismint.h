@@ -41,6 +41,9 @@ void sw_clear(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1);
                          if (swOn && (p) == swOn) { prismActivity++; sw_hide(); } } while (0)
 extern volatile ULONG paletteGen;
 void render_quit(void);
+/* gels.c: Bobs (DrawGList) on Prism bitmaps */
+void gels_init(void);
+void gels_quit(void);
 /* is p one of the live Prism bitmaps? (a handle from a program; the
  * pointer is compared, never read) */
 BOOL pbm_live(const struct PBitMap *p);

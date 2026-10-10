@@ -4,7 +4,10 @@
  * PrismMouse - move the mouse pointer from software (for testing the
  * pointer on the card without a real mouse).
  *
- *   PrismMouse X=<n> Y=<n> [STEPS=n] [WAIT=ticks]
+ *   PrismMouse X=<n> Y=<n> [STEPS=n] [WAIT=ticks] [CLICK] [DOWN] [UP]
+ *
+ * DOWN presses the left button before the glide and UP lets it go after,
+ * so DOWN on one call and UP on a later one drags (icons, windows).
  *
  * Feeds IECLASS_NEWPOINTERPOS events (pixel position on the front screen)
  * into input.device, gliding from the current position to (X, Y).
@@ -22,11 +25,11 @@
 
 struct IntuitionBase *IntuitionBase;
 
-#define TEMPLATE "X/A/N,Y/A/N,STEPS/K/N,WAIT/K/N,CLICK/S"
+#define TEMPLATE "X/A/N,Y/A/N,STEPS/K/N,WAIT/K/N,CLICK/S,DOWN/S,UP/S"
 
 int main(void)
 {
-    LONG args[5] = { 0 };
+    LONG args[7] = { 0 };
     struct RDArgs *rda;
     struct MsgPort *port;
     struct IOStdReq *io;
@@ -62,6 +65,18 @@ int main(void)
     }
 
     s = IntuitionBase->FirstScreen;
+    if (args[5]) {
+        /* left button down where the pointer is; the glide then drags */
+        memset(&ie, 0, sizeof(ie));
+        ie.ie_Class = IECLASS_RAWMOUSE;
+        ie.ie_Code = IECODE_LBUTTON;
+        ie.ie_Qualifier = IEQUALIFIER_RELATIVEMOUSE | IEQUALIFIER_LEFTBUTTON;
+        io->io_Command = IND_WRITEEVENT;
+        io->io_Data = &ie;
+        io->io_Length = sizeof(ie);
+        DoIO((struct IORequest *)io);
+        Delay(5);
+    }
     x0 = s->MouseX;
     y0 = s->MouseY;
     for (i = 1; i <= steps; i++) {
@@ -71,6 +86,8 @@ int main(void)
         pp.iepp_Position.Y = y0 + (LONG)(y1 - y0) * i / steps;
         ie.ie_Class = IECLASS_NEWPOINTERPOS;
         ie.ie_SubClass = IESUBCLASS_PIXEL;
+        /* the button held across calls (DOWN ... UP) */
+        if (args[5] || args[6]) ie.ie_Qualifier = IEQUALIFIER_LEFTBUTTON;
         ie.ie_EventAddress = &pp;
         io->io_Command = IND_WRITEEVENT;
         io->io_Data = &ie;
@@ -93,8 +110,20 @@ int main(void)
             Delay(5);
         }
     }
-    printf("PrismMouse: (%d,%d) -> (%d,%d)%s; screen says %d,%d\n", x0, y0, x1, y1,
-           args[4] ? " + click" : "", s->MouseX, s->MouseY);
+    if (args[6]) {
+        /* let the button go where the pointer is */
+        memset(&ie, 0, sizeof(ie));
+        ie.ie_Class = IECLASS_RAWMOUSE;
+        ie.ie_Code = IECODE_LBUTTON | IECODE_UP_PREFIX;
+        ie.ie_Qualifier = IEQUALIFIER_RELATIVEMOUSE;
+        io->io_Command = IND_WRITEEVENT;
+        io->io_Data = &ie;
+        io->io_Length = sizeof(ie);
+        DoIO((struct IORequest *)io);
+    }
+    printf("PrismMouse: (%d,%d) -> (%d,%d)%s%s%s; screen says %d,%d\n", x0, y0, x1, y1,
+           args[4] ? " + click" : "", args[5] ? " + button down" : "", args[6] ? " + button up" : "",
+           s->MouseX, s->MouseY);
     CloseDevice((struct IORequest *)io);
     DeleteIORequest((struct IORequest *)io);
     DeleteMsgPort(port);

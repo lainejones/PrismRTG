@@ -142,6 +142,7 @@ _stub_WritePixel:
         PATCH_RP ScrollRaster, a1, a0
         PATCH_RP ScrollRasterBF, a1, a0
         PATCH_RP EraseRect, a1, a0
+        PATCH_RP DrawGList, a1, a0
         PATCH AllocBitMap
         PATCH BitMapScale
         PATCH_BM FreeBitMap

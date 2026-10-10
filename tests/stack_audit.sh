@@ -16,7 +16,7 @@ CC=${CC:-m68k-amigaos-gcc}
 OUT=out/stack
 rm -rf $OUT && mkdir -p $OUT
 F="-DPRISM_DEBUG -O2 -m68020-60 -noixemul -Wall -Wno-pointer-sign -fomit-frame-pointer -fstack-usage -Isrc -Isrc/p96sdk"
-for s in prismd prefs bitmap present render pointer cgx p96 boardops driver_loader; do
+for s in prismd prefs bitmap present render gels pointer cgx p96 boardops driver_loader; do
     $CC $F -S -o $OUT/$s.s src/$s.c
 done
 for s in drv_picasso2 drv_zz9000 drv_p96 drv_uaegfx rtg_ops; do

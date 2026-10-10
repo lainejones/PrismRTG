@@ -218,7 +218,17 @@ enum PrismResult rtg_planar(struct PrismBoard *b,const struct PrismPlanar *s,
         if(!bi->BlitPlanar2Chunky) return PR_DECLINED;
         bi->BlitPlanar2Chunky(bi,(struct BitMap *)s->bitmap,&ri,sx,sy,dx,dy,w,h,12,mask);
     } else {
+        /* A card's own planar hook is tried once, on its first use (a mode
+         * is set by then), against a known answer: the Vampire's drew
+         * nothing at 16 bits (issue #1, 2026-10-09). One that gets it
+         * wrong is replaced by the CPU version for the session. */
+        static UBYTE planarTested;
         if(!bi->BlitPlanar2Direct) return PR_DECLINED;
+        if(!planarTested && bi->BlitPlanar2Direct!=rtg_planar_direct) {
+            planarTested=1;
+            if(!rtg_probe_planar(bi,b->formats))
+                bi->BlitPlanar2Direct=rtg_planar_direct;
+        }
         cim.ColorMask=d->bpp==2 ? 0xffff : 0xffffffff;
         for(i=0;i<256;i++) cim.Colors[i]=d->bpp==2 && s->pens16 ? s->pens16[i] :
             rtg_colour(d->format,s->colours ? s->colours[i] : i*0x010101UL);

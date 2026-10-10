@@ -34,7 +34,8 @@ struct Library *GadToolsBase;
 static const char version[] __attribute__((used)) = "$VER: PrismPrefs 1.1b4 (09.10.2026)";
 
 enum { GAD_LIST = 1, GAD_ON, GAD_HZ, GAD_BOARD, GAD_BLIT, GAD_LOG,
-       GAD_SAVE, GAD_USE, GAD_DEFAULTS, GAD_CANCEL, GAD_STATUS, GAD_TEST, GAD_BGR };
+       GAD_SAVE, GAD_USE, GAD_DEFAULTS, GAD_CANCEL, GAD_STATUS, GAD_TEST, GAD_BGR,
+       GAD_DRAG, GAD_SOFTPTR };
 
 static STRPTR hzLabels[] = { "Default", "60 Hz", "70 Hz", "72 Hz", "75 Hz", NULL };
 static STRPTR boardLabels[] = { "Auto", "Picasso II", "ZZ9000", "P96 driver", "UAE (native)",
@@ -46,7 +47,7 @@ struct Gui {
     struct Screen *scr;
     APTR vi;
     struct Window *win;
-    struct Gadget *glist, *gList, *gOn, *gHz, *gBoard, *gBlit, *gLog, *gBgr, *gStatus;
+    struct Gadget *glist, *gList, *gOn, *gHz, *gBoard, *gBlit, *gLog, *gBgr, *gDrag, *gSoft, *gStatus;
     struct List modes;
     struct Node node[PREFS_NMODES];
     char text[PREFS_NMODES][48];
@@ -126,6 +127,8 @@ static void show_settings(struct Gui *g)
     GT_SetGadgetAttrs(g->gBlit, g->win, NULL, GTCB_Checked, (ULONG)p->blitter, TAG_END);
     GT_SetGadgetAttrs(g->gLog, g->win, NULL, GTCY_Active, (ULONG)(p->log <= 2 ? p->log : 1), TAG_END);
     GT_SetGadgetAttrs(g->gBgr, g->win, NULL, GTCB_Checked, (ULONG)p->clutBGR, TAG_END);
+    GT_SetGadgetAttrs(g->gDrag, g->win, NULL, GTCB_Checked, (ULONG)p->dragging, TAG_END);
+    GT_SetGadgetAttrs(g->gSoft, g->win, NULL, GTCB_Checked, (ULONG)p->softwarePointer, TAG_END);
 }
 
 static void running_status(struct Gui *g)
@@ -285,6 +288,19 @@ static BOOL make_gadgets(struct Gui *g, WORD *innerW, WORD *innerH)
     gad = g->gBgr = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
                                  GTCB_Checked, (ULONG)g->prefs.clutBGR, TAG_END);
 
+    /* the two experimental switches (DRAGGING=, SOFTWAREPOINTER=) */
+    y += row;
+    ng.ng_TopEdge = y;
+    ng.ng_GadgetText = "Drag screens"; ng.ng_GadgetID = GAD_DRAG;
+    gad = g->gDrag = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
+                                  GTCB_Checked, (ULONG)g->prefs.dragging, TAG_END);
+
+    y += row;
+    ng.ng_TopEdge = y;
+    ng.ng_GadgetText = "Soft pointer"; ng.ng_GadgetID = GAD_SOFTPTR;
+    gad = g->gSoft = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
+                                  GTCB_Checked, (ULONG)g->prefs.softwarePointer, TAG_END);
+
     y += row;
     ng.ng_TopEdge = y; ng.ng_Width = rw; ng.ng_Height = gh;
     ng.ng_GadgetText = "Log"; ng.ng_Flags = PLACETEXT_LEFT; ng.ng_GadgetID = GAD_LOG;
@@ -417,6 +433,18 @@ static void event_loop(struct Gui *g)
                     set_status(g, g->prefs.clutBGR
                                   ? "For a board whose 256-colour screens show red as blue"
                                   : "256-colour palettes loaded red first (normal)");
+                    break;
+                case GAD_DRAG:
+                    g->prefs.dragging = (gad->Flags & GFLG_SELECTED) ? 1 : 0;
+                    set_status(g, g->prefs.dragging
+                                  ? "Screen dragging on (experimental, slower drawing)"
+                                  : "Screen dragging off");
+                    break;
+                case GAD_SOFTPTR:
+                    g->prefs.softwarePointer = (gad->Flags & GFLG_SELECTED) ? 1 : 0;
+                    set_status(g, g->prefs.softwarePointer
+                                  ? "Pointer drawn by PrismRTG (for boards without one)"
+                                  : "Board's own pointer where it has one");
                     break;
                 case GAD_TEST:
                     test_mode(g, g->sel, TRUE);

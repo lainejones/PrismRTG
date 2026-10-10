@@ -29,7 +29,7 @@
 #define PREFS_ENV     "ENV:Prism.prefs"
 #define PREFS_ENVARC  "ENVARC:Prism.prefs"
 
-#define PREFS_NSIZES  8
+#define PREFS_NSIZES  10
 #define PREFS_NDEPTHS 4
 #define PREFS_NMODES  (PREFS_NSIZES * PREFS_NDEPTHS)
 #define PREFS_NRATES  5
