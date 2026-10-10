@@ -15,7 +15,7 @@
 #include <stdio.h>
 #include "../src/prism.h"
 
-static const char version[] __attribute__((used)) = "$VER: prismstate 1.0 (08.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: prismstate 1.1 (10.10.26)";
 
 struct GfxBase *GfxBase;
 

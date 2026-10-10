@@ -35,7 +35,7 @@
 struct ExpansionBase *ExpansionBase;
 struct IntuitionBase *IntuitionBase;
 
-static const char version[] __attribute__((used)) = "$VER: PrismTest 1.1b4 (09.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: PrismTest 1.1b5 (10.10.26)";
 
 #define TEMPLATE "BOARD/K,WIDTH/K/N,HEIGHT/K/N,DEPTH/K/N,SECS/K/N,OFFSET/K,DUMP/S,BLIT/S"
 enum { A_BOARD, A_WIDTH, A_HEIGHT, A_DEPTH, A_SECS, A_OFFSET, A_DUMP, A_BLIT, A_COUNT };

@@ -200,8 +200,15 @@ small blits), while long lines got faster. Short operations show it most
 because a fixed cost per call is a bigger share of them. Measuring the
 builds in between puts it in two steps: the 1.1 beta 1 driver work
 (WritePixel and ReadPixel) and the move to format-aware board surfaces
-(every blitter operation, partly spent waiting for the blitter). Recovering
-it is the next piece of work, and this table will be updated when it is.
+(every blitter operation, partly spent waiting for the blitter).
+
+Beta 5 takes back about half of it on the 68030 (each build measured at
+three code alignments and averaged, since where the compiler places code
+alone moves these numbers by 2-5%): against 1.0.2, RectFill 100x100 -5.2%
+in beta 4 and -2.9% in beta 5, RectFill 8x8 -7.0% / -4.0%, 4-character
+text -4.7% / -2.8%, ClipBlit -5.9% / -3.6%, ScrollRaster -8.8% / -5.4%,
+bitmap-to-screen blit -4.7% / -1.9%. The rest is a few instructions on
+every call. The A4000 columns will be measured again for beta 5.
 
 | Test | Picasso96 | PrismRTG 1.0 | 1.0.2 (9 Oct) | 1.1 beta 4 (9 Oct) |
 |---|---|---|---|---|

@@ -19,8 +19,9 @@ Use
 
 What it does
   Reads: the OS and library versions, CPU, memory, expansion boards,
-  PrismRTG's version and settings, the monitor files, whether Picasso96 is
-  installed too, the front screen and pointer.
+  PrismRTG's version and settings, how the board is driven (its flags and
+  which drawing it does in hardware), the monitor files, whether Picasso96
+  is installed too, the front screen and pointer.
   Tests: PrismRTG's drawing tests at 8, 16, 24 and 32 bits (each line should
   end in "0 wrong"), the Picasso96 API test, and a video-memory test
   (vramcheck - should say "0 of 40 copies wrong").

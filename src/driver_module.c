@@ -29,7 +29,7 @@ unsigned long *__BUFSIZE = &stdioBufSize;
 #ifndef DRIVER_NAME
 #error Build a driver with tools/mkdriver.sh NAME (it defines DRIVER_NAME)
 #endif
-static const char version[] __attribute__((used)) = "$VER: " DRIVER_NAME ".driver 1.1b4 (09.10.2026)";
+static const char version[] __attribute__((used)) = "$VER: " DRIVER_NAME ".driver 1.1b5 (10.10.26)";
 
 void driver_module_done(void)
 {

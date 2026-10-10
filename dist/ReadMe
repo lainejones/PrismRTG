@@ -38,6 +38,22 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.1 beta 5
+  From the first reports on hardware I don't have - an Apollo Vampire
+  through its P96 driver, and a MiSTer's ZZ9000 core. Thank you.
+  Dragged Workbench icons are shown again (they were drawn where nothing
+  could see them). On the P96 driver board, copies from an off-screen
+  bitmap to a window use the card's blitter: browsers scroll three to six
+  times faster in WinUAE; the same on UAE (native). A card whose own
+  planar blit or text blit gets a test picture wrong is drawn on the CPU
+  instead (the Vampire's planar blit at 16 bits; the MiSTer's text) - the
+  log says so. The pointer no longer lags when the disk is busy.
+  New sizes 960x540 and 1920x1080 where the board can show them.
+  PrismPrefs has Drag screens and Soft pointer switches. While dragging, a
+  screen of another size behind the dragged one stays black (the card
+  shows one mode at a time). Small fills, copies and text 1-3% faster on a
+  68030. PrismCheck reports how the board is driven.
+
 New in 1.1 beta 4 "Tequila" - please update from beta 3
   Fixes a crash beta 3 could hit: drawing text used almost 2 KB of the
   calling program's stack (Workbench, IPrefs - often 4 KB in all).
@@ -69,13 +85,14 @@ New in 1.1 beta (experimental - please report how it goes)
                   without Picasso96.
   "P96 driver"    BOARD=P96 P96CARD=<file> - drives a card through its
                   existing Picasso96 card driver (.card), without the rest
-                  of Picasso96. Tried with UAE's uaegfx.card only, not yet
-                  with a real card's driver.
+                  of Picasso96. Tested with UAE's uaegfx.card; reported
+                  working on an Apollo Vampire with vampiregfx.card.
   Details: docs/uaegfx.md and docs/p96-drivers.md on GitHub.
 
 Software pointer
   Boards without a working hardware pointer get a pointer drawn into the
-  screen; SOFTWAREPOINTER=ON in ENV:Prism.prefs forces it (e.g. a MiSTer).
+  screen; Soft pointer in PrismPrefs (SOFTWAREPOINTER=ON in the prefs
+  file) forces it, e.g. on a MiSTer.
   It costs a few percent of drawing speed.
 
 Dragging and PIP windows
