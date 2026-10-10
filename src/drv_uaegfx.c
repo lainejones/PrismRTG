@@ -223,6 +223,17 @@ static void uae_copy(struct PrismBoard *b, ULONG off, ULONG pitch, UBYTE bpp,
     p->bi.BlitRect(&p->bi, &ri, sx, sy, dx, dy, w, h, 255, f);
 }
 
+/* Between two VRAM areas (an off-screen bitmap to the window) with the
+ * host's BlitRectNoMaskComplete, as bytes (CLUT); minterm 12 = copy */
+static void uae_between(struct PrismBoard *b, ULONG src, ULONG spitch, ULONG dst,
+                        ULONG dpitch, UWORD wbytes, UWORD h)
+{
+    struct UAEPriv *p = b->priv;
+    struct RenderInfo s = { b->vram + src, spitch, 0, RGBFB_CLUT };
+    struct RenderInfo d = { b->vram + dst, dpitch, 0, RGBFB_CLUT };
+    p->bi.BlitRectNoMaskComplete(&p->bi, &s, &d, 0, 0, 0, 0, wbytes, h, 12, RGBFB_CLUT);
+}
+
 static void uae_cursor_image(struct PrismBoard *b, const UBYTE *img, const UBYTE *rgb)
 {
     struct UAEPriv *p = b->priv;
@@ -365,6 +376,7 @@ BOOL UAEGFX_Probe(struct PrismBoard *b)
     if (!(bi->Flags & BIF_NOBLITTER)) {
         if (bi->FillRect) { b->fillRect = uae_fill; b->flags |= PBF_BLIT_32; }
         if (bi->BlitRect) b->copyRect = uae_copy;
+        if (bi->BlitRectNoMaskComplete) b->copyBetween = uae_between;
     }
     if ((bi->Flags & BIF_HARDWARESPRITE) && bi->SetSprite && bi->SetSpriteImage &&
         bi->SetSpritePosition && bi->SetSpriteColor) {

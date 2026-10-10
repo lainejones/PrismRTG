@@ -312,13 +312,28 @@ void pointer_tick(void)
     }
 }
 
+/* A move (from input.device) that found the lock taken: whoever releases
+ * it next applies the move (pointer_catchup), instead of the pointer
+ * waiting for PrismD's next tick - under heavy disk use PrismD's own task
+ * gets the CPU late, and the pointer lagged (issue #1, 2026-10-09). */
+volatile UBYTE pointerPending;
+
 static void try_apply(void)
 {
-    if (on && haveImage && AttemptSemaphore(&lock)) {
+    if (!on || !haveImage)
+        return;
+    if (AttemptSemaphore(&lock)) {
+        pointerPending = 0;
         apply();
         if (hardware_pointer()) board.cursorShow(&board, TRUE);
         ReleaseSemaphore(&lock);
-    }
+    } else
+        pointerPending = 1;
+}
+
+void pointer_catchup(void)
+{
+    try_apply();
 }
 
 /* ---- patches -------------------------------------------------------- */

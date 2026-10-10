@@ -560,6 +560,32 @@ static void p96_copy(struct PrismBoard *b, ULONG offset, ULONG pitch, UBYTE bpp,
     wait_blitter(&p->bi);
 }
 
+/* Between two VRAM areas, with the card's BlitRectNoMaskComplete: the
+ * off-screen-bitmap-to-window copy browsers and paint programs scroll
+ * with (Amelinium was slower than under P96 without it, issue #1). The
+ * geometry is in bytes, so it goes as the narrowest format the card has
+ * that divides the width. Minterm 12 (as P96 passes them): copy. */
+static void p96_between(struct PrismBoard *b, ULONG src, ULONG spitch, ULONG dst,
+                        ULONG dpitch, UWORD wbytes, UWORD h)
+{
+    struct P96Priv *p = b->priv;
+    struct RenderInfo s, d;
+    UBYTE bpp = p->pf[1] != PF_COUNT ? 1 : (!(wbytes & 1) && p->pf[2] != PF_COUNT) ? 2 :
+                (!(wbytes & 3) && p->pf[4] != PF_COUNT) ? 4 : 0;
+    RGBFTYPE f;
+    if (!bpp) {                      /* no format fits: the CPU, row by row */
+        UWORD y;
+        for (y = 0; y < h; y++)
+            CopyMem(b->vram + src + (ULONG)y * spitch, b->vram + dst + (ULONG)y * dpitch, wbytes);
+        return;
+    }
+    f = rgbformat[p->pf[bpp]];
+    s.Memory = b->vram + src; s.BytesPerRow = spitch; s.pad = 0; s.RGBFormat = f;
+    d.Memory = b->vram + dst; d.BytesPerRow = dpitch; d.pad = 0; d.RGBFormat = f;
+    p->bi.BlitRectNoMaskComplete(&p->bi, &s, &d, 0, 0, 0, 0, wbytes / bpp, h, 12, f);
+    wait_blitter(&p->bi);
+}
+
 static BOOL p96_expand(struct PrismBoard *b, ULONG offset, ULONG pitch, UBYTE bpp,
                        UWORD x, UWORD y, UWORD w, UWORD h, const UBYTE *src,
                        ULONG mod, ULONG fg, ULONG bg, BOOL transparent)
@@ -708,6 +734,9 @@ static BOOL attach_board(struct P96Priv *p, struct PrismBoard *b)
         }
         if (bi->BlitRect && bi->BlitRect != cpu_copy)
             b->copyRect = p96_copy;
+        if (bi->BlitRectNoMaskComplete &&
+            bi->BlitRectNoMaskComplete != bi->BlitRectNoMaskCompleteDefault)
+            b->copyBetween = p96_between;
         if (bi->BlitTemplate && bi->BlitTemplate != rtg_template_default) {
             b->expandRect = p96_expand;
             b->flags |= PBF_BLIT_32;

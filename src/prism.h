@@ -14,7 +14,7 @@
 #include <intuition/screens.h>
 
 #define PRISM_SEMNAME     "prism"
-#define PRISM_VERSION     3
+#define PRISM_VERSION     4
 
 /* Boot failsafe: DEVS:Monitors/Prism creates this before starting PrismD
  * and PrismD deletes it after a minute. Found at boot, it means the last
@@ -63,6 +63,17 @@ struct PrismSem {
     /* the debug log switch (0 off, 1 on): tools/prismlog flips it on a
      * running PrismD, so a log can cover just the step under test */
     UBYTE *logLevel;
+    /* version 4: what the board does, for reports (PrismCheck): its
+     * PBF_* flags (prismboard.h; read, never write) and which drawing
+     * calls its driver does in hardware (PRISM_HW_*) */
+    const ULONG *boardFlags;
+    ULONG hwOps;
 };
+#define PRISM_HW_FILL     (1UL << 0)
+#define PRISM_HW_COPY     (1UL << 1)    /* within one bitmap            */
+#define PRISM_HW_BETWEEN  (1UL << 2)    /* between two bitmaps in VRAM  */
+#define PRISM_HW_TEXT     (1UL << 3)
+#define PRISM_HW_LINE     (1UL << 4)
+#define PRISM_HW_PLANAR   (1UL << 5)    /* planar sources (icons)       */
 
 #endif

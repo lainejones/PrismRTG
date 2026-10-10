@@ -380,6 +380,29 @@ int main(void)
                                (long)x, (long)y, (long)pen);
                 }
             printf("  planar blit check: %ld wrong of %ld\n", (long)bad, 4L * 61 * 32 + 64 * 32);
+
+            /* the same from a bitmap made with the screen as friend: the
+             * off-screen-to-window copy (on a board's bitmap-to-bitmap
+             * blitter where it has one), at odd offsets and widths */
+            bad = 0;
+            brp.BitMap = friendBM;
+            for (y = 0; y < 32; y++)
+                for (x = 0; x < 64; x++) {
+                    SetAPen(&brp, (x * 11 + y * 29) & 255);
+                    WritePixel(&brp, x, y);
+                }
+            for (dx = 0; dx < 4; dx++) {
+                BltBitMapRastPort(friendBM, dx, 0, w->RPort, 421 + dx * 3, 300, 61 - dx, 32, 0xc0);
+                WaitBlit();
+                for (y = 0; y < 32; y++)
+                    for (x = 0; x < 61 - dx; x++) {
+                        pen = ReadPixel(w->RPort, 421 + dx * 3 + x, 300 + y);
+                        if (pen != ((x + dx) * 11 + y * 29) % 256 && bad++ < 3)
+                            printf("  friend blit WRONG at %ld,%ld (offset %ld): %ld\n",
+                                   (long)x, (long)y, (long)dx, (long)pen);
+                    }
+            }
+            printf("  friend blit check: %ld wrong of %ld\n", (long)bad, 32L * (61 + 60 + 59 + 58));
         }
     }
     if (depth == 8) {

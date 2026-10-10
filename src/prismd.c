@@ -2249,6 +2249,13 @@ int main(void)
     sem.testEnd = test_end;
     sem.drawLock = &lock;
     sem.logLevel = &prefs.log;
+    sem.boardFlags = &board.flags;
+    sem.hwOps = (board.fillRect || BOARD_CAN(fill) ? PRISM_HW_FILL : 0) |
+                (board.copyRect || BOARD_CAN(copy) ? PRISM_HW_COPY : 0) |
+                (board.copyBetween ? PRISM_HW_BETWEEN : 0) |
+                (board.expandRect || BOARD_CAN(expand) ? PRISM_HW_TEXT : 0) |
+                (board.drawLine || BOARD_CAN(line) ? PRISM_HW_LINE : 0) |
+                (BOARD_CAN(planar) ? PRISM_HW_PLANAR : 0);
     AddSemaphore(&sem.ss);
     printf("PrismD: running (Ctrl-C to quit)\n");
     STAGE("running");

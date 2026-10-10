@@ -34,6 +34,22 @@ int main(void)
     if (ps)
         printf("PrismD is running: board \"%s\", interface version %u, %lu modes\n",
                ps->boardName ? ps->boardName : "?", ps->version, (unsigned long)ps->numModes);
+    if (ps && ps->version >= 4 && ps->boardFlags) {
+        /* how the board is driven: what reports need to tell slow or wrong
+         * drawing apart (names as in prismboard.h) */
+        static const char *const fn[] = { "", "", "", "hardware-pointer", "", "blitter-32bit",
+            "shadow", "ACCEL-BROKEN", "blitter-off", "banked", "composed", "reinit" };
+        ULONG f = *ps->boardFlags, h = ps->hwOps;
+        int i;
+        printf("Board flags $%04lx:", (unsigned long)f);
+        for (i = 0; i < (int)(sizeof(fn) / sizeof(fn[0])); i++)
+            if ((f & (1UL << i)) && fn[i][0])
+                printf(" %s", fn[i]);
+        printf("\nIn hardware:%s%s%s%s%s%s%s\n", h & PRISM_HW_FILL ? " fills" : "",
+               h & PRISM_HW_COPY ? " copies" : "", h & PRISM_HW_BETWEEN ? " bitmap-to-bitmap" : "",
+               h & PRISM_HW_TEXT ? " text" : "", h & PRISM_HW_LINE ? " lines" : "",
+               h & PRISM_HW_PLANAR ? " planar" : "", h ? "" : " nothing (all on the CPU)");
+    }
     Permit();
     if (!ps)
         puts("PrismD is NOT running");

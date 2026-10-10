@@ -992,6 +992,8 @@ static inline void draw_unlock(struct Layer *L, BOOL forbidden)
     } else {
         ReleaseSemaphore(&lock);
         if (L) UnlockLayerRom(L);
+        if (pointerPending)              /* a pointer move waited for us */
+            pointer_catchup();
     }
 }
 

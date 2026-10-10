@@ -289,6 +289,8 @@ struct Regs {
 /* ---- pointer.c ------------------------------------------------------ */
 struct ViewPort;
 void pointer_on(struct ViewPort *vp);        /* lock held                 */
+extern volatile UBYTE pointerPending;        /* a move waits for the lock  */
+void pointer_catchup(void);                  /* lock NOT held: apply it    */
 void pointer_off(void);                      /* lock held                 */
 void pointer_colours(struct ViewPort *vp);   /* lock held                 */
 BOOL pointer_software(void);
