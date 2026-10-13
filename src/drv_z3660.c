@@ -677,7 +677,9 @@ static void z3_CursorMove(struct PrismBoard *b, WORD x, WORD y)
     Forbid();
     GD16(p, GD_X0, x);
     GD16(p, GD_Y0, y);
-    z3_kick(b, OP_SPRITE_XY);
+    /* every mouse move: no cache push (two words, as the drawing path and
+     * drv_zz9000.c's cursor move do), only the opcode */
+    W32(b, REG_DMA_OP, OP_SPRITE_XY);
     Permit();
 }
 
@@ -716,6 +718,10 @@ static BOOL z3_probe(struct PrismBoard *b)
     ULONG fw;
 
     if (!(cd = driver_find(NULL, Z3_MFR, Z3_PROD)))
+        return FALSE;
+    /* the mailbox and the staging area sit near the top of the board's
+     * window: a smaller window is not a board this driver knows */
+    if (cd->cd_BoardSize < STAGE_OFFSET + STAGE_MAX)
         return FALSE;
     b->regs = (volatile UBYTE *)cd->cd_BoardAddr;
     fw = R32(b, REG_FW_VERSION);

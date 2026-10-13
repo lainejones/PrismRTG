@@ -489,6 +489,9 @@ noted in every commit. With thanks to:
   (#6), the loadable board-driver modules (#8), the P96 memory pools,
   shadow transfers and UAE planar probe (#9) and the software pointer,
   screen dragging and PIP composition (#10).
+* **Jusii** - the Z3660 driver: the board, its monitor switch, and fills,
+  copies, text, lines and planar blits on its blitter (#13, #16-#20),
+  written and tested on his own Z3660.
 * **Dimitris Panokostas** (midwan, author of Amiberry) - reviewed the UAE
   driver and found its `SetPanning` / `BitMapExtra` bug (#5), and made
   Amiberry's RTG hardware pointer the default (8.4.0) so PrismRTG shows a
