@@ -28,6 +28,7 @@ echo "== Loadable board drivers (tools/mkdriver.sh NAME sources...) =="
 export CC CFLAGS
 sh tools/mkdriver.sh PICASSO2 src/drv_picasso2.c
 sh tools/mkdriver.sh ZZ9000 src/drv_zz9000.c
+sh tools/mkdriver.sh Z3660 src/drv_z3660.c
 sh tools/mkdriver.sh P96 src/drv_p96.c src/rtg_ops.c
 sh tools/mkdriver.sh UAEGFX src/drv_uaegfx.c src/rtg_ops.c
 # the template for new drivers must keep building (it is not packaged)

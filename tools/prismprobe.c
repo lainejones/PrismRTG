@@ -22,6 +22,7 @@ static const char *known(UWORD mfr, UBYTE prod)
 {
     if (mfr == 0x6d6e && prod == 3)  return "ZZ9000 (Zorro II)  -> zz9000 driver";
     if (mfr == 0x6d6e && prod == 4)  return "ZZ9000 (Zorro III) -> zz9000 driver";
+    if (mfr == 0x144b && prod == 1)  return "Z3660 RTG -> z3660 driver";
     if (mfr == 2167 && prod == 11)   return "Picasso II/II+ VRAM -> picasso2 driver";
     if (mfr == 2167 && prod == 12)   return "Picasso II/II+ registers -> picasso2 driver";
     if (mfr == 2167 && prod == 16)   return "GBAPII++ VRAM -> picasso2 driver";

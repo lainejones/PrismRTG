@@ -19,7 +19,7 @@ F="-DPRISM_DEBUG -O2 -m68020-60 -noixemul -Wall -Wno-pointer-sign -fomit-frame-p
 for s in prismd prefs bitmap present render gels selftest pointer cgx p96 boardops driver_loader; do
     $CC $F -S -o $OUT/$s.s src/$s.c
 done
-for s in drv_picasso2 drv_zz9000 drv_p96 drv_uaegfx rtg_ops; do
+for s in drv_picasso2 drv_zz9000 drv_z3660 drv_p96 drv_uaegfx rtg_ops; do
     $CC $F -DPRISM_DRIVER_MODULE -DDRIVER_NAME='"X"' -S -o $OUT/$s.s src/$s.c
 done
 mv src/*.su $OUT/ 2>/dev/null || true

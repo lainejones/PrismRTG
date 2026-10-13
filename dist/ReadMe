@@ -5,6 +5,7 @@ A from-scratch retargetable-graphics system for two boards:
   * Village Tronic Picasso II / GBAPII++ (Cirrus GD542x), Zorro II
   * Piccolo, Piccolo SD64, GVP Spectrum 28/24, Ateo Graffity - emulator-tested only
   * MNT ZZ9000, Zorro III
+  * Z3660 accelerator's RTG output (A4000)
 
 It takes the place of Picasso96: the two cannot both be active on one
 Amiga, and PrismRTG does not start while Picasso96's monitor files are in
@@ -224,7 +225,7 @@ Stefan Reinauer.
 
 Board modules
 -------------
-PrismD loads PICASSO2.driver, ZZ9000.driver, P96.driver or UAEGFX.driver
+PrismD loads PICASSO2.driver, ZZ9000.driver, Z3660.driver, P96.driver or UAEGFX.driver
 from LIBS:Prism. Install_PrismRTG installs these with PrismD. For a build
 run in place, PROGDIR:Drivers is also searched. Use matching PrismD and
 modules; incompatible module layouts are rejected before probing hardware.

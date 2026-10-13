@@ -26,6 +26,7 @@ one of these files, the test needs a matching stub.
 |---|---|
 | `boardops.c` | `board_fill/copy/line` contracts: bounds and format rejection, retry vs. failure, `PBF_ACCEL_BROKEN` after a fault |
 | `cirrus_limits.c` | Picasso II/GD542x/5434 blitter surface limits and the blit-timeout path (`drv_picasso2.c`) |
+| `z3660_modes.c` | Z3660 modes: every PrismPrefs size at 8/15/16/32-bit maps to a firmware mode, the 320-wide ones doubled, refresh-specific ids, refusals (`drv_z3660.c`) |
 | `zz_surfaces.c` | ZZ9000 mailbox commands: 15-bit fills/lines via the 565 colour mode, same-surface vs. between-surface byte copies, declines (`drv_zz9000.c`) |
 | `render_replay.c` | `render.c` fill/line/template/blit: CPU replay after a failed or retried hardware op, read-modify-write guards |
 | `damage.c` | `changed_span` (shadow damage spans) |

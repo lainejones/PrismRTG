@@ -21,6 +21,7 @@ the native drivers do not need them.
 |---|---|---|---|
 | MNT ZZ9000, Zorro III | firmware 2.8 | A4000, 68060 | Real hardware. Blitter fills, copies, text, lines; hardware pointer. 8/16/32-bit up to 1280x1024. |
 | GBAPII++ (Picasso II remake) | Cirrus GD5434, 2 MB | A2000, 68030 | Real hardware. Blitter fills, copies, text (8/16/32-bit); hardware pointer. 8/16-bit up to 1024x768, 24-bit 640x480, 32-bit 800x600. |
+| Z3660 accelerator (A4000), RTG output | firmware 1.03+, `autoconfig_rtg YES` | A4000, 68060 | Real hardware. 8/15/16-bit in the firmware's fixed modes, 32-bit up to a 108 MHz pixel clock (1280x1024, 1600x900), 320x200/240 doubled; hardware pointer. No blitter or monitor switch yet. |
 | Village Tronic Picasso II / II+ | Cirrus GD5426/28 | WinUAE only | Emulation only: never run on a real card. 8/16-bit, 24-bit 640x480. |
 | Ateo Concepts Graffity (Zorro II and III) | Cirrus GD5428 | WinUAE only | Emulation only, from WinUAE's description of the board. Same as the Picasso II+. |
 | Piccolo SD64, Zorro II | Cirrus GD5434 | WinUAE only | Emulation only. 8/16/24/32-bit, blitter as on the GBAPII++. |
@@ -65,7 +66,7 @@ half of that.
 
 PrismD loads the selected backend from `LIBS:Prism/<name>.driver`, with
 `PROGDIR:Drivers` as a fallback for running a build in place. The installer
-copies the supplied PICASSO2, ZZ9000, P96 and UAEGFX modules. Keep PrismD
+copies the supplied PICASSO2, ZZ9000, Z3660, P96 and UAEGFX modules. Keep PrismD
 and its modules from the same build; an incompatible module is rejected
 with an ABI/version or layout diagnostic.
 

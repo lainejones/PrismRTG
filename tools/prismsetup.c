@@ -12,7 +12,7 @@
  *         ENV:PrismCard      0 none, 1 Picasso II, 2 GBAPII++,
  *                            3 ZZ9000 (Zorro III), 4 ZZ9000 (Zorro II),
  *                            5 Piccolo SD64, 6 Piccolo, 7 Spectrum 28/24,
- *                            8 Graffity
+ *                            8 Graffity, 9 Z3660
  *         ENV:PrismCardName  the card's name, or ""
  *         ENV:PrismP96Mon    the Picasso96 monitor file's name, or ""
  *       and returns the same number as PrismCard.
@@ -92,6 +92,8 @@ static BOOL boardtype_matches(const char *bt, int card)
         return same_nocase(bt, "Piccolo");
     if (card == 7)
         return same_nocase(bt, "Spectrum");
+    if (card == 9)
+        return same_nocase(bt, "Z3660");
     return FALSE;
 }
 
@@ -329,7 +331,8 @@ static int detect(void)
 {
     static const char *names[] = { "", "Picasso II", "GBAPII++", "ZZ9000 (Zorro III)",
                                    "ZZ9000 (Zorro II)", "Piccolo SD64", "Piccolo",
-                                   "Spectrum 28/24", "Graffity" };
+                                   "Spectrum 28/24", "Graffity",
+                                   "Z3660" };
     int card = 0;
     char num[4], mon[108];
 
@@ -342,14 +345,15 @@ static int detect(void)
         else if (FindConfigDev(NULL, 2195, 6) && FindConfigDev(NULL, 2195, 5))   card = 6;
         else if (FindConfigDev(NULL, 2193, 2) && FindConfigDev(NULL, 2193, 1))   card = 7;
         else if (FindConfigDev(NULL, 2092, 33) && FindConfigDev(NULL, 2092, 34)) card = 8;
+        else if (FindConfigDev(NULL, 0x144b, 1))                           card = 9;
         CloseLibrary((struct Library *)ExpansionBase);
     }
     {
-        /* test hook for the installer script: ENV:PrismFakeCard = 1..7
+        /* test hook for the installer script: ENV:PrismFakeCard = 1..9
          * stands in for a card this machine doesn't have */
         char fake[8];
         if (GetVar("PrismFakeCard", fake, sizeof(fake), GVF_GLOBAL_ONLY) > 0 &&
-            fake[0] >= '1' && fake[0] <= '7')
+            fake[0] >= '1' && fake[0] <= '9')
             card = fake[0] - '0';
     }
     find_p96_monitor(card, mon, sizeof(mon));
