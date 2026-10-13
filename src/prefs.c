@@ -25,6 +25,10 @@ const UWORD prefs_sizes[PREFS_NFIXED][2] = {
     { 960, 540 }, { 1920, 1080 },
     /* 16:10 (issue #1, beta 5): common on PC monitors */
     { 1440, 900 },
+    /* larger: the other fixed modes of the ZZ9000 and Z3660 firmwares (a
+     * board that can't show one refuses it in checkMode) */
+    { 1280, 800 }, { 1600, 1200 }, { 1920, 1200 }, { 1680, 1050 },
+    { 1600, 900 }, { 1366, 768 }, { 2560, 1440 },
 };
 /* New depths go at the END too. 24 = 3 bytes a pixel, 32 = 4: a card may
  * have either or both (see board_format in prismd.c). */

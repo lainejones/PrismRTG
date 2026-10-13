@@ -16,7 +16,7 @@
  *   LOG=ON|OFF
  *   PALETTE=RGB|BGR             (Piccolo/Spectrum only, see drv_picasso2.c)
  *   MODE=640x480x8 ON 72        (size x depth, ON/OFF, refresh Hz or 0)
- *   CUSTOM1=1152x864            (a size of the user's own, slots 11-14; up to
+ *   CUSTOM1=1152x864            (a size of the user's own, slots 18-21; up to
  *                                CUSTOM4; a board shows it if its driver can
  *                                time it - the Cirrus family computes a VESA
  *                                GTF timing, the ZZ9000 has its firmware's list)
@@ -50,7 +50,7 @@
 #define PREFS_ENV     "ENV:Prism.prefs"
 #define PREFS_ENVARC  "ENVARC:Prism.prefs"
 
-#define PREFS_NFIXED  11             /* the sizes every build offers         */
+#define PREFS_NFIXED  18             /* the sizes every build offers         */
 #define PREFS_NCUSTOM 4              /* CUSTOM1..4=WxH, the user's own sizes */
 #define PREFS_NSIZES  (PREFS_NFIXED + PREFS_NCUSTOM)
 #define PREFS_NDEPTHS 4
