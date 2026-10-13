@@ -25,8 +25,12 @@ const UWORD prefs_sizes[PREFS_NFIXED][2] = {
     { 960, 540 }, { 1920, 1080 },
     /* 16:10 (issue #1, beta 5): common on PC monitors */
     { 1440, 900 },
-    /* larger: the other fixed modes of the ZZ9000 and Z3660 firmwares (a
-     * board that can't show one refuses it in checkMode) */
+};
+/* larger (Jusii, #14): the other fixed modes of the ZZ9000 and Z3660
+ * firmwares; a board that can't show one refuses it in checkMode. Their
+ * slots come after the four custom ones (prefs.h), so no existing ModeID
+ * moves; off until switched on in PrismPrefs. */
+const UWORD prefs_extra[PREFS_NEXTRA][2] = {
     { 1280, 800 }, { 1600, 1200 }, { 1920, 1200 }, { 1680, 1050 },
     { 1600, 900 }, { 1366, 768 }, { 2560, 1440 },
 };
@@ -47,6 +51,14 @@ void prefs_default(struct PrismPrefs *p)
     p->gamma = 10;
     p->hwOverlay = 1;
     memset(p->on, 1, sizeof(p->on));
+    {
+        /* the larger sizes start off: a prefs file from before them has no
+         * MODE= line for them, and nobody has seen them on every board yet */
+        int i;
+        for (i = 0; i < PREFS_NMODES; i++)
+            if (PREFS_SIZE(i) >= PREFS_NFIXED + PREFS_NCUSTOM)
+                p->on[i] = 0;
+    }
 }
 
 static int same(const char *a, const char *b)
@@ -115,9 +127,14 @@ BOOL prefs_size(const struct PrismPrefs *p, int i, UWORD *w, UWORD *h)
         *h = prefs_sizes[s][1];
         return TRUE;
     }
-    *w = p->custom[s - PREFS_NFIXED][0];
-    *h = p->custom[s - PREFS_NFIXED][1];
-    return *w != 0 && *h != 0;
+    if (PREFS_IS_CUSTOM(s)) {
+        *w = p->custom[s - PREFS_NFIXED][0];
+        *h = p->custom[s - PREFS_NFIXED][1];
+        return *w != 0 && *h != 0;
+    }
+    *w = prefs_extra[s - PREFS_NFIXED - PREFS_NCUSTOM][0];
+    *h = prefs_extra[s - PREFS_NFIXED - PREFS_NCUSTOM][1];
+    return TRUE;
 }
 
 /* CUSTOM<n>=WxH: slot n's size; widths in multiples of 8 */

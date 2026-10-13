@@ -175,11 +175,12 @@ its 16-bit value; a 32-bit pixel its four bytes).
 
 ## 6. Modes
 
-PrismD builds its mode list at start from PrismPrefs' slots: eighteen
+PrismD builds its mode list at start from PrismPrefs' slots: eleven
 fixed sizes (640x400 ... 1280x1024, 320x200, 320x240, 960x540, 1920x1080,
-1440x900, then 1280x800 ... 2560x1440) and four of the user's own
-(CUSTOM1..4) times four depths (8, 16, 24, 32), each with a refresh rate
-or 0 for the driver's default. For each
+1440x900), four of the user's own (CUSTOM1..4), then seven larger fixed
+sizes (1280x800 ... 2560x1440, off until switched on) - in that order,
+since a slot's number is in its ModeID - times four depths (8, 16, 24,
+32), each with a refresh rate or 0 for the driver's default. For each
 slot it picks the board's format for that depth (16-bit prefers 565 over
 555; 24 and 32 are distinct: a board with only 32-bit formats gets no
 24-bit modes) and calls `checkMode`. What `checkMode` accepts is offered

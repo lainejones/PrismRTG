@@ -526,9 +526,11 @@ static LONG z3_check(struct PrismMode *m, UBYTE *cmOut, ULONG *origRes)
         return -1;
     if (bpp == 4 && z3_modes[i].mhz > Z3_MAX32_MHZ)
         return -1;
-    /* the blitter counts pitches in longs, and the direct hooks cannot
-     * decline: rows that are not whole longs (1366x768 8-bit) are left out */
-    if (((ULONG)m->width * bpp) & 3)
+    /* the blitter counts pitches in longs, the direct hooks cannot decline,
+     * and PrismD lays bitmaps out in 8-byte rows (bitmap.c), which must equal
+     * the mode's: rows that are not whole 8 bytes (1366x768 at 8 and 16
+     * bits) are left out */
+    if (((ULONG)m->width * bpp) & 7)
         return -1;
     m->bytesPerRow = (ULONG)m->width * bpp;
     *cmOut = cm;

@@ -20,11 +20,13 @@ int main(void)
     static const UBYTE fmt[]={PF_CLUT8,PF_RGB565BE,PF_RGB555BE,PF_BGRA32},bpp[]={1,2,2,4},cm[]={0,1,3,2};
     ULONG bpr,orig;int i,k;
     /* every PrismPrefs size the firmware has is a mode at every depth the board scans out,
-     * unless its rows would not be whole longs */
-    for(i=0;i<PREFS_NFIXED;i++)
+     * unless its rows would not be whole 8 bytes (PrismD's bitmap rows) */
+    for(i=0;i<PREFS_NFIXED+PREFS_NEXTRA;i++)   /* the first fixed sizes, then the larger ones */
         for(k=0;k<4;k++){
-            UWORD w=prefs_sizes[i][0],h=prefs_sizes[i][1];LONG v=chk(w,h,fmt[k],0,&bpr,&orig);
-            if(((ULONG)w*bpp[k])&3){assert(v<0);continue;}   /* rows not whole longs: 1366x768 8-bit */
+            UWORD w=i<PREFS_NFIXED?prefs_sizes[i][0]:prefs_extra[i-PREFS_NFIXED][0];
+            UWORD h=i<PREFS_NFIXED?prefs_sizes[i][1]:prefs_extra[i-PREFS_NFIXED][1];
+            LONG v=chk(w,h,fmt[k],0,&bpr,&orig);
+            if(((ULONG)w*bpp[k])&7){assert(v<0);continue;}   /* rows not whole 8 bytes: 1366x768 8/16-bit */
             if((w==960&&h==540)||(w==1440&&h==900)){assert(v<0);continue;}   /* no firmware mode */
             if(k==3&&no32(w,h)){assert(v<0);continue;}   /* docs/z3660-hw.md 2 */
             assert(v>=0 && bpr==(ULONG)w*bpp[k] && ((v>>8)&0xf)==cm[k]);

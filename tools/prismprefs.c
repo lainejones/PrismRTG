@@ -284,7 +284,7 @@ static void show_settings(struct Gui *g)
     {
         /* the size fields follow a custom slot and are ghosted for a fixed one */
         int k = PREFS_SIZE(g->sel) - PREFS_NFIXED;
-        BOOL custom = k >= 0;
+        BOOL custom = PREFS_IS_CUSTOM(PREFS_SIZE(g->sel));
         GT_SetGadgetAttrs(g->gW, g->win, NULL, GA_Disabled, !custom,
                           GTIN_Number, custom ? (ULONG)p->custom[k][0] : 0, TAG_END);
         GT_SetGadgetAttrs(g->gH, g->win, NULL, GA_Disabled, !custom,
@@ -299,7 +299,7 @@ static void set_size(struct Gui *g)
     int k = PREFS_SIZE(g->sel) - PREFS_NFIXED;
     LONG w = ((struct StringInfo *)g->gW->SpecialInfo)->LongInt;
     LONG h = ((struct StringInfo *)g->gH->SpecialInfo)->LongInt;
-    if (k < 0) {
+    if (!PREFS_IS_CUSTOM(PREFS_SIZE(g->sel))) {
         set_status(g, S(ID_PICK_ONE_OF_THE_FOUR_CUSTOM_ENTRIES_IN_T, "Pick one of the four custom entries in the list first"));
         return;
     }
@@ -307,8 +307,9 @@ static void set_size(struct Gui *g)
         set_status(g, S(ID_WIDTH_320_TO_4096_IN_STEPS_OF_8_HEIGHT_2, "Width 320 to 4096 in steps of 8, height 200 to 4096"));
         return;
     }
-    for (k = 0; k < PREFS_NFIXED; k++)
-        if (prefs_sizes[k][0] == w && prefs_sizes[k][1] == h) {
+    for (k = 0; k < PREFS_NFIXED + PREFS_NEXTRA; k++)
+        if (k < PREFS_NFIXED ? prefs_sizes[k][0] == w && prefs_sizes[k][1] == h
+                             : prefs_extra[k - PREFS_NFIXED][0] == w && prefs_extra[k - PREFS_NFIXED][1] == h) {
             set_status(g, S(ID_THAT_SIZE_IS_IN_THE_LIST_ALREADY, "That size is in the list already"));
             return;
         }
