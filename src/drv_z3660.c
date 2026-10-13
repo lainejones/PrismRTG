@@ -20,14 +20,17 @@
  *
  * Works: the board with autoconfig_rtg YES (Zorro III, 0x144b/1, firmware
  * 1.03 or newer), the firmware's fixed modes at 8, 15, 16 and 32 bits,
- * 320-wide modes pixel-doubled, the palette, the hardware pointer.
- * Not yet: the monitor switch (CIA-B lines), the blitter (PrismD draws on
- * the CPU), the board with autoconfig_rtg NO (no ConfigDev: not probed).
+ * 320-wide modes pixel-doubled, the palette, the hardware pointer, the
+ * monitor switch on the CIA-B lines the firmware's monitor_switch names
+ * (or ENV:Z3660-MONSWITCH, for a preset that leaves the switch to the OS).
+ * Not yet: the blitter (PrismD draws on the CPU), the board with
+ * autoconfig_rtg NO (no ConfigDev: not probed).
  */
 #include <exec/types.h>
 #include <libraries/configvars.h>
 #include <proto/exec.h>
 #include <proto/expansion.h>
+#include <proto/dos.h>
 #include "boardops.h"
 
 extern struct ExpansionBase *ExpansionBase;
@@ -42,6 +45,18 @@ extern struct ExpansionBase *ExpansionBase;
 #define REG_DMA_OP      0x180         /* run the mailbox op                 */
 #define REG_ORIG_RES    0x18c         /* w << 16 | h of the output          */
 #define REG_FW_VERSION  0x1a0         /* major << 8 | minor                 */
+#define REG_MONSWITCH   0x318         /* the firmware's monitor_switch      */
+
+/* monitor_switch, a sum (z3660cfg.txt): which CIA-B port A lines switch
+ * the monitor, and for each whether its bit is 0 (level set) or 1 when
+ * the RTG picture is wanted. 0 = no switch. */
+#define MS_CTS          0x01
+#define MS_SEL          0x02
+#define MS_CTS_LEVEL    0x10
+#define MS_SEL_LEVEL    0x20
+#define CIAB            0xbfd000      /* CIA-B: port A, its DDR at +0x200   */
+#define CIA_CTS         0x10          /* port A bit 4                       */
+#define CIA_SEL         0x04          /* port A bit 2                       */
 
 #define VRAM_OFFSET     0x200000
 #define VRAM_END        0x3000000     /* as Z3660.card: 46 MB               */
@@ -87,6 +102,8 @@ struct Z3Priv {
     UWORD width;           /* bitmap width in pixels (pan x[1])          */
     UBYTE colormode;       /* CM_*                                       */
     ULONG panOffset;
+    UBYTE monSwitch;       /* MS_* from the firmware                     */
+    volatile UBYTE *ciab;  /* CIA-B port A (a test fixture points it elsewhere) */
 };
 
 static struct Z3Priv z3priv;
@@ -241,6 +258,33 @@ static void z3_SetPalette(struct PrismBoard *b, UWORD first, UWORD count,
     Permit();
 }
 
+/* ---- the monitor switch ---------------------------------------------
+ * The Z3660 has no capture of the Amiga's own picture: an external switch
+ * on CIA-B's CTS and/or SEL lines picks the monitor's input. The lines are
+ * made outputs and set as monitor_switch says, the other port bits kept;
+ * Disable() because serial.device changes RTS/DTR on the same port from
+ * its interrupt. Called on screen changes and around alerts: no waiting. */
+static void z3_SetSwitch(struct PrismBoard *b, BOOL rtg)
+{
+    struct Z3Priv *p = b->priv;
+    UBYTE lines = 0, set = 0;
+
+    if (p->monSwitch & MS_CTS) {
+        lines |= CIA_CTS;
+        if (!rtg != !(p->monSwitch & MS_CTS_LEVEL))
+            set |= CIA_CTS;
+    }
+    if (p->monSwitch & MS_SEL) {
+        lines |= CIA_SEL;
+        if (!rtg != !(p->monSwitch & MS_SEL_LEVEL))
+            set |= CIA_SEL;
+    }
+    Disable();
+    p->ciab[0x200] |= lines;
+    p->ciab[0] = (p->ciab[0] & ~lines) | set;
+    Enable();
+}
+
 static void z3_WaitVBlank(struct PrismBoard *b)
 {
     ULONG n;
@@ -305,7 +349,30 @@ static void z3_CursorMove(struct PrismBoard *b, WORD x, WORD y)
 
 static void z3_Shutdown(struct PrismBoard *b)
 {
+    struct Z3Priv *p = b->priv;
     z3_CursorShow(b, FALSE);
+    if (p->monSwitch & (MS_CTS | MS_SEL))
+        z3_SetSwitch(b, FALSE);          /* the Amiga's own picture */
+}
+
+/* ENV:Z3660-MONSWITCH = a monitor_switch value (decimal, as in
+ * z3660cfg.txt) replaces the firmware's, in the ENV: style of Z3660.card's
+ * ENV:Z3660-NS-VSYNC. For a preset shared with another OS that drives the
+ * lines itself and so keeps monitor_switch 0. The probe runs in the
+ * driver's own process, so DOS is allowed here. */
+static void z3_monswitch_env(struct Z3Priv *p)
+{
+    char v[8];
+    LONG n = GetVar("Z3660-MONSWITCH", v, sizeof(v), GVF_GLOBAL_ONLY), i;
+    ULONG ms = 0;
+
+    if (n <= 0)
+        return;
+    for (i = 0; i < n && v[i] >= '0' && v[i] <= '9'; i++)
+        ms = ms * 10 + (v[i] - '0');
+    if (i == 0 || ms > 255)
+        return;                      /* not a number: the firmware's value stands */
+    p->monSwitch = ms & (MS_CTS | MS_SEL | MS_CTS_LEVEL | MS_SEL_LEVEL);
 }
 
 static BOOL z3_probe(struct PrismBoard *b)
@@ -334,12 +401,17 @@ static BOOL z3_probe(struct PrismBoard *b)
     b->maxHeight = 1440;
     b->priv      = p;
     p->gfxdata   = (UBYTE *)cd->cd_BoardAddr + GFXDATA_OFFSET;
+    p->ciab      = (volatile UBYTE *)CIAB;
+    p->monSwitch = R32(b, REG_MONSWITCH) & (MS_CTS | MS_SEL | MS_CTS_LEVEL | MS_SEL_LEVEL);
+    z3_monswitch_env(p);
 
     b->setMode         = z3_SetMode;
     b->checkMode       = z3_CheckMode;
     b->setDisplayStart = z3_SetDisplayStart;
     b->setPalette      = z3_SetPalette;
     b->waitVBlank      = z3_WaitVBlank;
+    if (p->monSwitch & (MS_CTS | MS_SEL))  /* else no switch: NULL */
+        b->setSwitch   = z3_SetSwitch;
     b->shutdown        = z3_Shutdown;
     b->cursorImage     = z3_CursorImage;
     b->cursorShow      = z3_CursorShow;
