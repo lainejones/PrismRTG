@@ -24,7 +24,8 @@
  * monitor switch on the CIA-B lines the firmware's monitor_switch names
  * (or ENV:Z3660-MONSWITCH, for a preset that leaves the switch to the OS).
  * Fills, copies, text, solid lines and planar blits (plain copies) on the
- * firmware's blitter (the mailbox ops).
+ * firmware's blitter (the mailbox ops), small ones through PrismD's direct
+ * hooks.
  * Not yet: the board with autoconfig_rtg NO (no ConfigDev: not probed).
  */
 #include <exec/types.h>
@@ -182,25 +183,84 @@ static BOOL z3_surface(struct PrismBoard *b, const struct PrismSurface *s)
                                 s->format == PF_RGB555BE || s->format == PF_BGRA32);
 }
 
-static enum PrismResult z3_fill(struct PrismBoard *b, const struct PrismSurface *d,
-                                UWORD x, UWORD y, UWORD w, UWORD h, ULONG c)
+/* The commands, shared by PrismOps and the direct hooks (fillRect ...),
+ * which PrismD calls without the surface layer for blits within the
+ * blitMax* limits: those have no result, so the limits are set to what
+ * the commands encode (pitches in whole longs, under 64 KB). */
+static void z3_FillRect(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
+                        UWORD x, UWORD y, UWORD w, UWORD h, ULONG colour)
 {
     struct Z3Priv *p = b->priv;
-
-    if (!z3_surface(b, d) || (ULONG)x + w > 65535)
-        return PR_DECLINED;
     Forbid();
-    GD32(p, GD_OFFSET0, d->offset);
-    GD16(p, GD_PITCH0, d->pitch >> 2);
-    GD8(p, GD_U8USER0, z3_cm(d->bpp));
+    GD32(p, GD_OFFSET0, dst);
+    GD16(p, GD_PITCH0, pitch >> 2);
+    GD8(p, GD_U8USER0, z3_cm(bpp));
     GD8(p, GD_MASK, 0xff);
-    GD32(p, GD_RGB0, z3_colour(d->bpp, c));
+    GD32(p, GD_RGB0, z3_colour(bpp, colour));
     GD16(p, GD_X0, x);
     GD16(p, GD_X1, w);
     GD16(p, GD_Y0, y);
     GD16(p, GD_Y1, h);
     W32(b, REG_DMA_OP, OP_FILLRECT);
     Permit();
+}
+
+/* inside one bitmap, in bytes; the firmware handles overlap */
+static void z3_CopyBytes(struct PrismBoard *b, ULONG base, ULONG pitch,
+                         UWORD sx, UWORD sy, UWORD dx, UWORD dy, UWORD wb, UWORD h)
+{
+    struct Z3Priv *p = b->priv;
+    Forbid();
+    GD32(p, GD_OFFSET0, base);
+    GD32(p, GD_OFFSET1, base);
+    GD16(p, GD_PITCH0, pitch >> 2);
+    GD16(p, GD_X2, sx);
+    GD16(p, GD_Y2, sy);
+    GD16(p, GD_X0, dx);
+    GD16(p, GD_Y0, dy);
+    GD16(p, GD_X1, wb);
+    GD16(p, GD_Y1, h);
+    GD8(p, GD_U8USER0, CM_8BIT);
+    GD8(p, GD_MASK, 0xff);
+    W32(b, REG_DMA_OP, OP_COPYRECT);
+    Permit();
+}
+
+static void z3_CopyRect(struct PrismBoard *b, ULONG base, ULONG pitch, UBYTE bpp,
+                        UWORD sx, UWORD sy, UWORD dx, UWORD dy, UWORD w, UWORD h)
+{
+    z3_CopyBytes(b, base, pitch, sx * bpp, sy, dx * bpp, dy, w * bpp, h);
+}
+
+/* between two areas that don't overlap: rows from 32-bit words, the odd
+ * bytes as x */
+static void z3_CopyBetween(struct PrismBoard *b, ULONG src, ULONG spitch, ULONG dst,
+                           ULONG dpitch, UWORD wbytes, UWORD h)
+{
+    struct Z3Priv *p = b->priv;
+    Forbid();
+    GD32(p, GD_OFFSET1, src & ~3UL);
+    GD16(p, GD_PITCH1, spitch >> 2);
+    GD16(p, GD_X2, src & 3);
+    GD16(p, GD_Y2, 0);
+    GD32(p, GD_OFFSET0, dst & ~3UL);
+    GD16(p, GD_PITCH0, dpitch >> 2);
+    GD16(p, GD_X0, dst & 3);
+    GD16(p, GD_Y0, 0);
+    GD16(p, GD_X1, wbytes);
+    GD16(p, GD_Y1, h);
+    GD8(p, GD_MINTERM, MINTERM_SRC);
+    GD8(p, GD_U8USER0, CM_8BIT);
+    W32(b, REG_DMA_OP, OP_COPY_NOMASK);
+    Permit();
+}
+
+static enum PrismResult z3_fill(struct PrismBoard *b, const struct PrismSurface *d,
+                                UWORD x, UWORD y, UWORD w, UWORD h, ULONG c)
+{
+    if (!z3_surface(b, d) || (ULONG)x + w > 65535)
+        return PR_DECLINED;
+    z3_FillRect(b, d->offset, d->pitch, d->bpp, x, y, w, h, c);
     return PR_DONE;
 }
 
@@ -212,64 +272,35 @@ static enum PrismResult z3_copy(struct PrismBoard *b, const struct PrismSurface 
                                 const struct PrismSurface *d, UWORD sx, UWORD sy,
                                 UWORD dx, UWORD dy, UWORD w, UWORD h)
 {
-    struct Z3Priv *p = b->priv;
-    ULONG wb = (ULONG)w * d->bpp, src, dst;
-
     if (!z3_storage(b, s) || !z3_storage(b, d) || s->bpp != d->bpp ||
         ((ULONG)sx + w) * s->bpp > 65535 || ((ULONG)dx + w) * d->bpp > 65535)
         return PR_DECLINED;
     if (s->offset == d->offset && s->pitch == d->pitch) {
-        Forbid();
-        GD32(p, GD_OFFSET0, d->offset);
-        GD32(p, GD_OFFSET1, d->offset);
-        GD16(p, GD_PITCH0, d->pitch >> 2);
-        GD16(p, GD_X2, sx * s->bpp);
-        GD16(p, GD_Y2, sy);
-        GD16(p, GD_X0, dx * d->bpp);
-        GD16(p, GD_Y0, dy);
-        GD16(p, GD_X1, wb);
-        GD16(p, GD_Y1, h);
-        GD8(p, GD_U8USER0, CM_8BIT);
-        GD8(p, GD_MASK, 0xff);
-        W32(b, REG_DMA_OP, OP_COPYRECT);
-        Permit();
+        z3_CopyBytes(b, d->offset, d->pitch, sx * s->bpp, sy, dx * d->bpp, dy, w * d->bpp, h);
         return PR_DONE;
     }
     if (s->offset + s->allocation > d->offset && d->offset + d->allocation > s->offset)
         return PR_DECLINED;
-    src = s->offset + (ULONG)sy * s->pitch + (ULONG)sx * s->bpp;
-    dst = d->offset + (ULONG)dy * d->pitch + (ULONG)dx * d->bpp;
-    Forbid();
-    GD32(p, GD_OFFSET1, src & ~3UL);
-    GD16(p, GD_PITCH1, s->pitch >> 2);
-    GD16(p, GD_X2, src & 3);
-    GD16(p, GD_Y2, 0);
-    GD32(p, GD_OFFSET0, dst & ~3UL);
-    GD16(p, GD_PITCH0, d->pitch >> 2);
-    GD16(p, GD_X0, dst & 3);
-    GD16(p, GD_Y0, 0);
-    GD16(p, GD_X1, wb);
-    GD16(p, GD_Y1, h);
-    GD8(p, GD_MINTERM, MINTERM_SRC);
-    GD8(p, GD_U8USER0, CM_8BIT);
-    W32(b, REG_DMA_OP, OP_COPY_NOMASK);
-    Permit();
+    z3_CopyBetween(b, s->offset + (ULONG)sy * s->pitch + (ULONG)sx * s->bpp, s->pitch,
+                   d->offset + (ULONG)dy * d->pitch + (ULONG)dx * d->bpp, d->pitch,
+                   w * d->bpp, h);
     return PR_DONE;
 }
 
 /* Text: the template is copied to the staging area above VRAM, then one
- * RECT_TEMPLATE command colours it in. Its destination pitch is in bytes. */
-static enum PrismResult z3_expand(struct PrismBoard *b, const struct PrismSurface *d,
-                                  UWORD x, UWORD y, UWORD w, UWORD h, const UBYTE *tmpl,
-                                  ULONG mod, ULONG fg, ULONG bg, BOOL transparent)
+ * RECT_TEMPLATE command colours it in. Its destination pitch is in bytes.
+ * FALSE (nothing written): too big for the staging area or the pitch. */
+static BOOL z3_ExpandRect(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
+                          UWORD x, UWORD y, UWORD w, UWORD h, const UBYTE *tmpl,
+                          ULONG mod, ULONG fg, ULONG bg, BOOL transparent)
 {
     struct Z3Priv *p = b->priv;
     ULONG rb = ((ULONG)w + 7) >> 3, n;
     volatile UBYTE *o = p->stage;
     UWORD r;
 
-    if (!z3_surface(b, d) || d->pitch > 65535 || rb * h > STAGE_MAX)
-        return PR_DECLINED;
+    if (!w || !h || bpp == 3 || pitch > 65535 || rb * h > STAGE_MAX)
+        return FALSE;
     Forbid();
     for (r = 0; r < h; r++, tmpl += mod) {
         /* longs where they fit: each card access costs the same */
@@ -284,18 +315,28 @@ static enum PrismResult z3_expand(struct PrismBoard *b, const struct PrismSurfac
     GD16(p, GD_Y0, y);
     GD16(p, GD_Y1, h);
     GD16(p, GD_Y2, 0);
-    GD32(p, GD_OFFSET0, d->offset);
+    GD32(p, GD_OFFSET0, dst);
     GD32(p, GD_OFFSET1, STAGE_OFFSET - VRAM_OFFSET);
-    GD16(p, GD_PITCH0, d->pitch);
+    GD16(p, GD_PITCH0, pitch);
     GD16(p, GD_PITCH1, rb);
-    GD32(p, GD_RGB0, z3_colour(d->bpp, fg));
-    GD32(p, GD_RGB1, z3_colour(d->bpp, bg));
-    GD8(p, GD_U8USER0, z3_cm(d->bpp));
+    GD32(p, GD_RGB0, z3_colour(bpp, fg));
+    GD32(p, GD_RGB1, z3_colour(bpp, bg));
+    GD8(p, GD_U8USER0, z3_cm(bpp));
     GD8(p, GD_U8USER1, transparent ? 0 : 1);      /* JAM1 : JAM2 */
     GD8(p, GD_MASK, 0xff);
     W32(b, REG_DMA_OP, OP_TEMPLATE);
     Permit();
-    return PR_DONE;
+    return TRUE;
+}
+
+static enum PrismResult z3_expand(struct PrismBoard *b, const struct PrismSurface *d,
+                                  UWORD x, UWORD y, UWORD w, UWORD h, const UBYTE *tmpl,
+                                  ULONG mod, ULONG fg, ULONG bg, BOOL transparent)
+{
+    if (!z3_surface(b, d))
+        return PR_DECLINED;
+    return z3_ExpandRect(b, d->offset, d->pitch, d->bpp, x, y, w, h, tmpl, mod,
+                         fg, bg, transparent) ? PR_DONE : PR_DECLINED;
 }
 
 /* Solid lines. The firmware seeds its error term with L/2 and steps the
@@ -484,6 +525,10 @@ static LONG z3_check(struct PrismMode *m, UBYTE *cmOut, ULONG *origRes)
     if ((i = z3_mode(ow, oh, m->refresh)) < 0)
         return -1;
     if (bpp == 4 && z3_modes[i].mhz > Z3_MAX32_MHZ)
+        return -1;
+    /* the blitter counts pitches in longs, and the direct hooks cannot
+     * decline: rows that are not whole longs (1366x768 8-bit) are left out */
+    if (((ULONG)m->width * bpp) & 3)
         return -1;
     m->bytesPerRow = (ULONG)m->width * bpp;
     *cmOut = cm;
@@ -705,6 +750,11 @@ static BOOL z3_probe(struct PrismBoard *b)
     b->shutdown        = z3_Shutdown;
     b->ops             = &z3_ops;
     b->waitBlit        = z3_WaitBlit;
+    b->fillRect        = z3_FillRect;
+    b->copyRect        = z3_CopyRect;
+    b->copyBetween     = z3_CopyBetween;
+    b->expandRect      = z3_ExpandRect;
+    b->blitMaxPitch    = 65532;   /* x + w in bytes then fits 16 bits */
     b->cursorImage     = z3_CursorImage;
     b->cursorShow      = z3_CursorShow;
     b->cursorMove      = z3_CursorMove;
