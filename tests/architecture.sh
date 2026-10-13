@@ -28,7 +28,7 @@ run() {
 }
 
 # ---- unit fixtures (vamos) ------------------------------------------
-for name in boardops cirrus_limits zz_surfaces z3660_modes z3660_switch render_replay damage shadow_upload \
+for name in boardops cirrus_limits zz_surfaces z3660_modes z3660_switch z3660_blit render_replay damage shadow_upload \
             pointer_mode presentation driver_module; do
     extra=
     if [ "$name" = render_replay ]; then extra=src/p2c.S; fi

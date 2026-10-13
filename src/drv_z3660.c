@@ -23,8 +23,9 @@
  * 320-wide modes pixel-doubled, the palette, the hardware pointer, the
  * monitor switch on the CIA-B lines the firmware's monitor_switch names
  * (or ENV:Z3660-MONSWITCH, for a preset that leaves the switch to the OS).
- * Not yet: the blitter (PrismD draws on the CPU), the board with
- * autoconfig_rtg NO (no ConfigDev: not probed).
+ * Fills and copies on the firmware's blitter (the mailbox ops).
+ * Not yet: text, lines and planar blits (PrismD draws them on the CPU),
+ * the board with autoconfig_rtg NO (no ConfigDev: not probed).
  */
 #include <exec/types.h>
 #include <libraries/configvars.h>
@@ -70,11 +71,16 @@ extern struct ExpansionBase *ExpansionBase;
 #define CM_555      3
 
 /* mailbox ops */
+#define OP_FILLRECT     2
+#define OP_COPYRECT     3             /* inside one bitmap, overlap allowed  */
+#define OP_COPY_NOMASK  4             /* between two bitmaps, with a minterm */
 #define OP_PAN          10
 #define OP_SPRITE_XY    11
 #define OP_SPRITE_COLOR 12
 #define OP_SPRITE_BMP   13
 #define OP_SET_PALETTE  17
+
+#define MINTERM_SRC     12            /* firmware enum value: plain copy     */
 
 #define Z3_CURSOR_W     32            /* the firmware sprite is 32x48       */
 #define Z3_CURSOR_H     48
@@ -83,6 +89,10 @@ extern struct ExpansionBase *ExpansionBase;
 #define GD_OFFSET0   0
 #define GD_OFFSET1   4
 #define GD_RGB0      8
+#define GD_PITCH0    40
+#define GD_PITCH1    42
+#define GD_MASK      57
+#define GD_MINTERM   58
 #define GD_X0        16
 #define GD_X1        18
 #define GD_X2        20
@@ -123,6 +133,126 @@ static void z3_kick(struct PrismBoard *b, ULONG op)
     CacheClearU();
     W32(b, REG_DMA_OP, op);
 }
+
+/* ---- blitter ---------------------------------------------------------
+ * One command = fill the mailbox, write the opcode to DMA_OP. The firmware
+ * runs it inside that register write and acknowledges the bus cycle only
+ * afterwards, so a call returns with the blit done (Z3660.card's
+ * WaitBlitter is empty). The mailbox is shared by every task that draws
+ * and by the pointer, so each command is built and sent under Forbid().
+ * No cache push on this, the drawing path, as in drv_zz9000.c; pan,
+ * palette and the sprite are rare and keep z3_kick's CacheClearU().
+ * The commands are the ZZ9000 firmware's, unchanged (drv_zz9000.c):
+ * pitches in 32-bit words, a colour placed so that the mailbox bytes are
+ * the pixel bytes in VRAM order, 8-bit taken from the last byte. */
+static ULONG z3_colour(UBYTE bpp, ULONG c)
+{
+    return bpp == 2 ? c << 16 : c;
+}
+
+static UBYTE z3_cm(UBYTE bpp)
+{
+    return bpp == 4 ? CM_32BIT : bpp == 2 ? CM_565 : CM_8BIT;
+}
+
+/* Rows on 32-bit words that the firmware can count, inside our VRAM. */
+static BOOL z3_storage(struct PrismBoard *b, const struct PrismSurface *s)
+{
+    return (s->flags & PSF_VRAM) && !(s->pitch & 3) && s->pitch / 4 <= 65535 &&
+           s->offset <= b->vramSize && s->allocation <= b->vramSize - s->offset;
+}
+
+/* ... in a layout the firmware draws: 15-bit fills use the 565 command
+ * (the colour arrives as the raw 16-bit pixel, so the bytes are the same) */
+static BOOL z3_surface(struct PrismBoard *b, const struct PrismSurface *s)
+{
+    return z3_storage(b, s) && (s->format == PF_CLUT8 || s->format == PF_RGB565BE ||
+                                s->format == PF_RGB555BE || s->format == PF_BGRA32);
+}
+
+static enum PrismResult z3_fill(struct PrismBoard *b, const struct PrismSurface *d,
+                                UWORD x, UWORD y, UWORD w, UWORD h, ULONG c)
+{
+    struct Z3Priv *p = b->priv;
+
+    if (!z3_surface(b, d) || (ULONG)x + w > 65535)
+        return PR_DECLINED;
+    Forbid();
+    GD32(p, GD_OFFSET0, d->offset);
+    GD16(p, GD_PITCH0, d->pitch >> 2);
+    GD8(p, GD_U8USER0, z3_cm(d->bpp));
+    GD8(p, GD_MASK, 0xff);
+    GD32(p, GD_RGB0, z3_colour(d->bpp, c));
+    GD16(p, GD_X0, x);
+    GD16(p, GD_X1, w);
+    GD16(p, GD_Y0, y);
+    GD16(p, GD_Y1, h);
+    W32(b, REG_DMA_OP, OP_FILLRECT);
+    Permit();
+    return PR_DONE;
+}
+
+/* Copies use byte geometry (an 8-bit copy of w * bpp bytes), so they work
+ * for every pixel layout. Inside one bitmap the firmware handles overlap;
+ * between two bitmaps the rows start on 32-bit words and the odd bytes
+ * become x. Overlapping copies between two surfaces are declined. */
+static enum PrismResult z3_copy(struct PrismBoard *b, const struct PrismSurface *s,
+                                const struct PrismSurface *d, UWORD sx, UWORD sy,
+                                UWORD dx, UWORD dy, UWORD w, UWORD h)
+{
+    struct Z3Priv *p = b->priv;
+    ULONG wb = (ULONG)w * d->bpp, src, dst;
+
+    if (!z3_storage(b, s) || !z3_storage(b, d) || s->bpp != d->bpp ||
+        ((ULONG)sx + w) * s->bpp > 65535 || ((ULONG)dx + w) * d->bpp > 65535)
+        return PR_DECLINED;
+    if (s->offset == d->offset && s->pitch == d->pitch) {
+        Forbid();
+        GD32(p, GD_OFFSET0, d->offset);
+        GD32(p, GD_OFFSET1, d->offset);
+        GD16(p, GD_PITCH0, d->pitch >> 2);
+        GD16(p, GD_X2, sx * s->bpp);
+        GD16(p, GD_Y2, sy);
+        GD16(p, GD_X0, dx * d->bpp);
+        GD16(p, GD_Y0, dy);
+        GD16(p, GD_X1, wb);
+        GD16(p, GD_Y1, h);
+        GD8(p, GD_U8USER0, CM_8BIT);
+        GD8(p, GD_MASK, 0xff);
+        W32(b, REG_DMA_OP, OP_COPYRECT);
+        Permit();
+        return PR_DONE;
+    }
+    if (s->offset + s->allocation > d->offset && d->offset + d->allocation > s->offset)
+        return PR_DECLINED;
+    src = s->offset + (ULONG)sy * s->pitch + (ULONG)sx * s->bpp;
+    dst = d->offset + (ULONG)dy * d->pitch + (ULONG)dx * d->bpp;
+    Forbid();
+    GD32(p, GD_OFFSET1, src & ~3UL);
+    GD16(p, GD_PITCH1, s->pitch >> 2);
+    GD16(p, GD_X2, src & 3);
+    GD16(p, GD_Y2, 0);
+    GD32(p, GD_OFFSET0, dst & ~3UL);
+    GD16(p, GD_PITCH0, d->pitch >> 2);
+    GD16(p, GD_X0, dst & 3);
+    GD16(p, GD_Y0, 0);
+    GD16(p, GD_X1, wb);
+    GD16(p, GD_Y1, h);
+    GD8(p, GD_MINTERM, MINTERM_SRC);
+    GD8(p, GD_U8USER0, CM_8BIT);
+    W32(b, REG_DMA_OP, OP_COPY_NOMASK);
+    Permit();
+    return PR_DONE;
+}
+
+/* Commands finish inside their register write; a read of a register
+ * orders it before the CPU's next access to VRAM. */
+static void z3_WaitBlit(struct PrismBoard *b)
+{
+    (void)R32(b, REG_FW_VERSION);
+}
+
+static const struct PrismOps z3_ops = { .fill = z3_fill, .copy = z3_copy };
 
 /* Firmware mode ids by output size and refresh, with the pixel clock in MHz
  * (docs/z3660-hw.md 2). */
@@ -394,7 +524,7 @@ static BOOL z3_probe(struct PrismBoard *b)
     b->vramSize  = VRAM_END - VRAM_OFFSET;
     b->formats   = PF_BIT(PF_CLUT8) | PF_BIT(PF_RGB565BE) |
                    PF_BIT(PF_RGB555BE) | PF_BIT(PF_BGRA32);
-    b->flags     = PBF_HW_CURSOR;
+    b->flags     = PBF_HW_CURSOR | PBF_BLIT_32;
     b->cursorW   = Z3_CURSOR_W;      /* a bigger pointer goes to the software one */
     b->cursorH   = Z3_CURSOR_H;
     b->maxWidth  = 2560;
@@ -413,6 +543,8 @@ static BOOL z3_probe(struct PrismBoard *b)
     if (p->monSwitch & (MS_CTS | MS_SEL))  /* else no switch: NULL */
         b->setSwitch   = z3_SetSwitch;
     b->shutdown        = z3_Shutdown;
+    b->ops             = &z3_ops;
+    b->waitBlit        = z3_WaitBlit;
     b->cursorImage     = z3_CursorImage;
     b->cursorShow      = z3_CursorShow;
     b->cursorMove      = z3_CursorMove;
