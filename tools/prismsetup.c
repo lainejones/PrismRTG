@@ -418,8 +418,10 @@ static int write_wbmode(LONG slot)
     memcpy(f + 8, "PREFPRHD", 8);  f[19] = 6;
     memcpy(f + 26, "SCRM", 4);     f[33] = 28;
     f[50] = id >> 24; f[51] = id >> 16; f[52] = id >> 8; f[53] = id;
-    f[54] = w >> 8;   f[55] = w;
-    f[56] = h >> 8;   f[57] = h;
+    /* width and height "Default" (~0), as the ScreenMode editor writes it:
+     * the screen is the mode's size, and stays so when ScreenMode picks
+     * another mode later (with 800x600 written here it kept 800x600) */
+    f[54] = f[55] = f[56] = f[57] = 0xff;
     f[59] = 8;                     /* depth: 256 pens at every Prism depth */
     f[61] = 1;                     /* control: autoscroll                   */
     for (i = 0; i < 1; i++) {

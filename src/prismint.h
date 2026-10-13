@@ -166,8 +166,9 @@ static inline struct PBitMap *pbm_get(const struct BitMap *bm)
            ? p : NULL;
 }
 /* prismd.c: the displayable bitmap of a screen Intuition is opening on a
- * Prism mode, or NULL */
+ * Prism mode, PBM_REFUSED (the allocation must fail), or NULL (not ours) */
 struct PBitMap *screen_bitmap_hook(ULONG w, ULONG h, ULONG depth, ULONG flags);
+#define PBM_REFUSED     ((struct PBitMap *)-1)
 struct PBitMap *pbm_new(struct PrismCard *c, UWORD w, UWORD h, UBYTE depth, UBYTE format,
                         UWORD *penTab, BOOL vram, BOOL clear);
 void            pbm_free(struct PBitMap *p);

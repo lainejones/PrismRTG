@@ -269,7 +269,7 @@ LONG h_AllocBitMap(struct Regs *r)
 
     /* a screen Intuition is opening on a Prism mode? */
     if ((p = screen_bitmap_hook(r->d[0], r->d[1], depth, r->d[3]))) {
-        r->d[0] = (LONG)p->bm;
+        r->d[0] = p == PBM_REFUSED ? 0 : (LONG)p->bm;
         return 1;
     }
     if (!r->d[0] || !r->d[1])

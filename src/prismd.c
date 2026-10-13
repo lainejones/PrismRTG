@@ -557,14 +557,33 @@ static BOOL show_pbm(struct PBitMap *p)
 }
 
 /* pbm_free: a screen buffer is going; show its screen's own bitmap
- * instead if it was on display. Lock held. */
+ * instead if it was on display. Lock held.
+ * A screen whose bitmap Intuition allocated (Workbench) is gone when
+ * Intuition frees that bitmap. That is also the only sign of it when the
+ * screen closes inside Intuition, past the CloseScreen patch: IPrefs'
+ * Workbench reset after a ScreenMode change does. The screen Intuition
+ * opens next can get the same address, so its record goes now - left in
+ * the list, it would make the new screen look like the old Prism one and
+ * the card show a bitmap that has been freed. */
 void pbm_gone(struct PBitMap *p)
 {
     struct CardState *cs = &cst[p->card->index];
-    struct PScreen *ps;
+    struct PScreen *ps, **pp;
     for (ps = pscreens; ps; ps = ps->next)
         if (ps->front == p)
             ps->front = NULL;
+    for (pp = &pscreens; (ps = *pp); )
+        if (ps->intuitionOwns && ps->pbm == p) {
+            *pp = ps->next;
+            if (cs->shown == ps) {
+                cs->shown = NULL;
+                cs->shownVP = NULL;
+            }
+            if (pending.ps == ps)
+                pending.ps = NULL;
+            FreeVec(ps);
+        } else
+            pp = &ps->next;
     if (cs->shownPbm == p) {
         present_stop(p->card);
         cs->shownPbm = NULL;
@@ -831,7 +850,10 @@ static BOOL show_card(UBYTE k)
         return changed;
     }
     present_stop(c);
-    if (cs->rtgOn) {
+    /* No screen at all (Workbench closed for a reset, the next one not
+     * open yet) is no reason to flip the monitor: the next screen sets
+     * it. A native screen in front is. */
+    if (cs->rtgOn && IntuitionBase->FirstScreen) {
         B->setSwitch(B, FALSE);
         cs->rtgOn = FALSE;
     }
@@ -1408,17 +1430,32 @@ struct PBitMap *screen_bitmap_hook(ULONG w, ULONG h, ULONG depth, ULONG flags)
     if (!pending.task || pending.task != FindTask(NULL) || pending.ps || !mr)
         return NULL;
     dbg("  AllocBitMap %lux%lux%lu flags %lx during open (mode %s)\n", w, h, depth, flags, mr->name);
-    if (!(flags & BMF_DISPLAYABLE) || depth > mr->maxDepth ||
-        w != mr->m.width || h != mr->m.height)
+    if (!(flags & BMF_DISPLAYABLE))
         return NULL;
+    /* The screen's size comes from the ScreenMode prefs, which can keep an
+     * old size with a new mode (800x600 on 1280x1024). Smaller than the
+     * mode: the bitmap is the mode's size and the screen sits at its top
+     * left, as on every other Prism screen the row size is the mode's.
+     * Larger (a scrolling screen) or deeper than the mode can show: the
+     * open fails here and Intuition falls back as for any mode it can't
+     * open. Passing it on would give the screen a planar chip RAM bitmap
+     * on a Prism mode, which nothing can show: the card is never told,
+     * and the monitor switch goes to the Amiga's own (black) video. */
+    if (w > mr->m.width || h > mr->m.height || depth > mr->maxDepth) {
+        dbg("  refused: the mode is %ux%u, depth up to %u\n", mr->m.width, mr->m.height,
+            mr->maxDepth);
+        return PBM_REFUSED;
+    }
+    w = mr->m.width;
+    h = mr->m.height;
     if (!(ps = AllocVec(sizeof(*ps), MEMF_PUBLIC | MEMF_CLEAR)))
-        return NULL;
+        return PBM_REFUSED;
     if (!(ps->pbm = pbm_new(mr->card, w, h, depth ? depth : 1, mr->m.format,
                             mr->bpp == 2 ? ps->penTab : NULL, TRUE, TRUE)) ||
         ps->pbm->bpr != mr->m.bytesPerRow) {
         pbm_free(ps->pbm);
         FreeVec(ps);
-        return NULL;
+        return PBM_REFUSED;
     }
     ps->pbm->fmt = mr->m.format;
     ps->pbm->rgbTab = ps->rgbTab;
@@ -1818,8 +1855,15 @@ static BOOL P_CloseScreen(struct Screen *s __asm("a0"))
     ps = ps_by_screen(s);
     ReleaseSemaphore(&lock);
     r = c_a0(o_CloseScreen, IntuitionBase, s);
-    if (r && ps)
-        free_ps(ps);
+    if (r && ps) {
+        /* a Workbench-style screen's record went with its bitmap (pbm_gone) */
+        struct PScreen *q;
+        LOCK_QUIET();
+        for (q = pscreens; q && q != ps; q = q->next) ;
+        ReleaseSemaphore(&lock);
+        if (q)
+            free_ps(ps);
+    }
     LEAVE();
     return r;
 }
