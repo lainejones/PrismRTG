@@ -1698,9 +1698,10 @@ static void line_solid(struct PBitMap *p, struct LineCtx *l, WORD bx0, WORD by0,
         (y < y1 ? y : y1) >= by0 && (y < y1 ? y1 : y) <= by1) {
         /* long enough to be worth a blitter command (a board with a direct
          * drawLine hook was offered the line already: line_direct) */
-        /* (the board tests are line_hw's: p->bd in this function cost the
-         * run-slice loop below its registers - "Line 390x60" -6%) */
-        if (p->inVram && b != 3 && (dx > 40 || dy > 40) && line_hw(p, x, y, x1, y1, pen))
+        /* (only a board with a line op pays for the call; the rest of the
+         * board tests are line_hw's. The line loss once put down to register
+         * pressure here was libnix's memset - see build.sh) */
+        if (p->inVram && b != 3 && (dx > 40 || dy > 40) && BOARD_CAN(p->bd, line) && line_hw(p, x, y, x1, y1, pen))
             return;
         line_fast(p, l, ox, oy, pen);
         return;
