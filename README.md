@@ -27,6 +27,7 @@ the native drivers do not need them.
 | Piccolo SD64, Zorro II | Cirrus GD5434 | WinUAE only | Emulation only. 8/16/24/32-bit, blitter as on the GBAPII++. |
 | Piccolo, Zorro II | Cirrus GD5426 | WinUAE only | Emulation only. 8/16-bit, 24-bit 640x480. |
 | GVP Spectrum 28/24, Zorro II | Cirrus GD5428 | WinUAE only | Emulation only. 8/16-bit, 24-bit 640x480. |
+| Village Tronic Picasso IV, Zorro III mode | Cirrus GD5446, 4 MB (2 MB used) | WinUAE only | Emulation only, with WinUAE's model of the card (it needs the card's flash ROM). Native driver from 1.1 beta 8: blitter fills, copies, text (8/16/32-bit); hardware pointer; 8/16-bit up to 1280x720, 24-bit 640x480, 32-bit 800x600. Zorro II mode (two boards, banked memory) is not supported; such a card reaches PrismRTG through its P96 driver. |
 | MNT ZZ9000, Zorro II mode | | none | Untested. No blitter or pointer support in this mode. |
 | Apollo Vampire (SAGA), through its P96 driver | `vampiregfx.card` 1.61 | Vampire, reported by a user (#1) | Real hardware, not tested here. 1.1 beta 3 with `BOARD=P96`: every drawing test passes at 8, 16, 24 and 32 bits, `p96test` 0 of 29 failed, screens up to 1280x720 24-bit. One failure, planar blits at 16 bits, is handled from beta 5 (the card's own planar blit is checked first and replaced if wrong). |
 
@@ -129,7 +130,7 @@ Tested in WinUAE 6.0.3 at 8, 16 and 32 bits (every PrismRTG test and
 
 | Emulator, card | Board in PrismPrefs | Status |
 |---|---|---|
-| WinUAE, Picasso II / II+, Piccolo, Piccolo SD64, Spectrum (Zorro II and III) | Auto | Tested: every PrismRTG test passes on each; the figures per board are in [docs/emulated-cards.md](docs/emulated-cards.md) |
+| WinUAE, Picasso II / II+, Piccolo, Piccolo SD64, Spectrum (Zorro II and III), Picasso IV (Zorro III) | Auto | Tested: every PrismRTG test passes on each; the figures per board are in [docs/emulated-cards.md](docs/emulated-cards.md) |
 | WinUAE 6.0.3, UAE RTG Zorro III or Zorro II | UAE (native), or P96 driver with `P96CARD=uaegfx.card` | Tested at 8, 16 and 32 bits: every test passes |
 | Amiberry 8.4.0 (Linux), UAE RTG | UAE (native) | Tested at 8, 16 and 32 bits: every test passes, with `rtg_nocustom=false` too. (8.3.0 lost some of what was drawn on 32-bit screens with `rtg_nocustom=false` and ZeroCopy on, [amiberry#2392](https://github.com/BlitterStudio/amiberry/issues/2392); fixed in 8.4.0) |
 | Amiberry 8.4.0 (Linux), ZZ9000 (Zorro III) | Auto | Tested: Workbench and every PrismRTG test pass, from beta 6 on (earlier PrismD builds switched the display on and off inside one frame at start-up, which 8.4.0 does not survive) |
@@ -151,8 +152,14 @@ default, and so has Amiberry from 8.4.0 on; in 8.3.0 it has to be switched on.
   test machines the OS's.
 * graphics.library drawing into PrismRTG screens, checked pixel-for-pixel
   against the native chipset (`PrismBench`: fills, lines, text, planar blits).
-* cybergraphics.library 41 API: MultiView, AWeb and Amelinium show
-  true-colour pictures.
+* cybergraphics.library 43 API: MultiView, AWeb and Amelinium show
+  true-colour pictures. The newer calls are there too (1.1 beta 8):
+  `WritePixelArrayAlpha` (ARGB pixels blended in by their alpha, times a
+  global alpha), `BltTemplateAlpha` (the pen's colour through an 8-bit alpha
+  mask: anti-aliased text) and `ProcessPixelArray` (brighten, darken, tint,
+  blur, grey, negative, the two fades, gradients, set alpha, RGB shift).
+  `cgxtest` checks them at 8, 16 and 32 bits; on a 256-colour screen the
+  results go to the nearest pens.
 * Picasso96API.library 2 (PrismRTG's own): bitmaps in any pixel format, mode
   lists and requester, screens, pixel arrays in every direct-colour format,
   board data. `p96test` checks every call at 8, 16 and 24 bits. No
@@ -179,6 +186,26 @@ default, and so has Amiberry from 8.4.0 on; in 8.3.0 it has to be switched on.
   (`SECONDBOARD=OFF`) keeps to one board; with two, the Test button asks which
   board shows the test picture.
   Design: `docs/multi-board.md`.
+* **Monitor power saving** (1.1 beta 8; "Sleep" in PrismPrefs, `POWERSAVE=10`
+  in the prefs file, minutes, 0 = never, the default): after that long
+  without a key or mouse event every board showing a picture goes dark, and
+  the next key or mouse move brings it back. On the Picasso II, GBAPII++,
+  Piccolo, SD64 and Spectrum the card turns its picture and both syncs off,
+  so a DPMS monitor goes to sleep; on the others (ZZ9000, Picasso IV, UAE, P96
+  cards) PrismD shows black (a black palette at 256 colours, a cleared bitmap
+  deeper) and the monitor stays on. A program flipping its buffers keeps it
+  dark; a mode change wakes it. PrismPrefs' Use or Save takes effect at once.
+* **ARexx port `PRISM`** (1.1 beta 8, needs RexxMast): `VERSION`, `BOARDS`,
+  `BOARD`, `VRAM`, `MODES`, `MODE <n>`, `MODEID <w> <h> <bits>`,
+  `TEST <w> <h> <bits> [hz]` / `TESTEND` (the Test picture), `POWERSAVE
+  [minutes]`, `SLEEP`, `WAKE`, `DARK`, `LOG [ON|OFF]`, `HELP`; a trailing `2`
+  asks about the second board. [docs/arexx.md](docs/arexx.md) has them all
+  with an example.
+* **Picasso96's screen sizes** (1.1 beta 8): `C:PrismImport` reads
+  `DEVS:Picasso96Settings` and switches on in PrismRTG every size and depth
+  that was switched on there; sizes PrismRTG does not have become custom
+  sizes (up to four). The installer offers it on a first install. Timings
+  are not taken: the drivers make their own.
 
 Neither card lets software read what the monitor supports (the ZZ9000
 firmware has no DDC code; the GBAPII++ does not wire the chip's DDC data
@@ -311,6 +338,9 @@ Unpack the archive, open the `PrismRTG` drawer and double-click
   **back it up** (the files are moved to `SYS:Storage/Picasso96-parked`
   with a note of where each came from) or **leave it** (nothing is
   touched, and PrismRTG stays off). Nothing of Picasso96 is ever deleted,
+* on a first install with Picasso96's settings on the Amiga, offers to
+  switch on the same screen sizes and depths in PrismRTG (`PrismImport`;
+  Picasso96's settings are only read),
 * asks which PrismRTG screen Workbench should open on.
 
 ![The installer's Picasso96 question](docs/installer-picasso96.png)
@@ -336,6 +366,7 @@ files keep their short names (`PrismD`, `PrismPrefs`, the monitor file
 | `DEVS:Monitors/Prism` | starts PrismD before Workbench opens |
 | `SYS:Prefs/PrismPrefs` | settings editor |
 | `C:PrismSetup`, `C:PrismProbe` | installer helper, board lister |
+| `C:PrismImport` | Picasso96's screen sizes into PrismRTG's settings |
 | `ENVARC:Prism.prefs` | the settings (plain text) |
 
 If the screen stays dark: hold the left mouse button during boot, then use
@@ -430,7 +461,7 @@ picks one for PrismRTG's tools alone. There are no translations yet:
   they cost nothing. Few programs have used it yet.
 * Vertical dragging composes the front and next RTG screen; native-chipset
   screens cannot be mixed into the split. No monitor detection (see above).
-* The Picasso II, Piccolo, Piccolo SD64, Spectrum and Graffity have only run in WinUAE.
+* The Picasso II, Piccolo, Piccolo SD64, Spectrum, Graffity and Picasso IV have only run in WinUAE.
   A real card can differ from its emulation (the GBAPII++ did, in three
   places). If 256-colour screens on a real Piccolo or Spectrum show red and
   blue exchanged, tick **Swap red/blue** in PrismPrefs.
@@ -467,6 +498,8 @@ finished `.info` files in `dist/`.
 | `Prism` (`out/PrismMon`) | `DEVS:Monitors` launcher with the boot failsafe. |
 | `PrismSetup` | Installer helper: `DETECT`, `WBID=<id>` (Workbench mode by ModeID, e.g. `0102` = 800x600 16-bit; `WBMODE=<slot>` still works). |
 | `PrismProbe` | Lists expansion boards and marks the ones PrismRTG can drive. Read-only. |
+| `PrismImport` | Picasso96's switched-on sizes and depths into `ENVARC:Prism.prefs`: `[FROM=file] [BOARD=name] [ONLY] [TEST]` (ONLY switches every other mode off, TEST writes nothing). |
+| `cgxtest`, `arexxtest.rexx` | Checks of the CyberGraphX 43 calls (`MODEID=`) and of the ARexx port (`rx arexxtest.rexx`). |
 | `PrismBench` | Benchmark and pixel-exactness checks: `MODEID=$7A00xxxx`, `LIST`. |
 | `PrismTest` | A driver on its own, without PrismD: loads `BOARD=NAME` (any `.driver`), sets a mode, draws a pattern, checks the driver's fills and copies against the CPU (`BLIT`). |
 | `PrismScreen`, `PrismShow`, `PrismMouse`, `prismdiag` | Test clients: screens, pictures, pointer, display database dump. |

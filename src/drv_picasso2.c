@@ -54,6 +54,8 @@ extern struct ExpansionBase *ExpansionBase;
 #define PASS_PICASSO 0        /* byte writes at +$A000 / +$B000           */
 #define PASS_4F6F    1        /* +$8000: $6F card, $4F Amiga, $1F wake    */
 #define PASS_BIT5    2        /* +$8000 bit 5: 1 card, 0 Amiga; bit 4 wake */
+#define PASS_PICASSO4 4       /* Picasso IV: the flicker fixer's byte at +$404 of
+                                 the board (1 Amiga, 0 card) and CR51 bit 3 */
 #define PASS_GRAFFITY 3       /* a byte write at +$8060 card, +$8040 Amiga
                                  (address bits 5-6; WinUAE gfxboard.cpp,
                                  the only public description of the board) */
@@ -62,6 +64,7 @@ extern struct ExpansionBase *ExpansionBase;
 #define CL_GD5426  0x90
 #define CL_GD5428  0x98
 #define CL_GD5434  0xa8
+#define CL_GD5446  0xb8
 
 #define XTAL_KHZ   14318
 #define VCO_MIN    28636            /* VCO stability window (§2.3)        */
@@ -72,6 +75,8 @@ struct P2Priv {
     UBYTE  chip;              /* CR27                                     */
     BOOL   is5434;
     BOOL   failed;
+    volatile UBYTE *board;    /* the start of the board's node (Picasso IV: its
+                                 control bytes at +$0 and +$404)            */
     UBYTE  aperture;          /* SR7 bits 7-4: linear window base (§1.3)  */
     UWORD  dacRI, dacD;       /* DAC read-index and data port offsets     */
     UBYTE  pass;              /* monitor switch: PASS_* below             */
@@ -1121,6 +1126,16 @@ static void p2_SetSwitch(struct PrismBoard *b, BOOL rtg)
         *sw = rtg ? (*sw | 0x20) : (*sw & 0xdf);
         return;
     }
+    if (p->pass == PASS_PICASSO4) {
+        /* Picasso IV (WinUAE's model of it): a byte at +$0 maps the control
+         * bytes in place of the flash; +$404 is the flicker fixer, 1 = the
+         * Amiga's picture; the card's own picture needs CR51 bit 3 clear too */
+        UBYTE cr51 = rcrt(b, 0x51);
+        p->board[0] = 0x02;
+        p->board[0x404] = rtg ? 0x00 : 0x01;
+        wcrt(b, 0x51, rtg ? (cr51 & ~0x08) : (cr51 | 0x08));
+        return;
+    }
     if (p->pass == PASS_GRAFFITY) {
         /* Graffity: the address, not the data, carries the setting */
         *(volatile UBYTE *)(b->regs + (rtg ? 0x8060 : 0x8040)) = 0;
@@ -1260,6 +1275,21 @@ static void p2_CursorMove(struct PrismBoard *b, WORD x, WORD y)
     outb(b, SEQ_D, (y >> 3) & 0xff);
 }
 
+/* Monitor power (POWERSAVE). SR1 bit 5 turns the picture off; GRE bit 1
+ * stops HSYNC and bit 2 VSYNC, which is what puts a DPMS monitor to sleep.
+ * Linux's cirrusfb does both on the Picasso II, Piccolo, Spectrum and the
+ * GD5434 Piccolo SD64 (cirrus-picasso2-hw.md), so the GBAPII++ gets it too.
+ * Not the Picasso IV: cirrusfb leaves it alone, and WinUAE's model of it
+ * ignores SR1 - PrismD blanks that one itself (no setPower). */
+static void p2_SetPower(struct PrismBoard *b, UBYTE level)
+{
+    struct P2Priv *p = b->priv;
+    UBYTE sr1 = rseq(b, 0x01);
+    (void)p;
+    wseq(b, 0x01, level ? (sr1 | 0x20) : (sr1 & ~0x20));
+    wgrc(b, 0x0e, level == 2 ? 0x02 : level == 3 ? 0x04 : level >= 4 ? 0x06 : 0x00);
+}
+
 static void p2_Shutdown(struct PrismBoard *b)
 {
     p2_SetSwitch(b, FALSE);
@@ -1287,6 +1317,7 @@ static const struct P2Board {
     BOOL  alias;              /* DAC data/read-index at port + $FFF       */
     BOOL  swapRB;
     const char *name;
+    ULONG regOff, vramOff;    /* one-node boards: the windows inside the node */
 } p2_boards[] = {
     /* Product 13 is the Picasso II's segmented mode (a jumper): refused. */
     { 2167, 11, 12, PASS_PICASSO, TRUE,  FALSE, "Picasso II" },
@@ -1299,7 +1330,13 @@ static const struct P2Board {
     { 2092, 34, 33, PASS_GRAFFITY, FALSE, FALSE, "Graffity" },
     /* ...and as a Zorro III board: one 16 MB node holding the register
      * window at +$800000 and 2 MB of VRAM at +$C00000 (memProd 0) */
-    { 2092,  0, 33, PASS_GRAFFITY, FALSE, FALSE, "Graffity Z3" },
+    { 2092,  0, 33, PASS_GRAFFITY, FALSE, FALSE, "Graffity Z3", 0x800000, 0xc00000 },
+    /* Village Tronic Picasso IV (GD5446) in Zorro III mode: one 32 MB node,
+     * the VGA ports at +$600000 and VRAM at +$1000000 in plain byte order;
+     * the monitor switch is its flicker fixer's. Only ever run in WinUAE
+     * (its emulation of the card, with the card's flash ROM); Zorro II mode,
+     * two nodes and banked VRAM, is not supported. */
+    { 2167,  0, 24, PASS_PICASSO4, FALSE, FALSE, "Picasso IV", 0x600000, 0x1000000 },
 };
 
 /* Reject an operation before writing registers if the chip cannot encode
@@ -1431,10 +1468,11 @@ BOOL Picasso2_Probe(struct PrismBoard *b)
     b->configDev = regs;
     b->regs      = (volatile UBYTE *)regs->cd_BoardAddr;
     b->vram      = (UBYTE *)mem->cd_BoardAddr;
-    if (!bd->memProd) {                  /* Graffity Z3: windows inside the node */
-        b->regs += 0x800000;
-        b->vram += 0xc00000;
+    if (!bd->memProd) {                  /* Graffity Z3, Picasso IV: windows inside the node */
+        b->regs += bd->regOff;
+        b->vram += bd->vramOff;
     }
+    p->board     = (volatile UBYTE *)regs->cd_BoardAddr;
     b->priv      = p;
     p->memDev    = mem;
     p->pass      = bd->pass;
@@ -1469,6 +1507,7 @@ BOOL Picasso2_Probe(struct PrismBoard *b)
     case CL_GD5428: chipName = "GD5428"; break;
     case 0xa4:
     case CL_GD5434: chipName = "GD5434"; p->is5434 = TRUE; break;
+    case CL_GD5446: chipName = "GD5446"; p->is5434 = TRUE; break;   /* the 5434's registers and more */
     default:                                      /* not a Cirrus we know */
         Picasso2_LastID = p->chip | 0x100;
         return FALSE;
@@ -1522,6 +1561,11 @@ BOOL Picasso2_Probe(struct PrismBoard *b)
     b->cursorImage     = p2_CursorImage;
     b->cursorShow      = p2_CursorShow;
     b->cursorMove      = p2_CursorMove;
+    b->setPower        = bd->pass == PASS_PICASSO4 ? NULL : p2_SetPower;
+    /* the Picasso IV shows its own picture only after its switch has been
+     * set to the Amiga's once since the reset (as Picasso96 does at start) */
+    if (p->pass == PASS_PICASSO4)
+        p2_SetSwitch(b, FALSE);
     return TRUE;
 }
 

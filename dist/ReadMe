@@ -3,7 +3,8 @@ PrismRTG - RTG for AmigaOS 3.x
 
 A from-scratch retargetable-graphics system for two boards:
   * Village Tronic Picasso II / GBAPII++ (Cirrus GD542x), Zorro II
-  * Piccolo, Piccolo SD64, GVP Spectrum 28/24, Ateo Graffity - emulator-tested only
+  * Piccolo, Piccolo SD64, GVP Spectrum 28/24, Ateo Graffity, Picasso IV
+    (Zorro III mode) - emulator-tested only
   * MNT ZZ9000, Zorro III
   * Z3660 accelerator's RTG output (A4000)
 
@@ -19,7 +20,9 @@ Install:   double-click Install_PrismRTG (the standard Installer), or from a
            It finds the card, sets the Workbench screen and, if Picasso96
            is installed, lists its monitor files and asks: back them up
            (moved to SYS:Storage/Picasso96-parked, never deleted) or leave
-           them (then PrismRTG stays off). Remove moves them back.
+           them (then PrismRTG stays off). Remove moves them back. With
+           Picasso96's settings on the Amiga it offers to switch on the
+           same screen sizes (C:PrismImport; Picasso96's file is only read).
 Update, install afresh (new settings) or remove: run Install_PrismRTG again.
 
 What goes where
@@ -30,6 +33,7 @@ What goes where
                          GitHub); BOARD=<name> selects it, Auto tries it
   C:PrismSetup           the installer's helper (card detection)
   C:PrismProbe           lists the expansion boards PrismRTG can drive
+  C:PrismImport          Picasso96's screen sizes into PrismRTG's settings
   DEVS:Monitors/Prism    starts PrismD before Workbench opens
   SYS:Prefs/PrismPrefs   modes, refresh rates, board, blitter, palette, log
   ENVARC:Prism.prefs     the settings
@@ -192,6 +196,26 @@ Update check
   directory with latest.txt ("version archive"). From a Shell:
   PrismUpdate, PrismUpdate GET.
 
+Monitor power saving
+  "Sleep" in PrismPrefs (POWERSAVE=10 in the prefs file): after that many
+  minutes without a key or mouse event the board's picture goes dark, and
+  the next key or mouse move brings it back. 0, the default, is never.
+  The Picasso II family turns its picture and syncs off, so the monitor
+  sleeps; on the ZZ9000, Picasso IV, UAE and P96 cards the screen goes
+  black. Use and Save in PrismPrefs take effect at once.
+
+ARexx
+  PrismD has an ARexx port, PRISM (RexxMast must run): VERSION, BOARDS,
+  BOARD, VRAM, MODES, MODE <n>, MODEID <w> <h> <bits>, TEST <w> <h> <bits>
+  [hz] and TESTEND (the Test picture), POWERSAVE [min], SLEEP, WAKE, DARK,
+  LOG [ON|OFF], HELP. docs/arexx.md on GitHub has the details.
+
+Picasso96's sizes
+  C:PrismImport reads DEVS:Picasso96Settings and switches on every size
+  and depth that was on there; sizes PrismRTG lacks become custom sizes
+  (up to four). PrismImport TEST shows what it would do; ONLY switches
+  every other mode off. PrismD takes the list at its next start.
+
 Dragging and PIP windows
   Vertical dragging between RTG screens (DRAGGING=ON) and P96 memory-window
   PIPs go through a compositor that redoes only what changed and copies the
@@ -240,7 +264,8 @@ Stefan Reinauer, Jusii.
 
 Board modules
 -------------
-PrismD loads PICASSO2.driver, ZZ9000.driver, Z3660.driver, P96.driver or UAEGFX.driver
+PrismD loads PICASSO2.driver (also the Picasso IV), ZZ9000.driver, Z3660.driver,
+P96.driver or UAEGFX.driver
 from LIBS:Prism. Install_PrismRTG installs these with PrismD. For a build
 run in place, PROGDIR:Drivers is also searched. Use matching PrismD and
 modules; incompatible module layouts are rejected before probing hardware.

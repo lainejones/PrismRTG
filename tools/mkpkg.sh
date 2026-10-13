@@ -15,7 +15,7 @@ mkdir -p $P/Drivers
 for driver in PICASSO2 ZZ9000 Z3660 P96 UAEGFX; do
     cp out/Drivers/$driver.driver $P/Drivers/
 done
-cp out/PrismD out/PrismPrefs out/PrismSetup out/PrismProbe out/Picasso96API.library $P/
+cp out/PrismD out/PrismPrefs out/PrismSetup out/PrismProbe out/PrismImport out/Picasso96API.library $P/
 # PrismUpdate is built only with the AmiSSL SDK headers (build.sh); a package
 # without it has no update check
 [ -f out/PrismUpdate ] && cp out/PrismUpdate $P/ || echo "mkpkg: no PrismUpdate in this package"

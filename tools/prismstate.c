@@ -63,6 +63,12 @@ int main(void)
                (unsigned long)ps->vramKB[0]);
         board_lines("  second board: ", *ps->board2Flags, ps->board2HwOps);
     }
+    if (ps && ps->version >= 8 && ps->powerSave) {
+        if (*ps->powerSave)
+            printf("Monitor power saving: dark after %u minutes without input\n", *ps->powerSave);
+        else
+            puts("Monitor power saving: off");
+    }
     Permit();
     if (!ps)
         puts("PrismD is NOT running");

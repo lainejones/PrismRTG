@@ -231,6 +231,12 @@ BOOL prefs_load(struct PrismPrefs *p, const char *path)
             unsigned g = got == 2 ? a * 10 + (b % 10) : a >= 5 ? a : a * 10;
             if (g >= 5 && g <= 25)
                 p->gamma = g;
+        } else if (same(line, "POWERSAVE")) {
+            unsigned m = 0;
+            if (sscanf(v, "%u", &m) == 1 && m <= 240)
+                p->powerSave = m;
+            else if (same(v, "OFF"))
+                p->powerSave = 0;
         } else if (same(line, "UPDATES")) {
             p->updates = same(v, "GITHUB") ? UPD_GITHUB : same(v, "MIRROR") ? UPD_MIRROR :
                          same(v, "BOTH") ? UPD_BOTH : UPD_OFF;
@@ -266,6 +272,7 @@ BOOL prefs_save(const struct PrismPrefs *p, const char *path)
     fprintf(f, "PROMOTE=%s\n", p->promote ? "ON" : "OFF");
     fprintf(f, "GAMMA=%u.%u\n", p->gamma / 10, p->gamma % 10);
     fprintf(f, "HWOVERLAY=%s\n", p->hwOverlay ? "ON" : "OFF");
+    fprintf(f, "POWERSAVE=%u\n", p->powerSave);
     fprintf(f, "UPDATES=%s\n", p->updates == UPD_GITHUB ? "GITHUB" : p->updates == UPD_MIRROR ? "MIRROR" :
                                p->updates == UPD_BOTH ? "BOTH" : "OFF");
     if (p->mirror[0])

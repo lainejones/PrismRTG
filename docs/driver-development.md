@@ -292,6 +292,17 @@ stand down and nothing a driver does changes.
   quit. A board without a switch leaves it NULL. A board that drives an
   external switch through other hardware (CIA lines, a serial port) does
   that here.
+* **Monitor power:** `setPower(b, level)` for POWERSAVE (optional, from
+  1.1 beta 8): 0 on, 1 picture off with the syncs running, 2 standby
+  (HSYNC off), 3 suspend (VSYNC off), 4 off (both). A board that can only
+  blank treats 2-4 as 1. PrismD calls it with the lock held and no blit
+  running, 4 when the idle time runs out and 0 on the next input; while
+  dark it keeps the board's `setDisplayStart` and `setPalette` calls to
+  itself and wakes the board before any `setMode` or `setSwitch`. Leave it
+  NULL unless the hardware really blanks: PrismD then shows a black palette
+  (256 colours) or a cleared bitmap, which works on any board. The Cirrus
+  driver sets SR1 bit 5 and GRE bits 1-2 (cirrusfb's way), except on the
+  Picasso IV.
 * **Vertical blank:** `waitVBlank` returns when the next blank starts.
   Used for tear-free double-buffer swaps; NULL means swap at once.
 * **State:** `saveState`/`restoreState` snapshot whatever another RTG

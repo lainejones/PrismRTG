@@ -38,7 +38,7 @@ static const char version[] __attribute__((used)) = "$VER: PrismPrefs " PRISM_RE
 enum { GAD_LIST = 1, GAD_ON, GAD_HZ, GAD_BOARD, GAD_BLIT, GAD_LOG,
        GAD_SAVE, GAD_USE, GAD_DEFAULTS, GAD_CANCEL, GAD_STATUS, GAD_TEST, GAD_BGR,
        GAD_DRAG, GAD_SOFTPTR, GAD_HWOVL, GAD_PROMOTE, GAD_PLIST, GAD_PROG, GAD_PADD, GAD_PKEEP, GAD_PDEL,
-       GAD_UPDATES, GAD_CHECK, GAD_W, GAD_H, GAD_SETSIZE, GAD_GAMMA };
+       GAD_UPDATES, GAD_CHECK, GAD_W, GAD_H, GAD_SETSIZE, GAD_GAMMA, GAD_POWER };
 
 static STRPTR hzLabels[] = { "Default", "60 Hz", "70 Hz", "72 Hz", "75 Hz", NULL };
 /* the Board cycle: Auto three ways - every board PrismD finds (two at
@@ -71,7 +71,7 @@ struct Gui {
     APTR vi;
     struct Window *win;
     struct Gadget *glist, *gList, *gOn, *gHz, *gBoard, *gBlit, *gLog, *gBgr, *gDrag, *gSoft, *gHwOvl, *gStatus;
-    struct Gadget *gPromote, *gPList, *gProg, *gUpdates, *gW, *gH, *gSet, *gGamma;
+    struct Gadget *gPromote, *gPList, *gProg, *gUpdates, *gW, *gH, *gSet, *gGamma, *gPower;
     struct List modes;
     struct Node node[PREFS_NMODES];
     char text[PREFS_NMODES][48];
@@ -281,6 +281,7 @@ static void show_settings(struct Gui *g)
     GT_SetGadgetAttrs(g->gPromote, g->win, NULL, GTCB_Checked, (ULONG)p->promote, TAG_END);
     GT_SetGadgetAttrs(g->gUpdates, g->win, NULL, GTCY_Active, (ULONG)(p->updates < UPD_COUNT ? p->updates : 0), TAG_END);
     GT_SetGadgetAttrs(g->gGamma, g->win, NULL, GTCY_Active, (ULONG)gamma_index(p->gamma), TAG_END);
+    GT_SetGadgetAttrs(g->gPower, g->win, NULL, GTIN_Number, (ULONG)p->powerSave, TAG_END);
     {
         /* the size fields follow a custom slot and are ghosted for a fixed one */
         int k = PREFS_SIZE(g->sel) - PREFS_NFIXED;
@@ -394,6 +395,18 @@ static void running_status(struct Gui *g)
 
 static BOOL write_prefs(struct Gui *g, BOOL envarc)
 {
+    struct PrismSem *s;
+    if (g->gPower) {                     /* typed in without Return: taken as it stands */
+        LONG m = ((struct StringInfo *)g->gPower->SpecialInfo)->LongInt;
+        if (m >= 0 && m <= 240)
+            g->prefs.powerSave = m;
+    }
+    /* Sleep takes effect on a running PrismD at once (semaphore version 8) */
+    Forbid();
+    s = (struct PrismSem *)FindSemaphore(PRISM_SEMNAME);
+    if (s && s->version >= 8 && s->powerSave)
+        *s->powerSave = g->prefs.powerSave;
+    Permit();
     if (!prefs_save(&g->prefs, PREFS_ENV)) {
         set_status(g, S(ID_CAN_T_WRITE_ENV_PRISM_PREFS, "Can't write ENV:Prism.prefs"));
         return FALSE;
@@ -590,6 +603,13 @@ static BOOL make_gadgets(struct Gui *g, WORD *innerW, WORD *innerH)
     ng.ng_GadgetText = (STRPTR)S(ID_GAMMA, "Gamma"); ng.ng_Flags = PLACETEXT_LEFT; ng.ng_GadgetID = GAD_GAMMA;
     gad = g->gGamma = CreateGadget(CYCLE_KIND, gad, &ng, GTCY_Labels, (ULONG)gammaLabels,
                                    GTCY_Active, (ULONG)gamma_index(g->prefs.gamma), TAG_END);
+
+    /* POWERSAVE=: minutes without input before the monitors go dark */
+    y += row;
+    ng.ng_TopEdge = y;
+    ng.ng_GadgetText = (STRPTR)S(ID_SLEEP, "Sleep"); ng.ng_Flags = PLACETEXT_LEFT; ng.ng_GadgetID = GAD_POWER;
+    gad = g->gPower = CreateGadget(INTEGER_KIND, gad, &ng, GTIN_Number, (ULONG)g->prefs.powerSave,
+                                   GTIN_MaxChars, 3, TAG_END);
 
     /* the mode list at least 12 lines, and as tall as the column beside it */
     listH = y + gh - (ct + fh + 2);
@@ -788,6 +808,20 @@ static void event_loop(struct Gui *g)
                     set_status(g, g->prefs.gamma == 10 ? S(ID_PALETTES_LOADED_AS_THEY_ARE, "Palettes loaded as they are")
                                   : S(ID_256_COLOUR_SCREENS_PALETTES_THROUGH_THIS, "256-colour screens' palettes through this curve (restart PrismD)"));
                     break;
+                case GAD_POWER: {
+                    LONG m = ((struct StringInfo *)gad->SpecialInfo)->LongInt;
+                    char msg[80];
+                    if (m < 0) m = 0;
+                    if (m > 240) m = 240;
+                    g->prefs.powerSave = m;
+                    GT_SetGadgetAttrs(gad, g->win, NULL, GTIN_Number, (ULONG)m, TAG_END);
+                    if (m)
+                        snprintf(msg, sizeof(msg), S(ID_MONITORS_GO_DARK_AFTER_MINUTES, "Monitors go dark after %ld minutes without input"), (long)m);
+                    else
+                        snprintf(msg, sizeof(msg), "%s", S(ID_MONITORS_NEVER_GO_DARK, "Monitors never go dark (Sleep 0)"));
+                    set_status(g, msg);
+                    break;
+                }
                 case GAD_SETSIZE:
                 case GAD_W:                      /* Return in a field: as Set size */
                 case GAD_H:

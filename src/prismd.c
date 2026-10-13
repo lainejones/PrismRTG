@@ -35,6 +35,9 @@
 #include <graphics/view.h>
 #include <intuition/intuitionbase.h>
 #include <intuition/screens.h>
+#include <exec/interrupts.h>
+#include <devices/input.h>
+#include <devices/inputevent.h>
 #include <utility/tagitem.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
@@ -2672,6 +2675,241 @@ static BOOL init_card(UBYTE k)
 
 #define TEMPLATE "BOARD/K,PREFS/K,LOG/S,P96CARD/K,P96MONITOR/K"
 
+/* ---- monitor power saving (POWERSAVE in PrismPrefs) -------------------
+ *
+ * After POWERSAVE minutes without a key or mouse event, every board showing
+ * an RTG picture goes dark: through its driver's setPower (the Cirrus
+ * boards: the picture off, and on the 5426/5428 both syncs off, so that the
+ * monitor sleeps) or, without one, by PrismD - a black palette on a
+ * 256-colour screen, else a cleared bitmap in VRAM on display. Any input
+ * brings the picture back, and so does a mode change or the monitor switch.
+ * While dark the board's display start and palette calls only take note:
+ * a program flipping its buffers or cycling colours keeps it dark. */
+static volatile ULONG inputSeen;        /* key and mouse events, from the handler */
+static struct Interrupt idleInt;
+static struct MsgPort *idlePort;
+static struct IOStdReq *idleReq;
+static ULONG idleSecs, idleCount, powerPoll;
+static BOOL dark;
+static struct PowerState {
+    BOOL active, hw, wanted;
+    ULONG want;                          /* the display start asked for while dark */
+    struct PBitMap *black;
+    void (*start)(struct PrismBoard *, ULONG);
+    BOOL (*mode)(struct PrismBoard *, struct PrismMode *);
+    void (*palette)(struct PrismBoard *, UWORD, UWORD, const UBYTE *);
+    void (*sw)(struct PrismBoard *, BOOL);
+    void (*cursor)(struct PrismBoard *, BOOL);
+} pw[MAX_CARDS];
+static void power_wake(void);
+
+static struct InputEvent *idle_handler(struct InputEvent *ev __asm("a0"), APTR data __asm("a1"))
+{
+    struct InputEvent *e;
+    (void)data;
+    for (e = ev; e; e = e->ie_NextEvent)
+        if (e->ie_Class == IECLASS_RAWKEY || e->ie_Class == IECLASS_RAWMOUSE ||
+            e->ie_Class == IECLASS_POINTERPOS || e->ie_Class == IECLASS_NEWPOINTERPOS) {
+            inputSeen++;
+            break;
+        }
+    return ev;
+}
+
+static int pw_card(struct PrismBoard *b)
+{
+    UBYTE k;
+    for (k = 0; k < ncards; k++)
+        if (cards[k].b == b)
+            return k;
+    return 0;
+}
+
+/* the board's calls while it is dark */
+static void dark_start(struct PrismBoard *b, ULONG off)
+{
+    struct PowerState *s = &pw[pw_card(b)];
+    s->want = off;
+    s->wanted = TRUE;
+}
+static void dark_palette(struct PrismBoard *b, UWORD first, UWORD count, const UBYTE *rgb)
+{
+    (void)b; (void)first; (void)count; (void)rgb;   /* push_palette reloads all on waking */
+}
+static void dark_cursor(struct PrismBoard *b, BOOL on)
+{
+    (void)b; (void)on;                  /* pointer_on shows it again on waking */
+}
+static BOOL dark_mode(struct PrismBoard *b, struct PrismMode *m)
+{
+    power_wake();
+    return b->setMode(b, m);
+}
+static void dark_switch(struct PrismBoard *b, BOOL rtg)
+{
+    power_wake();
+    b->setSwitch(b, rtg);
+}
+
+/* every board showing a picture goes dark (lock held) */
+static void power_dark(void)
+{
+    static const UBYTE black[256 * 3];
+    UBYTE k;
+    for (k = 0; k < ncards; k++) {
+        struct CardState *cs = &cst[k];
+        struct PrismBoard *B = cards[k].b;
+        struct PowerState *s = &pw[k];
+        memset(s, 0, sizeof(*s));
+        if (!cs->rtgOn || !cs->curMode || !cs->shownPbm || cs->testPbm)
+            continue;
+        if (B->waitBlit)
+            B->waitBlit(B);
+        if (B->setPower) {
+            B->setPower(B, 4);
+            s->hw = TRUE;
+        } else if (cs->shownPbm->bpp == 1) {
+            B->setPalette(B, 0, 256, black);
+        } else if (!(B->flags & (PBF_SHADOW | PBF_PRESENT))) {
+            struct PBitMap *p = pbm_new(&cards[k], cs->shownPbm->w, cs->curMode->m.height,
+                                        cs->shownPbm->depth, cs->shownPbm->fmt, NULL, TRUE, TRUE);
+            if (!p || !p->inVram || p->bpr != cs->shownPbm->bpr) {
+                dbg("power: no black bitmap for card %ld - left on\n", (LONG)k);
+                if (p)
+                    pbm_free(p);
+                continue;
+            }
+            p->locks++;                      /* VRAM paging leaves it where it is */
+            s->black = p;
+            B->setDisplayStart(B, p->vramOff);
+        } else
+            continue;                         /* a 16/32-bit shadow board: left on */
+        if ((B->flags & PBF_HW_CURSOR) && B->cursorShow)
+            B->cursorShow(B, FALSE);
+        s->start = B->setDisplayStart;   B->setDisplayStart = dark_start;
+        s->palette = B->setPalette;      B->setPalette = dark_palette;
+        s->mode = B->setMode;            B->setMode = dark_mode;
+        s->sw = B->setSwitch;            B->setSwitch = dark_switch;
+        s->cursor = B->cursorShow;
+        if (B->cursorShow)
+            B->cursorShow = dark_cursor;
+        s->active = TRUE;
+        dbg("power: card %ld dark (%s)\n", (LONG)k, s->hw ? "board" : s->black ? "black bitmap" : "black palette");
+    }
+    dark = TRUE;                             /* until the next input, even if no board could */
+}
+
+/* the pictures back (lock held) */
+static void power_wake(void)
+{
+    ULONG secs, micros;
+    UBYTE k;
+    if (!dark)
+        return;
+    dark = FALSE;
+    /* a full POWERSAVE period from now, whatever woke it (an input, or a
+     * program's mode change: no going dark again a second later) */
+    CurrentTime(&secs, &micros);
+    idleSecs = secs;
+    for (k = 0; k < ncards; k++) {
+        struct CardState *cs = &cst[k];
+        struct PrismBoard *B = cards[k].b;
+        struct PowerState *s = &pw[k];
+        if (!s->active)
+            continue;
+        s->active = FALSE;
+        B->setDisplayStart = s->start;
+        B->setPalette = s->palette;
+        B->setMode = s->mode;
+        B->setSwitch = s->sw;
+        B->cursorShow = s->cursor;
+        if (s->hw)
+            B->setPower(B, 0);
+        if (s->wanted)
+            B->setDisplayStart(B, s->want);
+        else if (s->black && cs->shownPbm && cs->shownPbm->inVram)
+            B->setDisplayStart(B, scrolled_start(cs->shownPbm));
+        if (s->black) {
+            s->black->locks--;
+            pbm_free(s->black);
+            s->black = NULL;
+        }
+        if (cs->shownVP)
+            push_palette(cs->shownVP);
+        if (ptrOn == &cards[k] && cs->shownVP)
+            pointer_on(cs->shownVP, &cards[k]);
+        dbg("power: card %ld back on\n", (LONG)k);
+    }
+}
+
+static void power_init(void)
+{
+    if (!(idlePort = CreateMsgPort()))
+        return;
+    if (!(idleReq = (struct IOStdReq *)CreateIORequest(idlePort, sizeof(*idleReq)))) {
+        DeleteMsgPort(idlePort);
+        idlePort = NULL;
+        return;
+    }
+    if (OpenDevice((STRPTR)"input.device", 0, (struct IORequest *)idleReq, 0)) {
+        DeleteIORequest((struct IORequest *)idleReq);
+        DeleteMsgPort(idlePort);
+        idleReq = NULL;
+        idlePort = NULL;
+        return;
+    }
+    idleInt.is_Node.ln_Type = NT_INTERRUPT;
+    idleInt.is_Node.ln_Pri = 100;            /* ahead of Intuition (50) */
+    idleInt.is_Node.ln_Name = (char *)"PrismD power saving";
+    idleInt.is_Code = (void (*)(void))idle_handler;
+    idleReq->io_Command = IND_ADDHANDLER;
+    idleReq->io_Data = &idleInt;
+    DoIO((struct IORequest *)idleReq);
+}
+
+static void power_quit(void)
+{
+    LOCK_QUIET();
+    power_wake();
+    ReleaseSemaphore(&lock);
+    if (!idleReq)
+        return;
+    idleReq->io_Command = IND_REMHANDLER;
+    idleReq->io_Data = &idleInt;
+    DoIO((struct IORequest *)idleReq);
+    CloseDevice((struct IORequest *)idleReq);
+    DeleteIORequest((struct IORequest *)idleReq);
+    DeleteMsgPort(idlePort);
+    idleReq = NULL;
+}
+
+/* the main loop, every tick */
+static void power_tick(void)
+{
+    ULONG secs, micros;
+    if (inputSeen != idleCount) {
+        idleCount = inputSeen;
+        CurrentTime(&secs, &micros);
+        idleSecs = secs;
+        if (dark) {
+            LOCK_QUIET();
+            power_wake();
+            ReleaseSemaphore(&lock);
+        }
+        return;
+    }
+    if (dark || !prefs.powerSave || !idleReq || ++powerPoll % 50)
+        return;
+    CurrentTime(&secs, &micros);
+    if (!idleSecs || secs < idleSecs)        /* the first look, or the clock was set back */
+        idleSecs = secs;
+    if (secs - idleSecs >= (ULONG)prefs.powerSave * 60) {
+        LOCK();
+        power_dark();
+        ReleaseSemaphore(&lock);
+    }
+}
+
 int main(void)
 {
     LONG args[5] = { 0 };
@@ -2829,11 +3067,14 @@ int main(void)
     install();
     STAGE("patches in");
     if (cgx_init())
-        printf("PrismD: cybergraphics.library 41 added\n");
+        printf("PrismD: cybergraphics.library 43 added\n");
     if (cgxvideo_init())
         printf("PrismD: cgxvideo.library 42 added (video layers, composed in software)\n");
     if (chipTop != 0xffffffffUL && p96_init())
         printf("PrismD: Picasso96API.library 2 added (Prism's own)\n");
+    power_init();                     /* POWERSAVE: the input handler */
+    if (arexx_init())
+        printf("PrismD: ARexx port PRISM open\n");
 
     memset(&sem, 0, sizeof(sem));
     sem.ss.ss_Link.ln_Name = PRISM_SEMNAME;
@@ -2841,6 +3082,7 @@ int main(void)
     sem.version = PRISM_VERSION;
     sem.release = PRISM_RELEASE;
     sem.releaseDate = PRISM_RELDATE;
+    sem.powerSave = &prefs.powerSave;
     sem.boardName = board.name;
     sem.task = FindTask(NULL);
     sem.numModes = prism_mode_count();
@@ -2925,6 +3167,8 @@ int main(void)
             present_tick();
             pointer_tick();
             p96_pip_hw_tick();            /* layers on a board's overlay follow their windows */
+            power_tick();                 /* POWERSAVE */
+            arexx_tick();                 /* the PRISM port */
             if (prefs.log || ++tick % 25 == 0)
                 dbg_flush();
         }
@@ -2966,6 +3210,8 @@ int main(void)
         printf("PrismD: another program patched the same functions - can't quit\n");
         AddSemaphore(&sem.ss);
     }
+    arexx_quit();
+    power_quit();
     for (k = 0; k < ncards; k++)
         if (cst[k].rtgOn)
             cards[k].b->setSwitch(cards[k].b, FALSE);
@@ -3016,4 +3262,58 @@ BOOL prism_mode_by_id(ULONG id, struct PrismModeInfo *mi)
         return FALSE;
     return prism_mode((ULONG)(r - cst[r->card->index].modes) +
                       (r->card->index ? cst[0].nmodes : 0), mi);
+}
+
+/* ---- for arexx.c (PrismD's own task) ---------------------------------- */
+
+const char *prism_board_name(UBYTE k)
+{
+    return k < ncards && cards[k].b->name ? cards[k].b->name : NULL;
+}
+
+ULONG prism_board_vram(UBYTE k, ULONG *freeBytes)
+{
+    if (k >= ncards)
+        return 0;
+    if (freeBytes) {
+        LOCK_QUIET();
+        *freeBytes = vram_free_bytes(&cards[k], NULL);
+        ReleaseSemaphore(&lock);
+    }
+    return cards[k].b->vramSize;
+}
+
+ULONG prism_board_flags(UBYTE k)
+{
+    return k < ncards ? cards[k].b->flags : 0;
+}
+
+LONG prism_test(UBYTE k, ULONG w, ULONG h, ULONG bits, ULONG hz)
+{
+    return test_begin_on(k, w, h, bits, hz, "ARexx");
+}
+
+void prism_test_stop(void)
+{
+    test_end();
+}
+
+void prism_sleep(BOOL on)
+{
+    LOCK();
+    if (on)
+        power_dark();
+    else
+        power_wake();
+    ReleaseSemaphore(&lock);
+}
+
+BOOL prism_is_dark(void)
+{
+    return dark;
+}
+
+UBYTE *prism_setting(char which)
+{
+    return which == 'P' ? &prefs.powerSave : which == 'L' ? &prefs.log : NULL;
 }

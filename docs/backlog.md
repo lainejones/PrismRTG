@@ -5,6 +5,7 @@ roughly in the order users ask for them. Kept here so nothing is
 forgotten; none of these is promised for a given release.
 
 Done 2026-10-11: the mode editor (2), video overlay (1), gamma (4), oversized screens with autoscroll (5), larger pointers (6).
+Done 2026-10-13: monitor power saving (3), the CyberGraphX 43 calls (7), Picasso96's settings (9), the ARexx port (10), and a native Picasso IV driver (Zorro III mode).
 
 1. **Video overlay.** A YUV window with colour keying through
    cgxvideo.library and the Picasso96 PIP calls with YUV formats, for
@@ -24,7 +25,11 @@ Done 2026-10-11: the mode editor (2), video overlay (1), gamma (4), oversized sc
    offered; the ZZ9000 has a fixed list in its firmware.
 3. **Monitor power saving.** DPMS standby and off from the screen
    blanker. The Cirrus register bits are in docs/cirrus-picasso2-hw.md
-   (GRE on the 5428, the sync bits on the 5434); nothing uses them yet.
+   (GRE on the 5428, the sync bits on the 5434). Done 2026-10-13:
+   POWERSAVE= minutes ("Sleep" in PrismPrefs), an input handler in PrismD,
+   the board hook setPower (the Cirrus boards but the Picasso IV: SR1
+   picture off and both GRE syncs off), else a black palette or a cleared
+   bitmap in VRAM on display.
 4. **Gamma and brightness** per board where the DAC supports it.
 5. **Oversized screens with autoscroll.** A screen larger than the display
    that pans with the pointer. The panning primitive exists in the
@@ -38,14 +43,18 @@ Done 2026-10-11: the mode editor (2), video overlay (1), gamma (4), oversized sc
    PrismD to show; the ZZ9000's CLUT cursor would take 15 pens if it did.)
 7. **The newer CyberGraphX calls** (WritePixelArrayAlpha,
    ProcessPixelArray, ...). Check which our cybergraphics.library answers;
-   a few modern programs use them.
+   a few modern programs use them. Done 2026-10-13: WritePixelArrayAlpha,
+   BltTemplateAlpha and ProcessPixelArray (every operation); the library
+   says version 43.
 8. **Planar screens on the card** with a chunky conversion, so old
    planar-only software runs on a card-only monitor. Low priority now
    that screen mode promotion exists.
 9. **Settings from the other systems.** Reading Picasso96's settings on a
-   first install so a user who switches keeps their resolutions.
+   first install so a user who switches keeps their resolutions. Done
+   2026-10-13: PrismImport (DEVS:Picasso96Settings, IFF P96S), offered by
+   the installer on a first install.
 10. **An ARexx port** on PrismD or PrismPrefs, for scripts that switch
-    modes or query the board.
+    modes or query the board. Done 2026-10-13: PRISM on PrismD (docs/arexx.md).
 11. **Update mirror.** An HTTPS directory of the author's with latest.txt
     and the archive, for the MIRROR= setting (the tool supports it; no
     mirror exists yet).

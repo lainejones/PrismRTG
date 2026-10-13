@@ -38,7 +38,7 @@ extern struct Library *UtilityBase;
 
 static struct Library *cgxBase;
 static char libName[] = "cybergraphics.library";
-static char libId[] = "cybergraphics.library 41.99 (3.10.2026) Prism";
+static char libId[] = "cybergraphics.library 43.0 (13.10.2026) Prism";
 
 /* ---- call log --------------------------------------------------------- */
 
@@ -47,7 +47,8 @@ enum { F_IsCyberModeID, F_BestCModeID, F_CModeRequest, F_AllocCModeList, F_FreeC
        F_WriteRGBPixel, F_ReadPixelArray, F_WritePixelArray, F_MovePixelArray,
        F_InvertPixelArray, F_FillPixelArray, F_DoCDrawMethod, F_CVideoCtrl,
        F_LockBitMap, F_UnLockBitMap, F_UnLockBitMapTags, F_ExtractColor,
-       F_WriteLUTPixelArray, F_Private, F_COUNT };
+       F_WriteLUTPixelArray, F_WritePixelArrayAlpha, F_BltTemplateAlpha, F_ProcessPixelArray,
+       F_Private, F_COUNT };
 static UWORD calls[F_COUNT];
 
 #ifdef PRISM_TRACE
@@ -803,6 +804,308 @@ static ULONG C_ExtractColor(struct RastPort *rp __asm("a0"), struct BitMap *bm _
     return TRUE;
 }
 
+/* ---- the alpha and processing calls (CyberGraphX 43 and later) ------ */
+
+/* One pixel of any Prism bitmap as 0x00RRGGBB, and back. 8-bit bitmaps go
+ * through their palette and the nearest pen; a 32-bit pixel keeps its alpha
+ * byte (pf_put would clear it). Caller holds the lock. */
+static ULONG px_get(struct PBitMap *p, const UBYTE *d)
+{
+    if (p->bpp == 1)
+        return p->rgbTab ? p->rgbTab[*d] : 0;
+    return pf_get(p->fmt, d);
+}
+
+static UBYTE alpha_at(UBYTE fmt)
+{
+    return fmt == PF_ARGB32 ? 0 : (fmt == PF_BGRA32 || fmt == PF_RGBA32) ? 3 : 0xff;
+}
+
+static void px_put(struct PBitMap *p, ULONG c, UBYTE *d)
+{
+    UBYTE ai = alpha_at(p->fmt), a = 0;
+    if (p->bpp == 1) {
+        *d = nearest(p, c);
+        return;
+    }
+    if (ai != 0xff)
+        a = d[ai];
+    pf_put(p->fmt, c, d);
+    if (ai != 0xff)
+        d[ai] = a;
+}
+
+/* c over d with alpha a (0-255) */
+static ULONG blend(ULONG d, ULONG c, ULONG a)
+{
+    ULONG r, g, b, dr = (d >> 16) & 255, dg = (d >> 8) & 255, db = d & 255;
+    if (a >= 255) return c & 0xffffff;
+    if (!a) return d;
+    r = dr + ((((c >> 16) & 255) - (LONG)dr) * (LONG)a) / 255;
+    g = dg + ((((c >> 8) & 255) - (LONG)dg) * (LONG)a) / 255;
+    b = db + (((c & 255) - (LONG)db) * (LONG)a) / 255;
+    return (r << 16) | (g << 8) | b;
+}
+
+struct AlphaCtx {
+    const UBYTE *src;            /* ARGB pixels, or 8-bit alpha values     */
+    LONG  srcMod;
+    WORD  sx, sy, dx, dy;
+    ULONG ga;                    /* global alpha, 0-255                    */
+    ULONG colour;                /* BltTemplateAlpha: the pen's colour     */
+    BOOL  tmpl;
+    LONG  count;
+};
+
+static void alpha_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
+                     WORD ox, WORD oy, void *ctx)
+{
+    struct AlphaCtx *a = ctx;
+    UBYTE sb = a->tmpl ? 1 : 4;
+    WORD x, y;
+    for (y = by0; y <= by1; y++) {
+        const UBYTE *s = a->src + (LONG)(a->sy + (y - oy - a->dy)) * a->srcMod +
+                         (LONG)(a->sx + (bx0 - ox - a->dx)) * sb;
+        UBYTE *d = p->pix + (ULONG)y * p->bpr + bx0 * p->bpp;
+        for (x = bx0; x <= bx1; x++, s += sb, d += p->bpp) {
+            ULONG al = (ULONG)s[0] * a->ga / 255;
+            ULONG c = a->tmpl ? a->colour : ((ULONG)s[1] << 16) | ((ULONG)s[2] << 8) | s[3];
+            if (al)
+                px_put(p, blend(px_get(p, d), c, al), d);
+        }
+        a->count += bx1 - bx0 + 1;
+    }
+}
+
+/* WritePixelArrayAlpha: ARGB source pixels blended in by their own alpha,
+ * scaled by the global alpha (its top 8 bits: 0xffffffff = as they are). */
+static ULONG C_WritePixelArrayAlpha(UBYTE *src __asm("a0"), UWORD sx __asm("d0"), UWORD sy __asm("d1"),
+                                    UWORD smod __asm("d2"), struct RastPort *rp __asm("a1"),
+                                    UWORD dx __asm("d3"), UWORD dy __asm("d4"), UWORD w __asm("d5"),
+                                    UWORD h __asm("d6"), ULONG galpha __asm("d7"))
+{
+    struct AlphaCtx a;
+    LOG(F_WritePixelArrayAlpha, "WritePixelArrayAlpha %dx%d at %d,%d alpha %lx\n", w, h, dx, dy, galpha);
+    if (!rp_ours(rp) || !src || !w || !h || !(galpha >> 24))
+        return 0;
+    a.src = src; a.srcMod = smod; a.sx = sx; a.sy = sy; a.dx = dx; a.dy = dy;
+    a.ga = galpha >> 24; a.tmpl = FALSE; a.count = 0;
+    clip_rp(rp, dx, dy, dx + w - 1, dy + h - 1, alpha_cb, &a);
+    return a.count;
+}
+
+/* BltTemplateAlpha: the RastPort's foreground colour, blended in through an
+ * array of 8-bit alpha values (anti-aliased text, mostly). */
+static void C_BltTemplateAlpha(UBYTE *src __asm("a0"), LONG sx __asm("d0"), LONG smod __asm("d1"),
+                               struct RastPort *rp __asm("a1"), LONG dx __asm("d2"),
+                               LONG dy __asm("d3"), LONG w __asm("d4"), LONG h __asm("d5"))
+{
+    struct AlphaCtx a;
+    struct PBitMap *p;
+    LOG(F_BltTemplateAlpha, "BltTemplateAlpha %ldx%ld at %ld,%ld\n", w, h, dx, dy);
+    if (!rp_ours(rp) || !src || w <= 0 || h <= 0)
+        return;
+    p = pbm_get(rp->BitMap);
+    a.src = src; a.srcMod = smod; a.sx = sx; a.sy = 0; a.dx = dx; a.dy = dy;
+    a.ga = 255; a.tmpl = TRUE; a.count = 0;
+    a.colour = p->rgbTab ? p->rgbTab[rp->FgPen & 255] : 0xffffff;
+    clip_rp(rp, dx, dy, dx + w - 1, dy + h - 1, alpha_cb, &a);
+}
+
+#ifndef POP_BRIGHTEN
+#define POP_BRIGHTEN   0
+#define POP_DARKEN     1
+#define POP_SETALPHA   2
+#define POP_TINT       3
+#define POP_BLUR       4
+#define POP_COLOR2GREY 5
+#define POP_NEGATIVE   6
+#define POP_NEGFADE    7
+#define POP_TINTFADE   8
+#define POP_GRADIENT   9
+#define POP_SHIFTRGB   10
+#define GRADTYPE_HORIZONTAL   0
+#define GRADTYPE_VERTICAL     1
+#define GRADTYPE_RECTANGLE    2
+#define GRADTYPE_LINEAR_ANGLE 3
+#define GRADTYPE_RADIAL       4
+#define PPAOPTAG_FADEFULLSCALE 0x85231020
+#define PPAOPTAG_FADEOFFSET    0x85231021
+#define PPAOPTAG_GRADIENTTYPE  0x85231022
+#define PPAOPTAG_GRADCOLOR1    0x85231023
+#define PPAOPTAG_GRADCOLOR2    0x85231024
+#define PPAOPTAG_GRADSYMCENTER 0x85231026
+#endif
+
+struct ProcCtx {
+    ULONG op;
+    LONG  value;
+    WORD  x0, y0, w, h;          /* the operation's rectangle, RastPort coordinates */
+    ULONG c1, c2;                /* gradient colours                        */
+    UBYTE grad;                  /* GRADTYPE_*                              */
+    LONG  full, offset;          /* gradient/fade length and start, pixels  */
+    LONG  count;
+};
+
+static UBYTE clamp8(LONG v)
+{
+    return v < 0 ? 0 : v > 255 ? 255 : (UBYTE)v;
+}
+
+/* where a pixel lies along a fade or gradient, 0-255 */
+static ULONG along(const struct ProcCtx *c, WORD rx, WORD ry, BOOL vertical)
+{
+    LONG pos = vertical ? ry : rx, len = vertical ? c->h : c->w;
+    if (c->full > 0) { len = c->full; pos -= c->offset; }
+    if (len <= 1) return 0;
+    if (pos <= 0) return 0;
+    if (pos >= len - 1) return 255;
+    return (ULONG)(pos * 255 / (len - 1));
+}
+
+static ULONG grad_t(const struct ProcCtx *c, WORD rx, WORD ry)
+{
+    switch (c->grad) {
+    case GRADTYPE_VERTICAL:
+        return along(c, rx, ry, TRUE);
+    case GRADTYPE_RECTANGLE: case GRADTYPE_RADIAL: {
+        /* 0 in the middle, 255 at the edge (rectangle: the nearer edge) */
+        LONG hw = c->w / 2 ? c->w / 2 : 1, hh = c->h / 2 ? c->h / 2 : 1;
+        LONG ax = rx - c->w / 2, ay = ry - c->h / 2, tx, ty;
+        if (ax < 0) ax = -ax;
+        if (ay < 0) ay = -ay;
+        tx = ax * 255 / hw; ty = ay * 255 / hh;
+        if (c->grad == GRADTYPE_RECTANGLE)
+            return clamp8(tx > ty ? tx : ty);
+        {
+            ULONG d2 = (ULONG)(tx * tx + ty * ty), r = 0, bit = 1UL << 16;
+            while (bit) {                           /* integer square root */
+                if (d2 >= r + bit) { d2 -= r + bit; r = (r >> 1) + bit; }
+                else r >>= 1;
+                bit >>= 2;
+            }
+            return clamp8(r);
+        }
+    }
+    }
+    return along(c, rx, ry, FALSE);        /* horizontal (and linear angle) */
+}
+
+static ULONG grey(ULONG c)
+{
+    ULONG l = (((c >> 16) & 255) * 77 + ((c >> 8) & 255) * 151 + (c & 255) * 28) >> 8;
+    return (l << 16) | (l << 8) | l;
+}
+
+static ULONG proc_pixel(const struct ProcCtx *c, ULONG px, WORD rx, WORD ry)
+{
+    LONG v = c->value;
+    switch (c->op) {
+    case POP_BRIGHTEN: case POP_DARKEN:
+        if (c->op == POP_DARKEN) v = -v;
+        return ((ULONG)clamp8(((px >> 16) & 255) + v) << 16) |
+               ((ULONG)clamp8(((px >> 8) & 255) + v) << 8) | clamp8((px & 255) + v);
+    case POP_TINT:
+        /* the colour's alpha says how strongly; none given = half */
+        return blend(px, c->value, (ULONG)c->value >> 24 ? (ULONG)c->value >> 24 : 128);
+    case POP_COLOR2GREY:
+        return grey(px);
+    case POP_NEGATIVE:
+        return px ^ 0xffffff;
+    case POP_NEGFADE:
+        return blend(px, px ^ 0xffffff, along(c, rx, ry, FALSE));
+    case POP_TINTFADE:
+        return blend(px, c->value, along(c, rx, ry, FALSE));
+    case POP_GRADIENT:
+        return blend(c->c1, c->c2, grad_t(c, rx, ry));
+    case POP_SHIFTRGB:
+        return ((px & 0xff) << 16) | ((px >> 8) & 0xffff);   /* r,g,b -> b,r,g */
+    }
+    return px;
+}
+
+static void proc_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
+                    WORD ox, WORD oy, void *ctx)
+{
+    struct ProcCtx *c = ctx;
+    WORD x, y;
+    if (c->op == POP_SETALPHA) {
+        UBYTE ai = alpha_at(p->fmt);
+        if (ai != 0xff && p->bpp == 4)
+            for (y = by0; y <= by1; y++) {
+                UBYTE *d = p->pix + (ULONG)y * p->bpr + bx0 * 4 + ai;
+                for (x = bx0; x <= bx1; x++, d += 4)
+                    *d = clamp8(c->value);
+            }
+        c->count += (LONG)(bx1 - bx0 + 1) * (by1 - by0 + 1);
+        return;
+    }
+    if (c->op == POP_BLUR) {
+        /* a box blur over this visible piece, rows then columns, radius 1-8
+         * from the value (0-255) */
+        WORD n = bx1 - bx0 + 1, m = by1 - by0 + 1, r = 1 + clamp8(c->value) * 7 / 255, i;
+        ULONG *buf = AllocVec((ULONG)n * m * sizeof(ULONG), MEMF_ANY), *line;
+        if (!buf)
+            return;
+        for (y = 0; y < m; y++)
+            for (x = 0; x < n; x++)
+                buf[y * n + x] = px_get(p, p->pix + (ULONG)(by0 + y) * p->bpr + (bx0 + x) * p->bpp);
+        for (i = 0; i < 2; i++) {                  /* i 0: along rows, 1: along columns */
+            WORD len = i ? m : n, cnt = i ? n : m, k;
+            LONG step = i ? n : 1, lstep = i ? 1 : n;
+            line = (ULONG *)PRISM_ROWBUF;
+            if (len > 4096) break;
+            for (k = 0; k < cnt; k++) {
+                ULONG *row = buf + k * lstep;
+                for (x = 0; x < len; x++) {
+                    LONG sr = 0, sg = 0, sbl = 0, cn = 0, j;
+                    for (j = x - r; j <= x + r; j++) {
+                        ULONG q = row[(j < 0 ? 0 : j >= len ? len - 1 : j) * step];
+                        sr += (q >> 16) & 255; sg += (q >> 8) & 255; sbl += q & 255; cn++;
+                    }
+                    line[x] = ((ULONG)(sr / cn) << 16) | ((ULONG)(sg / cn) << 8) | (ULONG)(sbl / cn);
+                }
+                for (x = 0; x < len; x++)
+                    row[x * step] = line[x];
+            }
+        }
+        for (y = 0; y < m; y++)
+            for (x = 0; x < n; x++)
+                px_put(p, buf[y * n + x], p->pix + (ULONG)(by0 + y) * p->bpr + (bx0 + x) * p->bpp);
+        FreeVec(buf);
+        c->count += (LONG)n * m;
+        return;
+    }
+    for (y = by0; y <= by1; y++) {
+        UBYTE *d = p->pix + (ULONG)y * p->bpr + bx0 * p->bpp;
+        WORD ry = y - oy - c->y0;
+        for (x = bx0; x <= bx1; x++, d += p->bpp)
+            px_put(p, proc_pixel(c, px_get(p, d), x - ox - c->x0, ry), d);
+        c->count += bx1 - bx0 + 1;
+    }
+}
+
+/* ProcessPixelArray: brighten, darken, tint, blur, grey, negative, fades,
+ * gradients, set alpha and channel shift over a rectangle of a RastPort. */
+static ULONG C_ProcessPixelArray(struct RastPort *rp __asm("a1"), ULONG x __asm("d0"), ULONG y __asm("d1"),
+                                 ULONG w __asm("d2"), ULONG h __asm("d3"), ULONG op __asm("d4"),
+                                 LONG value __asm("d5"), struct TagItem *tags __asm("a2"))
+{
+    struct ProcCtx c;
+    LOG(F_ProcessPixelArray, "ProcessPixelArray %lux%lu at %lu,%lu op %lu value %ld\n", w, h, x, y, op, value);
+    if (!rp_ours(rp) || !w || !h || op > POP_SHIFTRGB)
+        return 0;
+    memset(&c, 0, sizeof(c));
+    c.op = op; c.value = value; c.x0 = x; c.y0 = y; c.w = w; c.h = h;
+    c.grad = GetTagData(PPAOPTAG_GRADIENTTYPE, GRADTYPE_HORIZONTAL, tags);
+    c.c1 = GetTagData(PPAOPTAG_GRADCOLOR1, 0, tags) & 0xffffff;
+    c.c2 = GetTagData(PPAOPTAG_GRADCOLOR2, 0xffffff, tags) & 0xffffff;
+    c.full = GetTagData(PPAOPTAG_FADEFULLSCALE, 0, tags);
+    c.offset = GetTagData(PPAOPTAG_FADEOFFSET, 0, tags);
+    clip_rp(rp, x, y, x + w - 1, y + h - 1, proc_cb, &c);
+    return c.count;
+}
+
 static APTR funcs[] = {
     (APTR)L_Open, (APTR)L_Close, (APTR)L_Expunge, (APTR)L_Null,
     (APTR)L_Null, (APTR)L_Null, (APTR)L_Null, (APTR)L_Null,           /* private 1-4 */
@@ -831,6 +1134,10 @@ static APTR funcs[] = {
     (APTR)C_ExtractColor,
     (APTR)L_Null,                                                     /* private 7 */
     (APTR)C_WriteLUTPixelArray,
+    (APTR)L_Null, (APTR)L_Null,                                       /* private 8-9 */
+    (APTR)C_WritePixelArrayAlpha,                                     /* -216 */
+    (APTR)C_BltTemplateAlpha,                                         /* -222 */
+    (APTR)C_ProcessPixelArray,                                        /* -228 */
     (APTR)-1
 };
 
@@ -850,8 +1157,8 @@ BOOL cgx_init(void)
     cgxBase->lib_Node.ln_Type = NT_LIBRARY;
     cgxBase->lib_Node.ln_Name = libName;
     cgxBase->lib_Flags = LIBF_SUMUSED | LIBF_CHANGED;
-    cgxBase->lib_Version = 41;
-    cgxBase->lib_Revision = 99;
+    cgxBase->lib_Version = 43;
+    cgxBase->lib_Revision = 0;
     cgxBase->lib_IdString = libId;
     AddLibrary(cgxBase);
     return TRUE;

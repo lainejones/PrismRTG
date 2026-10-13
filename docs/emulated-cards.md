@@ -32,8 +32,8 @@ did not include.
 | Spectrum 28/24 (GD5428, Z3) | picasso2 | 8:ok 16:ok 24:ok 32:no mode | 65 ok / 0 wrong | 0/29 failed | 4888 | 1396 | 4630 | 2374 | 18186 | 429 | 4788 | 1387 | 4625 | 17575 |
 | Graffity (GD5428, Z2) | picasso2 | 8:ok 16:ok 24:ok 32:no mode | 65 ok / 0 wrong | 0/29 failed | 4896 | 1393 | 4646 | 2380 | 18066 | 429 | 4797 | 1390 | 4654 | 17566 |
 | Graffity (GD5428, Z3) | picasso2 | 8:ok 16:ok 24:ok 32:no mode | 65 ok / 0 wrong | 0/29 failed | 4899 | 1398 | 4640 | 2373 | 17932 | 429 | 4811 | 1390 | 4635 | 17357 |
-| Picasso IV (GD5446, Z2) | not detected: no PrismRTG driver for this chip | - | - | - | - | - | - | - | - | - | - | - | - | - |
-| Picasso IV (GD5446, Z3) | not detected: no PrismRTG driver for this chip | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| Picasso IV (GD5446, Z2) | not supported: two boards and banked VRAM (its P96 driver can drive it) | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| Picasso IV (GD5446, Z3) | picasso2 (1.1 beta 8) | 8:ok 16:ok 24:ok 32:ok | every check 0 wrong (68060 box, 2026-10-13) | 0/29 failed | - | - | - | - | - | - | - | - | - | - |
 | UAE RTG, Zorro II (4 MB) | UAEGFX | 8:ok 16:ok 24:no mode 32:ok | 65 ok / 0 wrong | 0/29 failed | 5839 | 305 | 5315 | 2382 | 18005 | 3356 | 5735 | 354 | 5306 | 17475 |
 | UAE RTG, Zorro II (4 MB) | P96 | 8:ok 16:ok 24:no mode 32:ok | 65 ok / 0 wrong | 0/29 failed | 5731 | 1589 | 5358 | 2316 | 18349 | 3365 | 5662 | 1583 | 5340 | 18040 |
 | UAE RTG, Zorro III (16 MB) | UAEGFX | 8:ok 16:ok 24:no mode 32:ok | 65 ok / 0 wrong | 0/29 failed | 5763 | 301 | 5373 | 2325 | 18535 | 3347 | 5681 | 339 | 5380 | 18160 |
@@ -48,8 +48,15 @@ did not include.
   register window at board + 0x800000 and VRAM at + 0xC00000). Both
   rows are from the rerun.
 * **Picasso IV** (Village Tronic 2167/21-24, Cirrus GD5446 with a
-  flicker fixer) is emulated by WinUAE but has no PrismRTG driver: a
-  different chip generation and a driver of its own.
+  flicker fixer) had no PrismRTG driver in this run. From 1.1 beta 8 the
+  Cirrus driver takes it in Zorro III mode: one 32 MB node (2167/24), the
+  VGA ports at + 0x600000, VRAM at + 0x1000000 (WinUAE's plain-order
+  window, so the Picasso II's little-endian formats apply), the GD5446
+  run as a GD5434, and the monitor switch through the flicker fixer's
+  byte at + 0x404 (after a byte at + 0 maps the control bytes in) and CR51
+  bit 3. WinUAE needs the card's flash ROM (picassoiv_rom_file) to
+  emulate it. Its row was measured on the gate's 68060 box, not this
+  68030, so it has no speed figures; Zorro II mode stays unsupported.
 * **UAE RTG through the P96 adapter** (`BOARD=P96 P96CARD=uaegfx.card`)
   ran in its own boot: the native UAE driver keeps the emulator's card
   context after PrismD stops, so the two cannot follow each other in one

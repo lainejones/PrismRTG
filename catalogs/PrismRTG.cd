@@ -402,3 +402,12 @@ Auto: only the first board PrismD finds
 ID_PRISMD_ISN_T_RUNNING_IT_READS_THESE (128//)
 PrismD isn't running. It reads these when it starts.
 ;
+ID_MONITORS_GO_DARK_AFTER_MINUTES (129//)
+Monitors go dark after %ld minutes without input
+;
+ID_MONITORS_NEVER_GO_DARK (130//)
+Monitors never go dark (Sleep 0)
+;
+ID_SLEEP (131//)
+Sleep
+;

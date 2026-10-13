@@ -343,6 +343,21 @@ struct Screen;
 BOOL present_reserve(struct Screen *);
 struct PBitMap *prism_display_bitmap(struct PrismCard *c);   /* what card c shows */
 UBYTE prism_ncards(void);                    /* boards PrismD drives (1 or 2) */
+/* for arexx.c (prismd.c): board k's name, VRAM bytes (and free), PBF_* flags; the
+ * Test picture on board k (PRISM_TEST_*) and its end; dark now or awake now
+ * (POWERSAVE's two states); 'P' POWERSAVE minutes, 'L' the log level */
+const char *prism_board_name(UBYTE k);
+ULONG prism_board_vram(UBYTE k, ULONG *freeBytes);
+ULONG prism_board_flags(UBYTE k);
+LONG  prism_test(UBYTE k, ULONG w, ULONG h, ULONG bits, ULONG hz);
+void  prism_test_stop(void);
+void  prism_sleep(BOOL on);
+BOOL  prism_is_dark(void);
+UBYTE *prism_setting(char which);
+/* arexx.c: PrismD's ARexx port "PRISM" (docs/arexx.md) */
+BOOL  arexx_init(void);
+void  arexx_tick(void);                      /* the main loop, every tick */
+void  arexx_quit(void);
 struct Screen *prism_display_layers(struct PrismCard *,struct PBitMap **,struct PBitMap **,WORD *,WORD *,UWORD *,UWORD *);
 BOOL p96_pip_active(struct Screen *);
 /* the screen's PIPs into the frame; frame rows skipY0..skipY1-1 are left alone */

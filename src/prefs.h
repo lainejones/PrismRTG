@@ -29,6 +29,8 @@
  *                                palette is loaded through; 256-colour
  *                                screens and the Test picture, since the
  *                                DAC is where it applies)
+ *   POWERSAVE=10                (minutes without a key or mouse event before the
+ *                                boards' monitors go dark; 0 or OFF = never)
  *   UPDATES=OFF|GITHUB|MIRROR|BOTH  (where PrismUpdate looks for a newer release)
  *   MIRROR=https://...          (a mirror's directory: latest.txt and the archive)
  *
@@ -109,6 +111,8 @@ struct PrismPrefs {
     UBYTE hwOverlay;                 /* HWOVERLAY=ON: video layers on the board's
                                         own overlay where it has one (ZZ9000) */
     UBYTE updates;                   /* UPD_*: where PrismUpdate looks         */
+    UBYTE powerSave;                 /* POWERSAVE= minutes idle before the monitors
+                                        go dark, 0 = never (1-240)              */
     char mirror[PREFS_MIRROR + 1];   /* MIRROR=: an HTTPS directory            */
     char p96card[256];
     char p96monitor[256];

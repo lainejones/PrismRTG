@@ -20,7 +20,7 @@
 #include <intuition/screens.h>
 
 #define PRISM_SEMNAME     "prism"
-#define PRISM_VERSION     7
+#define PRISM_VERSION     8
 /* the release this build belongs to, as the release tag names it without
  * its "v" and "-beta" (v1.1-beta5 = 1.1b5): PrismUpdate compares it with
  * GitHub's */
@@ -103,6 +103,10 @@ struct PrismSem {
      * issue #12): PRISM_RELEASE ("1.1b7") and the $VER date, dd.mm.yy */
     const char *release;
     const char *releaseDate;
+    /* version 8: POWERSAVE, the minutes without input before the boards'
+     * monitors go dark (0 = never). PrismPrefs writes it on a running PrismD,
+     * which takes it up at once. */
+    UBYTE *powerSave;
 };
 #define PRISM_HW_FILL     (1UL << 0)
 #define PRISM_HW_COPY     (1UL << 1)    /* within one bitmap            */

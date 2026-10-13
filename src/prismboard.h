@@ -171,6 +171,13 @@ struct PrismBoard {
      * takes it down. One overlay per board. */
     BOOL (*overlaySet)(struct PrismBoard *b, const struct PrismOverlay *o);
     void (*overlayOff)(struct PrismBoard *b);
+
+    /* Monitor power (optional, for POWERSAVE): 0 = on, 1 = blank (picture
+     * off, syncs running), 2 = standby (HSYNC off), 3 = suspend (VSYNC
+     * off), 4 = off (both syncs off). A board that can only blank treats
+     * 2-4 as 1. NULL: PrismD blanks by itself (a black palette, or a black
+     * bitmap in VRAM on display). Called with the lock held, no blit running. */
+    void (*setPower)(struct PrismBoard *b, UBYTE level);
 };
 
 struct PrismOverlay {

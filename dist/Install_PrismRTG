@@ -99,7 +99,7 @@
                     (set back "\n\nPicasso96 is back where it was."))
             ))
         ; (run takes ONE string: several are not joined - always (cat ...) the command)
-        (run (cat "Delete >NIL: C:PrismD C:PrismSetup C:PrismProbe C:PrismUpdate \"" (tackon mon "Prism")
+        (run (cat "Delete >NIL: C:PrismD C:PrismSetup C:PrismProbe C:PrismUpdate C:PrismImport \"" (tackon mon "Prism")
                   "\" \"" (tackon mon "Prism.info") "\" QUIET"))
         (run "Delete >NIL: LIBS:Prism/PICASSO2.driver LIBS:Prism/ZZ9000.driver LIBS:Prism/Z3660.driver LIBS:Prism/P96.driver LIBS:Prism/UAEGFX.driver QUIET")
         (run "Delete >NIL: LIBS:Prism QUIET")
@@ -156,7 +156,7 @@
             (choices "Install anyway" "Cancel")
             (default 0)))
         (exit "Nothing was installed." (quiet))))
-(if (or (= card "1") (= card "5") (= card "6") (= card "7") (= card "8"))
+(if (or (= card "1") (= card "5") (= card "6") (= card "7") (= card "8") (= card "10"))
     (message "PrismRTG has been tested on this kind of card (" cardname ") only in an "
              "emulator, never on the real hardware.\n\n"
              "It may work, or the picture may be wrong. Picasso96 is not touched "
@@ -218,6 +218,8 @@
 (copyfiles (source "Drivers") (dest "LIBS:Prism") (all) (nogauge))
 (copyfiles (source "PrismSetup") (dest "C:") (nogauge))
 (copyfiles (source "PrismProbe") (dest "C:") (nogauge))
+(if (exists "PrismImport")
+    (copyfiles (source "PrismImport") (dest "C:") (nogauge)))
 (if (exists "PrismUpdate")
     (copyfiles (source "PrismUpdate") (dest "C:") (nogauge)))
 (copyfiles (source "Prism") (dest mon) (infos) (nogauge))
@@ -230,12 +232,28 @@
 (run "Protect >NIL: C:PrismSetup +e")
 (run "Protect >NIL: C:PrismProbe +e")
 (run "Protect >NIL: C:PrismUpdate +e")
+(run "Protect >NIL: C:PrismImport +e")
 (run (cat "Protect >NIL: \"" (tackon mon "Prism") "\" +e"))
 (run "Protect >NIL: SYS:Prefs/PrismPrefs +e")
 (if (= wipe 1)
     (run "Delete >NIL: ENVARC:Prism.prefs ENV:Prism.prefs QUIET"))
 (if (not (exists "ENVARC:Prism.prefs"))
     (run "SYS:Prefs/PrismPrefs >NIL: SAVE"))
+
+; the screen sizes and depths switched on in Picasso96, on a first install
+; (PrismImport; added to PrismRTG's own, which stay on)
+(if (and fresh (exists "C:PrismImport")
+         (or (exists "DEVS:Picasso96Settings") (exists "ENVARC:Picasso96Settings")))
+    (if (askbool
+            (prompt "Picasso96's settings are on this Amiga. Switch on the same screen "
+                    "sizes and depths in PrismRTG?")
+            (help "PrismImport reads Picasso96's settings file and switches on every "
+                  "size and depth that was switched on there (sizes PrismRTG does not "
+                  "have become custom sizes, up to four). PrismRTG's own sizes stay on "
+                  "as well. Picasso96's settings are only read, never changed. You can "
+                  "run C:PrismImport again later, and PrismPrefs changes the list.")
+            (default 1))
+        (run "C:PrismImport >NIL:")))
 
 ; Prism's own Picasso96API.library: the working one is inside PrismD; this
 ; small file is for programs that look for it in LIBS:. Ours is a few hundred
