@@ -57,5 +57,28 @@ int main(void)
         assert(board_expand(&b,&s,0,0,8,1,t,1,0,0,FALSE)==PR_DECLINED);
         assert(board_line(&b,&s,0,0,5,5,0)==PR_DECLINED);
     }
-    puts("Z3660 fills, copies, text and lines passed");return 0;
+    /* planar: two planes staged one after the other from the source byte,
+     * P2C for 8-bit; for 32-bit a B,G,R,0 table first, then the planes; a
+     * missing plane is left out of the plane mask; minterms other than a
+     * copy, and 16-bit without a pen table, are declined */
+    {
+        static UBYTE stage[2048];static UBYTE p0[8]={0,0x81,0,0,0,0x42,0,0},p1[8]={0,0x0f,0,0,0,0xf0,0,0};
+        static ULONG rgb[256];struct BitMap bm={0};struct PrismPlanar pl={&bm,rgb,NULL};
+        bm.BytesPerRow=4;bm.Rows=2;bm.Depth=2;bm.Planes[0]=p0;bm.Planes[1]=p1;rgb[1]=0x00112233UL;
+        p.stage=stage;s.format=PF_CLUT8;s.bpp=1;s.pitch=128;s.width=64;s.allocation=2048;
+        assert(board_planar(&b,&pl,&s,8,0,3,5,8,2,0xc0,0xff)==PR_DONE);
+        assert(R32(&b,REG_DMA_OP)==OP_P2C && U16(GD_PITCH1)==1 && U16(GD_USER1)==2 && U16(GD_USER0)==0xff);
+        assert(stage[0]==0x81 && stage[1]==0x42 && stage[2]==0x0f && stage[3]==0xf0);
+        assert(U16(GD_X0)==0 && U16(GD_X1)==3 && U16(GD_Y1)==5 && U16(GD_X2)==8 && U16(GD_Y2)==2);
+        assert(mailbox[GD_MINTERM]==MINTERM_SRC);
+        s.format=PF_BGRA32;s.bpp=4;s.pitch=256;s.allocation=4096;bm.Planes[1]=NULL;
+        assert(board_planar(&b,&pl,&s,9,0,0,0,7,2,0xca,0xff)==PR_DONE);
+        assert(R32(&b,REG_DMA_OP)==OP_P2D && U16(GD_X0)==1 && U16(GD_USER0)==0xfd);
+        assert(stage[4]==0x33 && stage[5]==0x22 && stage[6]==0x11 && stage[7]==0 && stage[1024]==0x81);
+        assert(board_planar(&b,&pl,&s,8,0,0,0,8,2,0x30,0xff)==PR_DECLINED);
+        assert(board_planar(&b,&pl,&s,8,0,0,0,8,2,0xc0,0x01)==PR_DECLINED);
+        s.format=PF_RGB565BE;s.bpp=2;s.pitch=128;s.allocation=2048;
+        assert(board_planar(&b,&pl,&s,8,0,0,0,8,2,0xc0,0xff)==PR_DECLINED);
+    }
+    puts("Z3660 fills, copies, text, lines and planar passed");return 0;
 }

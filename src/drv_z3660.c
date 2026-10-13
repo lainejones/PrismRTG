@@ -23,9 +23,9 @@
  * 320-wide modes pixel-doubled, the palette, the hardware pointer, the
  * monitor switch on the CIA-B lines the firmware's monitor_switch names
  * (or ENV:Z3660-MONSWITCH, for a preset that leaves the switch to the OS).
- * Fills, copies, text and solid lines on the firmware's blitter (the
- * mailbox ops). Not yet: planar blits (PrismD draws them on the CPU),
- * the board with autoconfig_rtg NO (no ConfigDev: not probed).
+ * Fills, copies, text, solid lines and planar blits (plain copies) on the
+ * firmware's blitter (the mailbox ops).
+ * Not yet: the board with autoconfig_rtg NO (no ConfigDev: not probed).
  */
 #include <exec/types.h>
 #include <libraries/configvars.h>
@@ -77,6 +77,8 @@ extern struct ExpansionBase *ExpansionBase;
 #define OP_COPYRECT     3             /* inside one bitmap, overlap allowed  */
 #define OP_COPY_NOMASK  4             /* between two bitmaps, with a minterm */
 #define OP_TEMPLATE     5             /* 1-bit template to colour            */
+#define OP_P2C          7             /* planar to 8-bit chunky              */
+#define OP_P2D          8             /* planar to direct colour, via a table */
 #define OP_PAN          10
 #define OP_SPRITE_XY    11
 #define OP_SPRITE_COLOR 12
@@ -337,8 +339,79 @@ static void z3_WaitBlit(struct PrismBoard *b)
     (void)R32(b, REG_FW_VERSION);
 }
 
+/* Planar blits (icons, gadget imagery, planar games): the planes of the
+ * source rectangle are staged above VRAM - after a 256-entry pixel table
+ * for 16/32-bit destinations - and P2C or P2D builds the pixels on the
+ * card. Plain copies only (minterm 0xCx, all planes), as the other
+ * adapters do. Staging stays under Forbid() like every mailbox user, so
+ * it is bounded: a blit that needs more than STAGE_MAX goes to the CPU.
+ * Table entries are placed like fill colours; a 32-bit pixel is
+ * B,G,R,0 as PrismD writes it, a 16-bit one comes from the pen table. */
+static enum PrismResult z3_planar(struct PrismBoard *b, const struct PrismPlanar *src,
+                                  const struct PrismSurface *d, UWORD sx, UWORD sy,
+                                  UWORD dx, UWORD dy, UWORD w, UWORD h, UBYTE mt, UBYTE mask)
+{
+    struct Z3Priv *p = b->priv;
+    const struct BitMap *bm = src->bitmap;
+    ULONG line = (((ULONG)sx & 7) + w + 7) >> 3, plane = line * h;
+    ULONG table = d->bpp == 1 ? 0 : 256 * 4;
+    volatile UBYTE *o = p->stage;
+    UBYTE layers = 0xff, i;
+    ULONG n;
+    UWORD r;
+
+    if (!z3_surface(b, d) || (mt & 0xf0) != 0xc0 || mask != 0xff ||
+        (d->bpp == 2 && !src->pens16) || w > 32767 || h > 32767 ||
+        table + plane * bm->Depth > STAGE_MAX)
+        return PR_DECLINED;
+    Forbid();
+    for (n = 0; table && n < 256; n++, o += 4) {
+        ULONG c = src->colours ? src->colours[n] : n * 0x010101UL;
+        *(volatile ULONG *)o = d->bpp == 2 ? (ULONG)src->pens16[n] << 16 :
+            (c & 0xff) << 24 | ((c >> 8) & 0xff) << 16 | ((c >> 16) & 0xff) << 8;
+    }
+    for (i = 0; i < bm->Depth; i++) {
+        const UBYTE *s = (const UBYTE *)bm->Planes[i];
+        if (s == (const UBYTE *)-1) {          /* all ones */
+            for (n = 0; n < plane; n++)
+                *o++ = 0xff;
+            continue;
+        }
+        if (!s) {                              /* no plane: leave it out */
+            layers &= ~(1 << i);
+            o += plane;
+            continue;
+        }
+        for (s += (ULONG)sy * bm->BytesPerRow + (sx >> 3), r = 0; r < h; r++, s += bm->BytesPerRow) {
+            for (n = 0; n + 4 <= line; n += 4, o += 4)
+                *(volatile ULONG *)o = *(const ULONG *)(s + n);
+            for (; n < line; n++)
+                *o++ = s[n];
+        }
+    }
+    GD32(p, GD_OFFSET0, d->offset);
+    GD32(p, GD_OFFSET1, STAGE_OFFSET - VRAM_OFFSET);
+    GD16(p, GD_PITCH0, d->pitch >> 2);
+    GD16(p, GD_PITCH1, line);
+    GD16(p, GD_X0, sx & 7);
+    GD16(p, GD_X1, dx);
+    GD16(p, GD_Y1, dy);
+    GD16(p, GD_X2, w);
+    GD16(p, GD_Y2, h);
+    GD16(p, GD_USER0, layers);
+    GD16(p, GD_USER1, bm->Depth);
+    GD32(p, GD_RGB0, d->bpp == 2 ? 0xffff : 0xffffffffUL);
+    GD8(p, GD_U8USER0, z3_cm(d->bpp));
+    GD8(p, GD_MASK, 0xff);
+    GD8(p, GD_MINTERM, MINTERM_SRC);
+    W32(b, REG_DMA_OP, d->bpp == 1 ? OP_P2C : OP_P2D);
+    Permit();
+    return PR_DONE;
+}
+
 static const struct PrismOps z3_ops = { .fill = z3_fill, .copy = z3_copy,
-                                         .expand = z3_expand, .line = z3_line };
+                                         .expand = z3_expand, .line = z3_line,
+                                         .planar = z3_planar };
 
 /* Firmware mode ids by output size and refresh, with the pixel clock in MHz
  * (docs/z3660-hw.md 2). */
