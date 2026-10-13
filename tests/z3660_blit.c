@@ -39,5 +39,23 @@ int main(void)
     s.pitch=128;s.flags=0;assert(board_fill(&b,&s,0,0,8,1,0)==PR_DECLINED);
     s.flags=PSF_VRAM;s.offset=16000;assert(board_fill(&b,&s,0,0,8,1,0)==PR_DECLINED);
     s.offset=0;s.format=PF_RGB24;s.bpp=3;assert(board_fill(&b,&s,0,0,8,1,0)==PR_DECLINED);
-    puts("Z3660 fills and copies passed");return 0;
+    /* text: the template staged, the destination pitch in bytes, JAM2 unless
+     * transparent; a solid line with its steps and pitch in longs */
+    {
+        static UBYTE stage[64];const UBYTE t[4]={0xf0,0x0f,0xaa,0x55};
+        p.stage=stage;s.format=PF_RGB565BE;s.bpp=2;s.pitch=128;s.allocation=2048;
+        assert(board_expand(&b,&s,3,1,10,2,t,2,0xf800,0x001f,FALSE)==PR_DONE);
+        assert(R32(&b,REG_DMA_OP)==OP_TEMPLATE && mailbox[GD_U8USER1]==1);
+        assert(U16(GD_PITCH0)==128 && U16(GD_PITCH1)==2 && U32(GD_OFFSET1)==STAGE_OFFSET-VRAM_OFFSET);
+        assert(U32(GD_RGB0)==0xf8000000UL && U32(GD_RGB1)==0x001f0000UL);
+        assert(stage[0]==0xf0 && stage[1]==0x0f && stage[2]==0xaa && stage[3]==0x55);
+        assert(board_expand(&b,&s,3,1,10,2,t,2,0xf800,0,TRUE)==PR_DONE && mailbox[GD_U8USER1]==0);
+        assert(board_line(&b,&s,1,9,20,-4,0xffff)==PR_DONE);
+        assert(R32(&b,REG_DMA_OP)==OP_DRAWLINE && U16(GD_USER0)==20 && U16(GD_USER1)==0xffff);
+        assert(U16(GD_PITCH0)==32 && (WORD)U16(GD_Y1)==-4 && U32(GD_RGB0)==0xffff0000UL);
+        s.format=PF_RGB24;s.bpp=3;s.pitch=192;s.allocation=4096;
+        assert(board_expand(&b,&s,0,0,8,1,t,1,0,0,FALSE)==PR_DECLINED);
+        assert(board_line(&b,&s,0,0,5,5,0)==PR_DECLINED);
+    }
+    puts("Z3660 fills, copies, text and lines passed");return 0;
 }

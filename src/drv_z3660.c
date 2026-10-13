@@ -23,8 +23,8 @@
  * 320-wide modes pixel-doubled, the palette, the hardware pointer, the
  * monitor switch on the CIA-B lines the firmware's monitor_switch names
  * (or ENV:Z3660-MONSWITCH, for a preset that leaves the switch to the OS).
- * Fills and copies on the firmware's blitter (the mailbox ops).
- * Not yet: text, lines and planar blits (PrismD draws them on the CPU),
+ * Fills, copies, text and solid lines on the firmware's blitter (the
+ * mailbox ops). Not yet: planar blits (PrismD draws them on the CPU),
  * the board with autoconfig_rtg NO (no ConfigDev: not probed).
  */
 #include <exec/types.h>
@@ -62,7 +62,8 @@ extern struct ExpansionBase *ExpansionBase;
 #define VRAM_OFFSET     0x200000
 #define VRAM_END        0x3000000     /* as Z3660.card: 46 MB               */
 #define GFXDATA_OFFSET  0x3200000     /* the mailbox, from the board base   */
-#define STAGE_OFFSET    0x3210000     /* sprite image staging               */
+#define STAGE_OFFSET    0x3210000     /* sprite image and template staging  */
+#define STAGE_MAX       0x10000
 
 /* firmware colour modes */
 #define CM_8BIT     0
@@ -71,9 +72,11 @@ extern struct ExpansionBase *ExpansionBase;
 #define CM_555      3
 
 /* mailbox ops */
+#define OP_DRAWLINE     1
 #define OP_FILLRECT     2
 #define OP_COPYRECT     3             /* inside one bitmap, overlap allowed  */
 #define OP_COPY_NOMASK  4             /* between two bitmaps, with a minterm */
+#define OP_TEMPLATE     5             /* 1-bit template to colour            */
 #define OP_PAN          10
 #define OP_SPRITE_XY    11
 #define OP_SPRITE_COLOR 12
@@ -89,6 +92,7 @@ extern struct ExpansionBase *ExpansionBase;
 #define GD_OFFSET0   0
 #define GD_OFFSET1   4
 #define GD_RGB0      8
+#define GD_RGB1      12
 #define GD_PITCH0    40
 #define GD_PITCH1    42
 #define GD_MASK      57
@@ -101,12 +105,18 @@ extern struct ExpansionBase *ExpansionBase;
 #define GD_Y2        28
 #define GD_USER0     32
 #define GD_USER1     34
+#define GD_USER2     36
+#define GD_USER3     38
 #define GD_U8USER0   48
+#define GD_U8USER1   49               /* draw mode                           */
+#define GD_U8USER2   50               /* line pattern offset                 */
+#define GD_U8USER3   51               /* line padding                        */
 #define GD_U8OFFSET  59
 #define GD_CLUT1     92
 
 struct Z3Priv {
     UBYTE *gfxdata;
+    volatile UBYTE *stage; /* staging above VRAM: templates, the pointer image */
     ULONG mode;            /* last MODE value written                    */
     ULONG origRes;         /* last ORIG_RES value                        */
     UWORD width;           /* bitmap width in pixels (pan x[1])          */
@@ -245,6 +255,81 @@ static enum PrismResult z3_copy(struct PrismBoard *b, const struct PrismSurface 
     return PR_DONE;
 }
 
+/* Text: the template is copied to the staging area above VRAM, then one
+ * RECT_TEMPLATE command colours it in. Its destination pitch is in bytes. */
+static enum PrismResult z3_expand(struct PrismBoard *b, const struct PrismSurface *d,
+                                  UWORD x, UWORD y, UWORD w, UWORD h, const UBYTE *tmpl,
+                                  ULONG mod, ULONG fg, ULONG bg, BOOL transparent)
+{
+    struct Z3Priv *p = b->priv;
+    ULONG rb = ((ULONG)w + 7) >> 3, n;
+    volatile UBYTE *o = p->stage;
+    UWORD r;
+
+    if (!z3_surface(b, d) || d->pitch > 65535 || rb * h > STAGE_MAX)
+        return PR_DECLINED;
+    Forbid();
+    for (r = 0; r < h; r++, tmpl += mod) {
+        /* longs where they fit: each card access costs the same */
+        for (n = 0; n + 4 <= rb; n += 4, o += 4)
+            *(volatile ULONG *)o = *(const ULONG *)(tmpl + n);
+        for (; n < rb; n++)
+            *o++ = tmpl[n];
+    }
+    GD16(p, GD_X0, x);
+    GD16(p, GD_X1, w);
+    GD16(p, GD_X2, 0);
+    GD16(p, GD_Y0, y);
+    GD16(p, GD_Y1, h);
+    GD16(p, GD_Y2, 0);
+    GD32(p, GD_OFFSET0, d->offset);
+    GD32(p, GD_OFFSET1, STAGE_OFFSET - VRAM_OFFSET);
+    GD16(p, GD_PITCH0, d->pitch);
+    GD16(p, GD_PITCH1, rb);
+    GD32(p, GD_RGB0, z3_colour(d->bpp, fg));
+    GD32(p, GD_RGB1, z3_colour(d->bpp, bg));
+    GD8(p, GD_U8USER0, z3_cm(d->bpp));
+    GD8(p, GD_U8USER1, transparent ? 0 : 1);      /* JAM1 : JAM2 */
+    GD8(p, GD_MASK, 0xff);
+    W32(b, REG_DMA_OP, OP_TEMPLATE);
+    Permit();
+    return PR_DONE;
+}
+
+/* Solid lines. The firmware seeds its error term with L/2 and steps the
+ * shorter axis when it reaches L: round(i * S / L) with halves rounded
+ * up, PrismD's own rule (line_solid in render.c), for odd and even L. */
+static enum PrismResult z3_line(struct PrismBoard *b, const struct PrismSurface *d,
+                                WORD x, WORD y, WORD dx, WORD dy, ULONG c)
+{
+    struct Z3Priv *p = b->priv;
+    UWORD ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
+    UWORD len = ax >= ay ? ax : ay;
+
+    if (!z3_surface(b, d))
+        return PR_DECLINED;
+    Forbid();
+    GD32(p, GD_OFFSET0, d->offset);
+    GD16(p, GD_PITCH0, d->pitch >> 2);
+    GD8(p, GD_U8USER0, z3_cm(d->bpp));
+    GD8(p, GD_U8USER1, 0);                        /* JAM1 */
+    GD8(p, GD_U8USER2, 0);
+    GD8(p, GD_U8USER3, 0);
+    GD8(p, GD_MASK, 0xff);
+    GD32(p, GD_RGB0, z3_colour(d->bpp, c));
+    GD16(p, GD_X0, x);
+    GD16(p, GD_X1, dx);
+    GD16(p, GD_Y0, y);
+    GD16(p, GD_Y1, dy);
+    GD16(p, GD_USER0, len);
+    GD16(p, GD_USER1, 0xffff);                    /* solid */
+    GD16(p, GD_USER2, 0);
+    GD16(p, GD_USER3, len >> 1);
+    W32(b, REG_DMA_OP, OP_DRAWLINE);
+    Permit();
+    return PR_DONE;
+}
+
 /* Commands finish inside their register write; a read of a register
  * orders it before the CPU's next access to VRAM. */
 static void z3_WaitBlit(struct PrismBoard *b)
@@ -252,7 +337,8 @@ static void z3_WaitBlit(struct PrismBoard *b)
     (void)R32(b, REG_FW_VERSION);
 }
 
-static const struct PrismOps z3_ops = { .fill = z3_fill, .copy = z3_copy };
+static const struct PrismOps z3_ops = { .fill = z3_fill, .copy = z3_copy,
+                                         .expand = z3_expand, .line = z3_line };
 
 /* Firmware mode ids by output size and refresh, with the pixel clock in MHz
  * (docs/z3660-hw.md 2). */
@@ -431,7 +517,7 @@ static void z3_WaitVBlank(struct PrismBoard *b)
 static void z3_CursorImage(struct PrismBoard *b, const UBYTE *img, const UBYTE *rgb)
 {
     struct Z3Priv *p = b->priv;
-    volatile ULONG *o = (volatile ULONG *)(b->regs + STAGE_OFFSET);
+    volatile ULONG *o = (volatile ULONG *)p->stage;
     UWORD x, y;
 
     Forbid();
@@ -531,6 +617,7 @@ static BOOL z3_probe(struct PrismBoard *b)
     b->maxHeight = 1440;
     b->priv      = p;
     p->gfxdata   = (UBYTE *)cd->cd_BoardAddr + GFXDATA_OFFSET;
+    p->stage     = (UBYTE *)cd->cd_BoardAddr + STAGE_OFFSET;
     p->ciab      = (volatile UBYTE *)CIAB;
     p->monSwitch = R32(b, REG_MONSWITCH) & (MS_CTS | MS_SEL | MS_CTS_LEVEL | MS_SEL_LEVEL);
     z3_monswitch_env(p);
