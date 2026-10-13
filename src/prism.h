@@ -25,9 +25,9 @@
  * its "v" and "-beta" (v1.1-beta5 = 1.1b5): PrismUpdate compares it with
  * GitHub's */
 #ifndef PRISM_RELEASE
-#define PRISM_RELEASE     "1.1b6"
+#define PRISM_RELEASE     "1.1b7"
 #endif
-#define PRISM_RELDATE     "12.10.26"      /* the $VER date, dd.mm.yy */
+#define PRISM_RELDATE     "13.10.26"      /* the $VER date, dd.mm.yy */
 
 /* Boot failsafe: DEVS:Monitors/Prism creates this before starting PrismD
  * and PrismD deletes it after a minute. Found at boot, it means the last
@@ -100,7 +100,7 @@ struct PrismSem {
     ULONG boardAddr[2];
     UBYTE boardsSwapped;         /* PRIMARY=SECOND took effect at start */
     /* version 7: the release this PrismD belongs to, for tools that show it (xSysInfo,
-     * issue #12): PRISM_RELEASE ("1.1b6") and the $VER date, dd.mm.yy */
+     * issue #12): PRISM_RELEASE ("1.1b7") and the $VER date, dd.mm.yy */
     const char *release;
     const char *releaseDate;
 };

@@ -39,6 +39,14 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.1 beta 7
+  The Z3660's RTG output, by Jusii: a driver for the Z3660 accelerator's
+  HDMI framebuffer (firmware 1.03 or newer, autoconfig_rtg YES), with its
+  hardware pointer, the monitor switch (monitor_switch in z3660cfg.txt, or
+  ENV:Z3660-MONSWITCH), and fills, copies, text, lines and planar blits on
+  its blitter. Written and tested on his Z3660; the rest of PrismRTG is
+  unchanged from beta 6.
+
 New in 1.1 beta 6 (tested in emulators only - please report what you see)
   Two graphics boards at once, each with its own monitor (PRISM: and
   PRISM2:) and front screen. Screen mode promotion: programs that open a
