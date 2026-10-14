@@ -102,6 +102,9 @@ static void default_nothing(struct PrismBoard *b)
 }
 void board_defaults(struct PrismBoard *b)
 {
+    /* a driver linked into the program (PrismTest, the host tests) has the
+     * program's own operation table; a module filled opsSize in already */
+    if (b->ops && !b->opsSize) b->opsSize = sizeof(struct PrismOps);
     if (!b->checkMode)  b->checkMode  = default_checkMode;
     if (!b->setPalette) b->setPalette = default_setPalette;
     if (!b->setSwitch)  b->setSwitch  = default_setSwitch;

@@ -44,6 +44,9 @@ struct PrismOps {
     void (*release)(struct PrismBoard *, ULONG);
     BOOL (*read)(struct PrismBoard *, const struct PrismSurface *, ULONG, APTR, ULONG);
     BOOL (*write)(struct PrismBoard *, const struct PrismSurface *, ULONG, const void *, ULONG);
+#ifdef PRISM_ABI_PROBE
+    BOOL (*future)(struct PrismBoard *);     /* test only: an operation added later */
+#endif
 };
 #define PRISM_OPS_ABI 1
 #define PRISM_OPS_SIZE sizeof(struct PrismOps)

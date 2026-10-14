@@ -27,24 +27,51 @@ driver process.
 
 ## Protocol and compatibility
 
-`driver_module.h` defines protocol version 3. The loader allocates a public
-request with a reply port and starts the module with the request address as
-its argument. The message, magic, ABI version and request-size prefix is
-fixed. Before probing hardware, a module compares the protocol version,
-request size, board ABI version and size, a board-layout signature, and
-operation-table ABI version and size. The board carries a `PrismOps`
-table, so the operation ABI is `PRISM_OPS_ABI` = 1 (`boardops.h`) and the
-size is that of `struct PrismOps`. Changes to the operation table must
-increment `PRISM_OPS_ABI`; extensions to the board interface must update
-the board ABI.
+From 1.1 beta 8 the interface is frozen: `driver_module.h` defines protocol
+version 4 and `prismboard.h` board ABI 3, and a driver built against them
+keeps loading in every later PrismD with the same two numbers. The loader
+allocates a public request with a reply port and starts the module with the
+request address as its argument. The message, magic, protocol version and
+request-size prefix is fixed in every protocol; after it come PrismD's
+board ABI, its sizes of `struct PrismBoard`, `struct PrismMode`,
+`struct PrismOps` and `struct PrismDriverConfig`, a layout signature, and
+pointers to a cleared board and to the settings. Before probing hardware the
+module accepts the request only if
 
-The layout signature includes every board member's offset and size, mode
-member offsets, scalar representation and pixel-format count. Semantic
-changes to callback contracts or pixel-format meanings must increment the
-board ABI even if no C structure changes size. Incompatible modules return
-an explicit mismatch result before touching hardware; missing executables,
-resource failures and probes finding no board have different diagnostics.
+* the protocol, board ABI, operation-table ABI and layout signature are its
+  own, and
+* every one of PrismD's structures is at least as big as the driver's.
 
+So a later PrismD, whose structures have grown, takes an older driver; a
+driver newer than PrismD is refused with a message ("doesn't fit this
+PrismD"), because PrismD would not know what it fills in. The rules that
+keep this true:
+
+* The four structures only ever get new members **at their end**, and new
+  members are optional: 0 or NULL means "this driver doesn't do it", which
+  is what PrismD's cleared board holds for a driver that predates them.
+* The layout signature covers the members frozen at board ABI 3 (every
+  `PrismBoard` member up to and including `opsSize`, every `PrismMode`
+  member up to `pitchPixels`): their offsets and sizes, never a structure's
+  size. Appending leaves it unchanged; reordering a frozen member does not.
+* The module reports the size of its operation table in `opsSize`, and an
+  operation appended to `struct PrismOps` later is only called through
+  `BOARD_CAN`, which checks it lies inside that table.
+* A new pixel format is appended to `enum PrismFormat`; a driver is only
+  ever asked for the formats it put in `formats`.
+* A change no older driver can live with - a changed callback contract, a
+  frozen member that must move - increments `PRISM_BOARD_ABI`, and every
+  driver must be rebuilt.
+
+The gate's `abicheck.py` checks the freeze both ways with
+`tests/abiprobe.sh`, which builds a PrismD with a member, a hook and an
+operation appended (`PRISM_ABI_PROBE`): the release's drivers must pass every
+drawing check under it without the appended operation being called, and a
+driver built the same way must be refused by the release's PrismD.
+Incompatible modules return an explicit mismatch result before touching
+hardware; missing executables, resource failures and probes finding no board
+have different diagnostics. (Protocol 3, before 1.1 beta 8, needed exact
+sizes and a signature over every member: any addition broke every driver.)
 After successful probing the module publishes a control port and board
 callbacks, replies to startup, then waits. PrismD may call those callbacks
 while the module's runtime remains alive. On stop, PrismD sends a message

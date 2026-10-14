@@ -8,6 +8,7 @@
 #define PRISMINT_H
 
 #include <exec/types.h>
+#include <stddef.h>
 #include <exec/semaphores.h>
 #include <graphics/gfx.h>
 #include <graphics/rastport.h>
@@ -199,7 +200,9 @@ enum PrismResult pbm_hw_planar(const struct PrismPlanar *, struct PBitMap *, UWO
  * pbm_hw_fill / pbm_hw_copy and the surface operations. */
 /* Can a board do this operation at all (render.c's first choice)? The
  * board of a bitmap p: BOARD_CAN(p->bd, fill). */
-#define BOARD_CAN(b, op) ((b)->ops && (b)->ops->op)
+/* the board has operation op: a table, one big enough to hold it (an older
+ * driver's is shorter), and the operation in it */
+#define BOARD_CAN(b, op) ((b)->ops && offsetof(struct PrismOps, op) < (b)->opsSize && (b)->ops->op)
 
 #define HW_OK(p) ((p)->inVram && \
     !((p)->bd->flags & (PBF_SHADOW | PBF_ACCEL_BROKEN | PBF_SOFTWARE | PBF_PRESENT)))

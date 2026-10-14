@@ -95,8 +95,12 @@ int main(void)
     ExpansionBase=(struct ExpansionBase *)OpenLibrary("expansion.library",37);
     if(GfxBase && ExpansionBase) control=CreateMsgPort();
     if(control) {
-        driverConfig=&r->config;
-        found=driver_probe(&r->board,&r->config);
+        driverConfig=r->config;
+        found=driver_probe(r->board,r->config);
+        /* the size of this driver's operation table, for BOARD_CAN in a
+         * later PrismD whose table is longer */
+        if(found && r->board->ops && !r->board->opsSize)
+            r->board->opsSize=PRISM_OPS_SIZE;
         r->status=found ? PRD_READY : PRD_NOT_FOUND;
     }
     if(r->cancelled) { r->status=PRD_CANCELLED;found=FALSE; }

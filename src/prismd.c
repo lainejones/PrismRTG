@@ -3392,6 +3392,11 @@ int main(void)
                 (board.drawLine || BOARD_CAN(&board, line) ? PRISM_HW_LINE : 0) |
                 (BOARD_CAN(&board, planar) ? PRISM_HW_PLANAR : 0);
     AddSemaphore(&sem.ss);
+#ifdef PRISM_ABI_PROBE
+    printf("PrismD: ABI probe: board %lu bytes here, the driver's ops table %lu; the later operation is %s\n",
+           (unsigned long)sizeof(struct PrismBoard), (unsigned long)board.opsSize,
+           BOARD_CAN(&board, future) ? "CALLABLE (wrong)" : "not called (right)");
+#endif
     printf("PrismD: running (Ctrl-C to quit)\n");
     STAGE("running");
 

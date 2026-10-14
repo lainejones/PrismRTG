@@ -61,7 +61,8 @@ BOOL driver_open(struct PrismBoard *b,const char *name,const struct PrismDriverC
     segment=LoadSeg(path);
     if(!segment) { snprintf(path,sizeof(path),"LIBS:Prism/%s.driver",name);segment=LoadSeg(path); }
     if(!segment) { if(!driverQuiet) printf("PrismD: cannot load %s driver\n",name);return FALSE; }
-    r=AllocVec(sizeof(*r),MEMF_PUBLIC|MEMF_CLEAR);
+    /* the request, then the board and the settings it points to (protocol 4) */
+    r=AllocVec(sizeof(*r)+sizeof(struct PrismBoard)+sizeof(struct PrismDriverConfig),MEMF_PUBLIC|MEMF_CLEAR);
     port=CreateMsgPort();input=Open("NIL:",MODE_OLDFILE);
     if(!r || !port || !input) {
         if(r)FreeVec(r);
@@ -71,9 +72,13 @@ BOOL driver_open(struct PrismBoard *b,const char *name,const struct PrismDriverC
     }
     r->message.mn_ReplyPort=port;r->message.mn_Length=sizeof(*r);
     r->magic=PRISM_DRIVER_MAGIC;r->abi=PRISM_DRIVER_ABI;r->size=sizeof(*r);
-    r->boardABI=PRISM_BOARD_ABI;r->boardSize=sizeof(*b);
+    r->board=(struct PrismBoard *)(r+1);
+    r->config=(struct PrismDriverConfig *)(r->board+1);
+    *r->config=*config;
+    r->boardABI=PRISM_BOARD_ABI;r->boardSize=sizeof(struct PrismBoard);
+    r->modeSize=sizeof(struct PrismMode);r->configSize=sizeof(struct PrismDriverConfig);
     r->boardLayout=driver_board_layout();
-    r->opsABI=PRISM_OPS_ABI;r->opsSize=PRISM_OPS_SIZE;r->config=*config;
+    r->opsABI=PRISM_OPS_ABI;r->opsSize=PRISM_OPS_SIZE;
     r->status=PRD_ABI_MISMATCH;
     snprintf(args,sizeof(args),"%lx\n",(unsigned long)r);
     /* The child borrows Output(), including redirected diagnostic logs.
@@ -107,7 +112,7 @@ BOOL driver_open(struct PrismBoard *b,const char *name,const struct PrismDriverC
     }
     if(r->status!=PRD_READY || !r->control) {
         if(r->status==PRD_ABI_MISMATCH)
-            printf("PrismD: %s driver ABI/version or layout mismatch; reinstall matching modules\n",name);
+            printf("PrismD: %s driver doesn't fit this PrismD (driver protocol %lu, board ABI %lu): use the one from this release, or any from 1.1 beta 8 up to it\n",name,(unsigned long)PRISM_DRIVER_ABI,(unsigned long)PRISM_BOARD_ABI);
         else if(r->status==PRD_NO_RESOURCES)
             printf("PrismD: %s driver could not open its libraries or message port\n",name);
         else if(r->status==PRD_NOT_FOUND) {
@@ -116,7 +121,7 @@ BOOL driver_open(struct PrismBoard *b,const char *name,const struct PrismDriverC
         else printf("PrismD: %s driver startup was cancelled\n",name);
         DeleteMsgPort(port);FreeVec(r);return FALSE;
     }
-    *b=r->board;sl->active=r;sl->replies=port;sl->childTask=childTask;return TRUE;
+    *b=*r->board;sl->active=r;sl->replies=port;sl->childTask=childTask;return TRUE;
 }
 static void slot_close(struct Slot *sl)
 {

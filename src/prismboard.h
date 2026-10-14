@@ -17,8 +17,11 @@
 #include <exec/types.h>
 #include <libraries/configvars.h>
 
-/* Increment when a callback contract or board layout changes. */
-#define PRISM_BOARD_ABI 2UL
+/* Board ABI 3 is frozen from 1.1 beta 8 (driver_module.h, docs/driver-modules.md):
+ * the structures below only get new members at their end, optional ones (0 or
+ * NULL = not supported), and a driver built against an older header keeps
+ * working. Increment only for a change no older driver can live with. */
+#define PRISM_BOARD_ABI 3UL
 
 /* Pixel formats, as the 68k sees them in VRAM (byte order in memory). */
 enum PrismFormat {
@@ -178,6 +181,18 @@ struct PrismBoard {
      * 2-4 as 1. NULL: PrismD blanks by itself (a black palette, or a black
      * bitmap in VRAM on display). Called with the lock held, no blit running. */
     void (*setPower)(struct PrismBoard *b, UBYTE level);
+
+    /* the size of the driver's struct PrismOps (driver_module.c fills it in):
+     * an operation added to the table later is only called where the
+     * driver's table has it (BOARD_CAN) */
+    ULONG opsSize;
+
+    /* frozen up to here (board ABI 3): new members go below, at the end */
+#ifdef PRISM_ABI_PROBE
+    /* test only (the ABI-freeze check): what a later PrismD might add */
+    ULONG futureCount;
+    void (*futureHook)(struct PrismBoard *b);
+#endif
 };
 
 struct PrismOverlay {

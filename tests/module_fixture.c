@@ -22,8 +22,8 @@ int main(void)
     struct Task *me=FindTask(NULL);
     control=CreateMsgPort();
     if(!control) {r->status=PRD_NO_RESOURCES;goto done;}
-    r->board.name="module fixture";
-    r->board.vramSize=(ULONG)me->tc_SPUpper-(ULONG)me->tc_SPLower;
+    r->board->name="module fixture";
+    r->board->vramSize=(ULONG)me->tc_SPUpper-(ULONG)me->tc_SPLower;
     r->status=PRD_READY;r->control=control;
     ReplyMsg(ack);WaitPort(control);ack=GetMsg(control);
     puts("module fixture: final output");

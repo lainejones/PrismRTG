@@ -315,18 +315,24 @@ stand down and nothing a driver does changes.
 
 Three numbers guard the module boundary:
 
-* `PRISM_BOARD_ABI` (`prismboard.h`): the `PrismBoard` contract. Bumped
-  when a callback's meaning or a field changes.
-* `PRISM_OPS_ABI` (`boardops.h`): the operation table.
-* `PRISM_DRIVER_ABI` (`driver_module.h`): the request/handshake protocol.
+* `PRISM_DRIVER_ABI` (`driver_module.h`): the request/handshake protocol, 4.
+* `PRISM_BOARD_ABI` (`prismboard.h`): the `PrismBoard` contract, 3.
+* `PRISM_OPS_ABI` (`boardops.h`): the operation table, 1.
 
-Plus a layout hash over every field's offset and size, so a module built
-against different headers is refused before it touches hardware
-("ABI/version or layout mismatch"). The practical rule: **a module is
-valid for the PrismD it was built with.** A driver distributed on its
-own works only with that exact release, which is why drivers belong in
-the repository: each release then builds and ships them together.
+From 1.1 beta 8 these are frozen (driver-modules.md has the rules): the
+structures only grow at their end, with optional members, and a layout
+signature covers the frozen members. The practical rule: **a module keeps
+working with every later PrismD of the same three numbers**, so a driver
+distributed on its own survives PrismRTG updates. A driver newer than the
+PrismD it is loaded by is refused ("doesn't fit this PrismD"). Drivers in
+the repository are still rebuilt and shipped with each release; one kept
+elsewhere, like a third-party card's, no longer has to be.
 
+When adding to the interface yourself: put new members after `opsSize` in
+`struct PrismBoard` (or at the end of the other three), make 0 / NULL mean
+"not supported", call a new operation only through `BOARD_CAN`, and leave
+`driver_board_layout()` alone. Only a change an older driver cannot survive
+bumps `PRISM_BOARD_ABI`.
 ## 11. The testing ladder
 
 Each rung is a reason to stop and fix before the next:

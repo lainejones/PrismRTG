@@ -67,9 +67,10 @@ half of that.
 
 PrismD loads the selected backend from `LIBS:Prism/<name>.driver`, with
 `PROGDIR:Drivers` as a fallback for running a build in place. The installer
-copies the supplied PICASSO2, ZZ9000, Z3660, P96 and UAEGFX modules. Keep PrismD
-and its modules from the same build; an incompatible module is rejected
-with an ABI/version or layout diagnostic.
+copies the supplied PICASSO2, ZZ9000, Z3660, P96 and UAEGFX modules. From 1.1
+beta 8 the driver interface is frozen: a module built for one release keeps
+loading in every later one, and only a module newer than PrismD is refused
+("doesn't fit this PrismD"). Earlier modules (protocol 3) need rebuilding once.
 
 A driver for another board is one C file built with
 `sh tools/mkdriver.sh NAME src/drv_name.c`; `BOARD=NAME` selects it, and
