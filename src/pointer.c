@@ -37,6 +37,10 @@ static UBYTE colours[9];
 static BOOL  haveImage, on;
 static volatile BOOL dirtyImage, dirtyPos;
 volatile WORD posX, posY;     /* sprite position on the display (prismint.h) */
+/* a mirrored chipset screen (MIRRORCHIPSET): the pointer follows that screen's
+ * own mouse position, times the mirror's scale (prismd.c sets both) */
+struct Screen *volatile ptrMirror;
+UBYTE ptrMirrorScale = 1;
 static WORD loadedDX = -1, loadedDY = -1;        /* clip shift now loaded  */
 static struct ViewPort *vpOn;
 static WORD  imgW, imgH;                         /* extent of the image    */
@@ -450,8 +454,13 @@ LONG h_MoveSprite(struct Regs *r)
             if (h > -64 && h <= 0)              /* sprites go up to 64 rows */
                 hot = h;
         }
-        x = IntuitionBase->MouseX + hot;
-        y = IntuitionBase->MouseY + hot;
+        if (ptrMirror && fs == ptrMirror) {
+            x = (fs->MouseX + hot) * ptrMirrorScale;
+            y = (fs->MouseY + hot) * ptrMirrorScale;
+        } else {
+            x = IntuitionBase->MouseX + hot;
+            y = IntuitionBase->MouseY + hot;
+        }
         if (logged < 20 && (x != posX || y != posY)) {
             logged++;
             dbg("MoveSprite -> %d,%d\n", x, y);

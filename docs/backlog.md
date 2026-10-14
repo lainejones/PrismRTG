@@ -5,6 +5,7 @@ roughly in the order users ask for them. Kept here so nothing is
 forgotten; none of these is promised for a given release.
 
 Done 2026-10-11: the mode editor (2), video overlay (1), gamma (4), oversized screens with autoscroll (5), larger pointers (6).
+Done 2026-10-14: planar screens on the card (8, as mirroring), the ZZ9000's own DPMS, the Picasso IV in Zorro II mode.
 Done 2026-10-13: monitor power saving (3), the CyberGraphX 43 calls (7), Picasso96's settings (9), the ARexx port (10), and a native Picasso IV driver (Zorro III mode).
 
 1. **Video overlay.** A YUV window with colour keying through
@@ -48,7 +49,9 @@ Done 2026-10-13: monitor power saving (3), the CyberGraphX 43 calls (7), Picasso
    says version 43.
 8. **Planar screens on the card** with a chunky conversion, so old
    planar-only software runs on a card-only monitor. Low priority now
-   that screen mode promotion exists.
+   that screen mode promotion exists. Done 2026-10-14 as mirroring
+   (MIRRORCHIPSET=ON): the chipset screen stays, the board shows a copy
+   converted row by row (lores doubled, EHB, double buffering, the pointer).
 9. **Settings from the other systems.** Reading Picasso96's settings on a
    first install so a user who switches keeps their resolutions. Done
    2026-10-13: PrismImport (DEVS:Picasso96Settings, IFF P96S), offered by

@@ -37,7 +37,10 @@ extern struct ExpansionBase *ExpansionBase;
 #define REG_COLORMODE   0x30
 #define REG_SPRITE_SHOW 0x48          /* 1 = cursor on, 2 = off              */
 #define REG_VBLANK      0x4c
+#define REG_USER1       0x40          /* the operand of SET_FEATURE         */
 #define REG_DMA_OP      0x5a
+#define REG_SET_FEATURE 0x60
+#define FEATURE_DPMS    4             /* BlitterStudio firmware 2.7+         */
 #define REG_FW_VERSION  0xc0
 #define REG_FW_CAPS     0xe6
 #define REG_CFG_KEY     0xe8          /* ZZ9000.CFG query (firmware 2.3+)    */
@@ -465,6 +468,18 @@ static BOOL zz_OverlaySet(struct PrismBoard *b, const struct PrismOverlay *o)
     return status == 0;                           /* else: refused, or no such op (sentinel) */
 }
 
+/* Monitor power (POWERSAVE), firmware 2.7+: the card feature DPMS gates the
+ * video formatter's syncs - 0 on, 1 standby, 2 suspend, 3 off. Prism's
+ * level 1 (blank) has no ZZ9000 equivalent and becomes standby. */
+static void zz_SetPower(struct PrismBoard *b, UBYTE level)
+{
+    static const UBYTE dpms[5] = { 0, 1, 1, 2, 3 };
+    Forbid();
+    W16(b, REG_USER1, FEATURE_DPMS);
+    W16(b, REG_SET_FEATURE, dpms[level < 5 ? level : 4]);
+    Permit();
+}
+
 static void zz_OverlayOff(struct PrismBoard *b)
 {
     struct ZZPriv *p = b->priv;
@@ -731,6 +746,8 @@ BOOL ZZ9000_Probe(struct PrismBoard *b)
     b->setPalette      = zz_SetPalette;
     b->overlaySet      = zz_OverlaySet;   /* refused by a firmware without the op */
     b->overlayOff      = zz_OverlayOff;
+    if (fw >= 0x0207)                     /* DPMS: the monitor sleeps (else PrismD shows black) */
+        b->setPower    = zz_SetPower;
     b->cursorW         = ZZ_CURSOR_W;     /* a bigger pointer goes to the software one */
     b->cursorH         = ZZ_CURSOR_H;
     b->setSwitch       = zz_SetSwitch;

@@ -12,7 +12,7 @@
  *         ENV:PrismCard      0 none, 1 Picasso II, 2 GBAPII++,
  *                            3 ZZ9000 (Zorro III), 4 ZZ9000 (Zorro II),
  *                            5 Piccolo SD64, 6 Piccolo, 7 Spectrum 28/24,
- *                            8 Graffity, 9 Z3660, 10 Picasso IV (Zorro III)
+ *                            8 Graffity, 9 Z3660, 10 Picasso IV
  *         ENV:PrismCardName  the card's name, or ""
  *         ENV:PrismP96Mon    the Picasso96 monitor file's name, or ""
  *       and returns the same number as PrismCard.
@@ -350,6 +350,7 @@ static int detect(void)
         else if (FindConfigDev(NULL, 2092, 33))                            card = 8;   /* Z2: 33 + 34, Z3: 33 */
         else if (FindConfigDev(NULL, 0x144b, 1))                           card = 9;
         else if ((p4 = FindConfigDev(NULL, 2167, 24)) && p4->cd_BoardSize >= 0x1000000) card = 10;   /* Z3 mode */
+        else if (FindConfigDev(NULL, 2167, 23) && FindConfigDev(NULL, 2167, 21))  card = 10;   /* Z2 mode */
         CloseLibrary((struct Library *)ExpansionBase);
     }
     {

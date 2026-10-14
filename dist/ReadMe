@@ -3,8 +3,8 @@ PrismRTG - RTG for AmigaOS 3.x
 
 A from-scratch retargetable-graphics system for two boards:
   * Village Tronic Picasso II / GBAPII++ (Cirrus GD542x), Zorro II
-  * Piccolo, Piccolo SD64, GVP Spectrum 28/24, Ateo Graffity, Picasso IV
-    (Zorro III mode) - emulator-tested only
+  * Piccolo, Piccolo SD64, GVP Spectrum 28/24, Ateo Graffity, Picasso IV -
+    emulator-tested only
   * MNT ZZ9000, Zorro III
   * Z3660 accelerator's RTG output (A4000)
 
@@ -201,8 +201,14 @@ Monitor power saving
   minutes without a key or mouse event the board's picture goes dark, and
   the next key or mouse move brings it back. 0, the default, is never.
   The Picasso II family turns its picture and syncs off, so the monitor
-  sleeps; on the ZZ9000, Picasso IV, UAE and P96 cards the screen goes
-  black. Use and Save in PrismPrefs take effect at once.
+  sleeps, as does the ZZ9000 with firmware 2.7 or newer; on the Picasso IV,
+  UAE and P96 cards the screen goes black. Use and Save in PrismPrefs take effect at once.
+
+Chipset screens on the board
+  "Mirror chipset" in PrismPrefs (MIRRORCHIPSET=ON): a chipset screen in
+  front that promotion left alone (its own bitmap, or written straight into
+  the bitplanes) is shown on the board as a copy, a lores one at twice its
+  size, for card-only monitors. Not HAM or dual playfield.
 
 ARexx
   PrismD has an ARexx port, PRISM (RexxMast must run): VERSION, BOARDS,

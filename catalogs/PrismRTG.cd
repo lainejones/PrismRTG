@@ -411,3 +411,12 @@ Monitors never go dark (Sleep 0)
 ID_SLEEP (131//)
 Sleep
 ;
+ID_CHIPSET_SCREENS_ON_THE_AMIGA_S_OWN_VIDEO (132//)
+Chipset screens on the Amiga's own video
+;
+ID_CHIPSET_SCREENS_SHOWN_ON_THE_BOARD_AS_A (133//)
+Chipset screens shown on the board as a copy (restart PrismD)
+;
+ID_MIRROR_CHIPSET (134//)
+Mirror chipset
+;

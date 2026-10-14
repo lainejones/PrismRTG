@@ -800,6 +800,268 @@ static struct PScreen *card_front(UBYTE k, struct Screen **sp)
     return NULL;
 }
 
+/* ---- mirrored chipset screens (MIRRORCHIPSET=ON, PrismPrefs' Mirror chipset) ---
+ *
+ * A chipset screen in front - one promotion left alone: its program brings
+ * its own bitmap, writes the bitplanes itself, or is on the Keep list -
+ * stays a real chipset screen, and the primary board shows a chunky copy
+ * of it on its monitor, in the smallest 256-colour mode that holds it, at
+ * the top left. Every tick PrismD compares a share of the bitplane rows
+ * with the copy it keeps and converts the rows that changed (the whole
+ * screen within a few ticks); a new bitmap behind the ViewPort (double
+ * buffering) is converted whole. The palette follows the screen's
+ * ColorMap, with the halfbright colours of an EHB screen worked out. HAM
+ * and dual playfield screens are not mirrored, nor are boards whose VRAM
+ * the CPU cannot write directly. One screen at a time, on board 0. */
+/* (the setting is MIRRORCHIPSET=; MIRROR= is the update mirror's address) */
+void p2c8(const UBYTE **planes, ULONG *out, ULONG groups);   /* p2c.S */
+
+static struct Mirror {
+    struct Screen *s;
+    struct BitMap *bm;            /* the bitmap converted last              */
+    struct PBitMap *pbm;          /* the chunky copy on display             */
+    UBYTE *shadow;                /* the planes as converted: depth x h rows */
+    UWORD w, h, depth, rowBytes, next;
+    UBYTE scale;                  /* 2: each pixel shown 2x2 (a lores screen) */
+    BOOL ehb, full, started;
+    UBYTE rgb[256 * 3];
+} mir;
+static const UBYTE mirZero[1024];     /* a plane the screen does not have */
+
+static BOOL screen_listed(struct Screen *s)
+{
+    struct Screen *q;
+    for (q = IntuitionBase->FirstScreen; q; q = q->NextScreen)
+        if (q == s)
+            return TRUE;
+    return FALSE;
+}
+
+/* lock held */
+static void mirror_stop(void)
+{
+    struct CardState *cs = &cst[0];
+    if (!mir.s)
+        return;
+    dbg("mirror: %lx stops\n", (ULONG)mir.s);
+    ptrMirror = NULL;
+    ptrMirrorScale = 1;
+    if (mir.pbm) {
+        mir.pbm->locks--;
+        if (cs->shownPbm == mir.pbm)
+            cs->shownPbm = NULL;
+        pbm_free(mir.pbm);
+    }
+    if (mir.shadow)
+        FreeVec(mir.shadow);
+    mir.s = NULL;
+    mir.bm = NULL;
+    mir.pbm = NULL;
+    mir.shadow = NULL;
+    cs->curMode = NULL;                  /* the next screen sets its mode again */
+}
+
+/* the screen's colours to the board (lock held) */
+static void mirror_palette(BOOL force)
+{
+    static ULONG tab[256 * 3];
+    struct PrismBoard *B = cards[0].b;
+    UBYTE rgb[256 * 3];
+    ULONG n = mir.ehb ? 32 : 1UL << mir.depth, i;
+    struct ColorMap *cm = mir.s->ViewPort.ColorMap;
+    if (!cm)
+        return;
+    if (n > 256)
+        n = 256;
+    if (n > (ULONG)cm->Count)
+        n = cm->Count;
+    GetRGB32(cm, 0, n, tab);
+    for (i = 0; i < n * 3; i++)
+        rgb[i] = tab[i] >> 24;
+    if (mir.ehb) {                        /* 32-63: the first 32 at half brightness */
+        for (i = 0; i < 32 * 3; i++)
+            rgb[32 * 3 + i] = rgb[i] >> 1;
+        n = 64;
+    }
+    if (!force && !memcmp(rgb, mir.rgb, n * 3))
+        return;
+    memcpy(mir.rgb, rgb, n * 3);
+    B->setPalette(B, 0, n, rgb);
+}
+
+/* start mirroring screen s on board 0, or go on with it; TRUE while it is
+ * mirrored (lock held) */
+static BOOL mirror_show(struct Screen *s)
+{
+    struct CardState *cs = &cst[0];
+    struct PrismBoard *B = cards[0].b;
+    struct ViewPort *vp = &s->ViewPort;
+    struct BitMap *bm = vp->RasInfo && vp->RasInfo->BitMap ? vp->RasInfo->BitMap : s->RastPort.BitMap;
+    struct ModeRec *best = NULL;
+    struct PrismMode m;
+    struct PBitMap *p;
+    ULONG area = ~0UL, i;
+    UWORD w, h;
+
+    mir.started = FALSE;
+    if (mir.s == s)
+        return TRUE;
+    mirror_stop();
+    if (!bm || pbm_get(bm) || (vp->Modes & (HAM | DUALPF)) || !bm->Depth || bm->Depth > 8 ||
+        (B->flags & (PBF_SHADOW | PBF_PRESENT)) || cs->testPbm)
+        return FALSE;
+    w = vp->DWidth > 0 && vp->DWidth <= s->Width ? vp->DWidth : s->Width;
+    h = vp->DHeight > 0 && vp->DHeight <= s->Height ? vp->DHeight : s->Height;
+    if (w > bm->BytesPerRow * 8)
+        w = bm->BytesPerRow * 8;
+    if (h > bm->Rows)
+        h = bm->Rows;
+    if (!w || !h || w > 4096)
+        return FALSE;
+    /* a lores screen at twice the size where a mode holds that, else 1:1 */
+    for (mir.scale = w <= 400 ? 2 : 1; mir.scale && !best; mir.scale--)
+        for (i = 0; i < cs->nmodes; i++) {
+            struct ModeRec *mr = &cs->modes[i];
+            if (mr->bpp == 1 && mr->m.width >= w * mir.scale && mr->m.height >= h * mir.scale &&
+                (ULONG)mr->m.width * mr->m.height < area) {
+                area = (ULONG)mr->m.width * mr->m.height;
+                best = mr;
+            }
+        }
+    mir.scale++;                          /* the loop went one past */
+    if (!best)
+        return FALSE;
+    present_stop(&cards[0]);
+    m = best->m;
+    m.pitchPixels = 0;
+    if (!pbm_prepare_mode(&cards[0]) || !B->setMode(B, &m))
+        return FALSE;
+    cs->curMode = best;
+    cs->curPitch = 0;
+    cs->shown = NULL;
+    cs->shownVP = NULL;
+    p = pbm_new(&cards[0], best->m.width, best->m.height, 8, best->m.format, NULL, TRUE, TRUE);
+    if (!p || !p->inVram || !show_pbm(p)) {
+        if (p)
+            pbm_free(p);
+        cs->curMode = NULL;
+        return FALSE;
+    }
+    p->locks++;                           /* VRAM paging leaves it where it is */
+    mir.rowBytes = (w + 7) / 8;
+    /* +4: p2c8 reads whole longs, up to 3 bytes past a row's end */
+    if (!(mir.shadow = AllocVec((ULONG)bm->Depth * mir.rowBytes * h + 4, MEMF_ANY | MEMF_CLEAR))) {
+        p->locks--;
+        cs->shownPbm = NULL;
+        pbm_free(p);
+        cs->curMode = NULL;
+        return FALSE;
+    }
+    mir.s = s;
+    mir.bm = bm;
+    mir.pbm = p;
+    mir.w = w;
+    mir.h = h;
+    mir.depth = bm->Depth;
+    mir.ehb = (vp->Modes & EXTRA_HALFBRITE) && bm->Depth == 6;
+    mir.next = 0;
+    mir.full = TRUE;
+    mir.started = TRUE;
+    mirror_palette(TRUE);
+    if (!cs->rtgOn) {
+        B->setSwitch(B, TRUE);
+        cs->rtgOn = TRUE;
+    }
+    ptrMirror = s;
+    ptrMirrorScale = mir.scale;
+    dbg("mirror: %lx %ux%ux%u x%u on %s\n", (ULONG)s, w, h, mir.depth, mir.scale, best->name);
+    return TRUE;
+}
+
+/* the main loop, every tick: the rows that changed (lock taken here) */
+static void mirror_tick(void)
+{
+    struct PrismBoard *B = cards[0].b;
+    struct ViewPort *vp;
+    struct BitMap *bm;
+    const UBYTE *pp[8];
+    UWORD rows, n, y, k, groups, rx = 0, ry = 0;
+    BOOL open;
+
+    if (!mir.s)
+        return;
+    LOCK_QUIET();
+    Forbid();
+    open = mir.s && screen_listed(mir.s);
+    Permit();
+    if (!open) {                          /* closed inside Intuition, past the patch */
+        mirror_stop();
+        ReleaseSemaphore(&lock);
+        return;
+    }
+    vp = &mir.s->ViewPort;
+    bm = vp->RasInfo && vp->RasInfo->BitMap ? vp->RasInfo->BitMap : mir.s->RastPort.BitMap;
+    if (bm != mir.bm) {                   /* double buffering: a new bitmap, whole */
+        mir.bm = bm;
+        mir.full = TRUE;
+    }
+    if (!bm || bm->Depth < mir.depth) {
+        ReleaseSemaphore(&lock);
+        return;
+    }
+    if (vp->RasInfo) {
+        if (!(vp->RasInfo->RxOffset & 7))
+            rx = vp->RasInfo->RxOffset >> 3;
+        ry = vp->RasInfo->RyOffset;
+    }
+    if (ry + mir.h > bm->Rows)
+        ry = 0;
+    mirror_palette(FALSE);
+    rows = mir.full ? mir.h : 32768 / ((ULONG)mir.rowBytes * mir.depth);
+    if (rows < 8)
+        rows = 8;
+    if (rows > mir.h)
+        rows = mir.h;
+    groups = (mir.w + 31) / 32;
+    if ((ULONG)groups * 32 * mir.scale > mir.pbm->bpr)
+        groups = mir.pbm->bpr / (32 * mir.scale);
+    if (B->waitBlit)
+        B->waitBlit(B);
+    for (n = 0; n < rows; n++) {
+        BOOL changed = mir.full;
+        y = mir.next;
+        mir.next = mir.next + 1 < mir.h ? mir.next + 1 : 0;
+        for (k = 0; k < mir.depth; k++) {
+            const UBYTE *src = bm->Planes[k] + (ULONG)(y + ry) * bm->BytesPerRow + rx;
+            UBYTE *sh = mir.shadow + ((ULONG)k * mir.h + y) * mir.rowBytes;
+            if (changed || memcmp(src, sh, mir.rowBytes)) {
+                CopyMem((APTR)src, sh, mir.rowBytes);
+                changed = TRUE;
+            }
+            pp[k] = sh;
+        }
+        if (!changed)
+            continue;
+        for (k = mir.depth; k < 8; k++)
+            pp[k] = mirZero;
+        if (mir.scale == 1) {
+            p2c8(pp, (ULONG *)(mir.pbm->pix + (ULONG)y * mir.pbm->bpr), groups);
+        } else {
+            /* the row once, then every pixel twice on two rows */
+            static ULONG one[4096 / 4];
+            UBYTE *c = (UBYTE *)one;
+            UWORD *d0 = (UWORD *)(mir.pbm->pix + (ULONG)y * 2 * mir.pbm->bpr);
+            UWORD *d1 = (UWORD *)((UBYTE *)d0 + mir.pbm->bpr);
+            UWORD x, nx = groups * 32;
+            p2c8(pp, one, groups);
+            for (x = 0; x < nx; x++)
+                d0[x] = d1[x] = (UWORD)(c[x] * 0x0101);
+        }
+    }
+    mir.full = FALSE;
+    ReleaseSemaphore(&lock);
+}
+
 /* Make card k show its front screen. TRUE if it now shows another screen
  * than before (the pointer has to be set up again). Lock held. */
 static BOOL show_card(UBYTE k)
@@ -814,6 +1076,8 @@ static BOOL show_card(UBYTE k)
         return FALSE;
     if (ps) {
         struct PBitMap *dp = ps->front ? ps->front : ps->pbm;
+        if (k == 0)
+            mirror_stop();
         UWORD pitch = ps->autoscroll ? dp->bpr / dp->bpp : 0;
         BOOL changed = FALSE;
         if (cs->curMode != ps->mode || cs->curPitch != pitch) {
@@ -853,6 +1117,11 @@ static BOOL show_card(UBYTE k)
         return changed;
     }
     present_stop(c);
+    /* MIRRORCHIPSET=ON: a chipset screen in front is shown on board 0 as a copy */
+    if (k == 0 && prefs.mirrorChip && IntuitionBase->FirstScreen && mirror_show(IntuitionBase->FirstScreen))
+        return mir.started;
+    if (k == 0)
+        mirror_stop();
     /* No screen at all (Workbench closed for a reset, the next one not
      * open yet) is no reason to flip the monitor: the next screen sets
      * it. A native screen in front is. */
@@ -891,6 +1160,11 @@ static void update_display(void)
         if (changed[c->index] || ptrOn != c) {
             pointer_on(&s->ViewPort, c);
             ptrOn = c;
+        }
+    } else if (mir.s && s == mir.s) {
+        if (changed[0] || ptrOn != &cards[0]) {
+            pointer_on(&s->ViewPort, &cards[0]);
+            ptrOn = &cards[0];
         }
     } else {
         pointer_off();
@@ -1856,6 +2130,8 @@ static BOOL P_CloseScreen(struct Screen *s __asm("a0"))
     ENTER();
     LOCK();
     ps = ps_by_screen(s);
+    if (s == mir.s)                      /* its planes go with it */
+        mirror_stop();
     ReleaseSemaphore(&lock);
     r = c_a0(o_CloseScreen, IntuitionBase, s);
     if (r && ps) {
@@ -3168,6 +3444,7 @@ int main(void)
             pointer_tick();
             p96_pip_hw_tick();            /* layers on a board's overlay follow their windows */
             power_tick();                 /* POWERSAVE */
+            mirror_tick();                /* MIRRORCHIPSET */
             arexx_tick();                 /* the PRISM port */
             if (prefs.log || ++tick % 25 == 0)
                 dbg_flush();

@@ -77,6 +77,8 @@ echo "== Picasso96API.library (Prism's own) =="
 $CC -nostartfiles -nostdlib -s -o out/Picasso96API.library tools/p96stub.S
 $CC $CFLAGS -s -o out/p96test tools/p96test.c
 $CC $CFLAGS -s -o out/cgxtest tools/cgxtest.c
+$CC $CFLAGS -s -o out/mirrortest tools/mirrortest.c
+$CC $CFLAGS -s -o out/muitime tools/muitime.c -lm
 cp tools/arexxtest.rexx out/arexxtest.rexx
 $CC $CFLAGS -s -o out/trapwatch tools/trapwatch.c
 $CC $CFLAGS -s -o out/tmpltest tools/tmpltest.c

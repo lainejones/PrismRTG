@@ -1337,6 +1337,12 @@ static const struct P2Board {
      * (its emulation of the card, with the card's flash ROM); Zorro II mode,
      * two nodes and banked VRAM, is not supported. */
     { 2167,  0, 24, PASS_PICASSO4, FALSE, FALSE, "Picasso IV", 0x600000, 0x1000000 },
+    /* ...and in Zorro II mode (an A2000): a 128 KB register board (2167/23),
+     * its control bytes as in Zorro III mode and the VGA ports at +$10000,
+     * after two 2 MB memory boards (2167/21 and /22, from the card's flash);
+     * 21 shows VRAM from 0 in plain byte order after a reset, and the first
+     * 2 MB is what this driver uses anyway */
+    { 2167, 21, 23, PASS_PICASSO4, FALSE, FALSE, "Picasso IV", 0x10000, 0 },
 };
 
 /* Reject an operation before writing registers if the chip cannot encode
@@ -1417,10 +1423,16 @@ static void p2_ready(struct PrismBoard *b)
  * not fit (CDF_SHUTUP) is not a card. */
 static struct ConfigDev *mem_beside(struct ConfigDev *regs, ULONG mfr, ULONG prod)
 {
-    struct ConfigDev *n[2] = { (struct ConfigDev *)regs->cd_Node.ln_Succ,
-                               (struct ConfigDev *)regs->cd_Node.ln_Pred };
+    /* the next and previous nodes, then the ones beyond them: the Picasso
+     * IV in Zorro II mode has its second memory board between its first
+     * and its registers */
+    struct ConfigDev *s = (struct ConfigDev *)regs->cd_Node.ln_Succ;
+    struct ConfigDev *pr = (struct ConfigDev *)regs->cd_Node.ln_Pred;
+    struct ConfigDev *n[4] = { s, pr, NULL, NULL };
     int i;
-    for (i = 0; i < 2; i++) {
+    if (s && s->cd_Node.ln_Succ) n[2] = (struct ConfigDev *)s->cd_Node.ln_Succ;
+    if (pr && pr->cd_Node.ln_Pred) n[3] = (struct ConfigDev *)pr->cd_Node.ln_Pred;
+    for (i = 0; i < 4; i++) {
         struct ConfigDev *cd = n[i];
         if (cd && cd->cd_Node.ln_Succ && cd->cd_Node.ln_Pred &&
             cd->cd_Rom.er_Manufacturer == mfr && cd->cd_Rom.er_Product == prod &&
@@ -1468,10 +1480,10 @@ BOOL Picasso2_Probe(struct PrismBoard *b)
     b->configDev = regs;
     b->regs      = (volatile UBYTE *)regs->cd_BoardAddr;
     b->vram      = (UBYTE *)mem->cd_BoardAddr;
-    if (!bd->memProd) {                  /* Graffity Z3, Picasso IV: windows inside the node */
-        b->regs += bd->regOff;
-        b->vram += bd->vramOff;
-    }
+    /* windows inside the node (Graffity Z3, Picasso IV Z3), or the VGA ports
+     * at an offset in the register board (Picasso IV Z2) */
+    b->regs += bd->regOff;
+    b->vram += bd->vramOff;
     p->board     = (volatile UBYTE *)regs->cd_BoardAddr;
     b->priv      = p;
     p->memDev    = mem;

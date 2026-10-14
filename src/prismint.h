@@ -382,6 +382,8 @@ BOOL cgxvideo_remove(void);
 BOOL pointer_compose_rows(struct PrismCard *c,WORD top,WORD *y0,WORD *y1);
 BOOL pointer_is_card(const struct PrismCard *c);
 extern volatile WORD posX, posY;        /* the pointer's position (pointer.c) */
+extern struct Screen *volatile ptrMirror;   /* a mirrored chipset screen (pointer.c) */
+extern UBYTE ptrMirrorScale;
 void pointer_tick(void);                     /* PrismD main loop          */
 
 

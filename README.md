@@ -27,7 +27,7 @@ the native drivers do not need them.
 | Piccolo SD64, Zorro II | Cirrus GD5434 | WinUAE only | Emulation only. 8/16/24/32-bit, blitter as on the GBAPII++. |
 | Piccolo, Zorro II | Cirrus GD5426 | WinUAE only | Emulation only. 8/16-bit, 24-bit 640x480. |
 | GVP Spectrum 28/24, Zorro II | Cirrus GD5428 | WinUAE only | Emulation only. 8/16-bit, 24-bit 640x480. |
-| Village Tronic Picasso IV, Zorro III mode | Cirrus GD5446, 4 MB (2 MB used) | WinUAE only | Emulation only, with WinUAE's model of the card (it needs the card's flash ROM). Native driver from 1.1 beta 8: blitter fills, copies, text (8/16/32-bit); hardware pointer; 8/16-bit up to 1280x720, 24-bit 640x480, 32-bit 800x600. Zorro II mode (two boards, banked memory) is not supported; such a card reaches PrismRTG through its P96 driver. |
+| Village Tronic Picasso IV, Zorro II and III | Cirrus GD5446, 4 MB (2 MB used) | WinUAE only | Emulation only, with WinUAE's model of the card (it needs the card's flash ROM). Native driver from 1.1 beta 8: blitter fills, copies, text (8/16/32-bit); hardware pointer; 8/16-bit up to 1280x720, 24-bit 640x480, 32-bit 800x600. |
 | MNT ZZ9000, Zorro II mode | | none | Untested. No blitter or pointer support in this mode. |
 | Apollo Vampire (SAGA), through its P96 driver | `vampiregfx.card` 1.61 | Vampire, reported by a user (#1) | Real hardware, not tested here. 1.1 beta 3 with `BOARD=P96`: every drawing test passes at 8, 16, 24 and 32 bits, `p96test` 0 of 29 failed, screens up to 1280x720 24-bit. One failure, planar blits at 16 bits, is handled from beta 5 (the card's own planar blit is checked first and replaced if wrong). |
 
@@ -191,10 +191,21 @@ default, and so has Amiberry from 8.4.0 on; in 8.3.0 it has to be switched on.
   without a key or mouse event every board showing a picture goes dark, and
   the next key or mouse move brings it back. On the Picasso II, GBAPII++,
   Piccolo, SD64 and Spectrum the card turns its picture and both syncs off,
-  so a DPMS monitor goes to sleep; on the others (ZZ9000, Picasso IV, UAE, P96
-  cards) PrismD shows black (a black palette at 256 colours, a cleared bitmap
+  so a DPMS monitor goes to sleep, and so does the ZZ9000 with firmware 2.7 or
+  newer (the firmware's DPMS); on the others (Picasso IV, UAE, P96 cards, older
+  ZZ9000 firmware) PrismD shows black (a black palette at 256 colours, a cleared bitmap
   deeper) and the monitor stays on. A program flipping its buffers keeps it
   dark; a mode change wakes it. PrismPrefs' Use or Save takes effect at once.
+* **Chipset screens on the board** (1.1 beta 8; "Mirror chipset" in PrismPrefs,
+  `MIRRORCHIPSET=ON`, off by default): a chipset screen in front that promotion
+  left alone - a program with its own bitmap, one that writes the bitplanes
+  itself, or one on the Keep list - stays a real chipset screen, and the primary
+  board shows a copy of it, so it can be used on a card-only monitor. A lores
+  screen is shown at twice its size where a mode holds that (320x256 on 800x600).
+  PrismD converts the bitplane rows that changed every tick, follows the palette
+  (EHB too) and double buffering, and puts the pointer on the copy. HAM and dual
+  playfield screens stay on the chipset; copper colour changes within a frame and
+  sprites other than the pointer are not copied.
 * **ARexx port `PRISM`** (1.1 beta 8, needs RexxMast): `VERSION`, `BOARDS`,
   `BOARD`, `VRAM`, `MODES`, `MODE <n>`, `MODEID <w> <h> <bits>`,
   `TEST <w> <h> <bits> [hz]` / `TESTEND` (the Test picture), `POWERSAVE
@@ -500,6 +511,7 @@ finished `.info` files in `dist/`.
 | `PrismProbe` | Lists expansion boards and marks the ones PrismRTG can drive. Read-only. |
 | `PrismImport` | Picasso96's switched-on sizes and depths into `ENVARC:Prism.prefs`: `[FROM=file] [BOARD=name] [ONLY] [TEST]` (ONLY switches every other mode off, TEST writes nothing). |
 | `cgxtest`, `arexxtest.rexx` | Checks of the CyberGraphX 43 calls (`MODEID=`) and of the ARexx port (`rx arexxtest.rexx`). |
+| `mirrortest`, `muitime` | A chipset screen with its own bitmap, drawn into the planes (`DEPTH= EHB SECS= MOVE=`), for MIRRORCHIPSET; the time MUI takes to open a busy window (`N=`). |
 | `PrismBench` | Benchmark and pixel-exactness checks: `MODEID=$7A00xxxx`, `LIST`. |
 | `PrismTest` | A driver on its own, without PrismD: loads `BOARD=NAME` (any `.driver`), sets a mode, draws a pattern, checks the driver's fills and copies against the CPU (`BLIT`). |
 | `PrismScreen`, `PrismShow`, `PrismMouse`, `prismdiag` | Test clients: screens, pictures, pointer, display database dump. |

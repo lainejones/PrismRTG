@@ -38,7 +38,7 @@ static const char version[] __attribute__((used)) = "$VER: PrismPrefs " PRISM_RE
 enum { GAD_LIST = 1, GAD_ON, GAD_HZ, GAD_BOARD, GAD_BLIT, GAD_LOG,
        GAD_SAVE, GAD_USE, GAD_DEFAULTS, GAD_CANCEL, GAD_STATUS, GAD_TEST, GAD_BGR,
        GAD_DRAG, GAD_SOFTPTR, GAD_HWOVL, GAD_PROMOTE, GAD_PLIST, GAD_PROG, GAD_PADD, GAD_PKEEP, GAD_PDEL,
-       GAD_UPDATES, GAD_CHECK, GAD_W, GAD_H, GAD_SETSIZE, GAD_GAMMA, GAD_POWER };
+       GAD_UPDATES, GAD_CHECK, GAD_W, GAD_H, GAD_SETSIZE, GAD_GAMMA, GAD_POWER, GAD_MIRROR };
 
 static STRPTR hzLabels[] = { "Default", "60 Hz", "70 Hz", "72 Hz", "75 Hz", NULL };
 /* the Board cycle: Auto three ways - every board PrismD finds (two at
@@ -71,7 +71,7 @@ struct Gui {
     APTR vi;
     struct Window *win;
     struct Gadget *glist, *gList, *gOn, *gHz, *gBoard, *gBlit, *gLog, *gBgr, *gDrag, *gSoft, *gHwOvl, *gStatus;
-    struct Gadget *gPromote, *gPList, *gProg, *gUpdates, *gW, *gH, *gSet, *gGamma, *gPower;
+    struct Gadget *gPromote, *gPList, *gProg, *gUpdates, *gW, *gH, *gSet, *gGamma, *gPower, *gMirror;
     struct List modes;
     struct Node node[PREFS_NMODES];
     char text[PREFS_NMODES][48];
@@ -282,6 +282,7 @@ static void show_settings(struct Gui *g)
     GT_SetGadgetAttrs(g->gUpdates, g->win, NULL, GTCY_Active, (ULONG)(p->updates < UPD_COUNT ? p->updates : 0), TAG_END);
     GT_SetGadgetAttrs(g->gGamma, g->win, NULL, GTCY_Active, (ULONG)gamma_index(p->gamma), TAG_END);
     GT_SetGadgetAttrs(g->gPower, g->win, NULL, GTIN_Number, (ULONG)p->powerSave, TAG_END);
+    GT_SetGadgetAttrs(g->gMirror, g->win, NULL, GTCB_Checked, (ULONG)p->mirrorChip, TAG_END);
     {
         /* the size fields follow a custom slot and are ghosted for a fixed one */
         int k = PREFS_SIZE(g->sel) - PREFS_NFIXED;
@@ -580,6 +581,13 @@ static BOOL make_gadgets(struct Gui *g, WORD *innerW, WORD *innerH)
     gad = g->gPromote = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
                                      GTCB_Checked, (ULONG)g->prefs.promote, TAG_END);
 
+    /* MIRROR=: chipset screens copied to the board's monitor */
+    y += row;
+    ng.ng_TopEdge = y;
+    ng.ng_GadgetText = (STRPTR)S(ID_MIRROR_CHIPSET, "Mirror chipset"); ng.ng_GadgetID = GAD_MIRROR;
+    gad = g->gMirror = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
+                                    GTCB_Checked, (ULONG)g->prefs.mirrorChip, TAG_END);
+
     y += row;
     ng.ng_TopEdge = y; ng.ng_Width = rw; ng.ng_Height = gh;
     ng.ng_GadgetText = (STRPTR)S(ID_LOG, "Log"); ng.ng_Flags = PLACETEXT_LEFT; ng.ng_GadgetID = GAD_LOG;
@@ -826,6 +834,12 @@ static void event_loop(struct Gui *g)
                 case GAD_W:                      /* Return in a field: as Set size */
                 case GAD_H:
                     set_size(g);
+                    break;
+                case GAD_MIRROR:
+                    g->prefs.mirrorChip = (gad->Flags & GFLG_SELECTED) ? 1 : 0;
+                    set_status(g, g->prefs.mirrorChip
+                                  ? S(ID_CHIPSET_SCREENS_SHOWN_ON_THE_BOARD_AS_A, "Chipset screens shown on the board as a copy (restart PrismD)")
+                                  : S(ID_CHIPSET_SCREENS_ON_THE_AMIGA_S_OWN_VIDEO, "Chipset screens on the Amiga's own video"));
                     break;
                 case GAD_PROMOTE:
                     g->prefs.promote = (gad->Flags & GFLG_SELECTED) ? 1 : 0;
