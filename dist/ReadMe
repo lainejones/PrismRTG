@@ -43,6 +43,21 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.1 beta 8
+  Monitor power saving: "Sleep" in PrismPrefs, the minutes without input
+  before the monitors go dark (off by default). The Picasso II family and
+  the ZZ9000 (firmware 2.7+) put the monitor to sleep; other boards show
+  black. Chipset screens on the board: "Mirror chipset" copies a chipset
+  screen that promotion leaves alone (its own bitmap, written straight into
+  the bitplanes) to the board, a lores one at twice its size - for
+  card-only monitors. An ARexx port, PRISM. C:PrismImport takes the screen
+  sizes switched on in Picasso96, and the installer offers it on a first
+  install. cybergraphics.library 43: WritePixelArrayAlpha, BltTemplateAlpha
+  and ProcessPixelArray. The Picasso IV (Zorro II and III) on PrismRTG's own
+  driver, emulator-tested only. Long vertical lines (window frames) faster
+  on boards without hardware lines. The driver interface is frozen: a
+  driver built for this release keeps working in later ones (drivers built
+  for earlier betas must be rebuilt once).
 New in 1.1 beta 7
   The Z3660's RTG output, by Jusii: a driver for the Z3660 accelerator's
   HDMI framebuffer (firmware 1.03 or newer, autoconfig_rtg YES), with its
