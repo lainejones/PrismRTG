@@ -137,7 +137,7 @@ Tested in WinUAE 6.0.3 at 8, 16 and 32 bits (every PrismRTG test and
 | Amiberry 8.4.0 (Linux), ZZ9000 (Zorro III) | Auto | Tested: Workbench and every PrismRTG test pass, from beta 6 on (earlier PrismD builds switched the display on and off inside one frame at start-up, which 8.4.0 does not survive) |
 | Amiberry inside RetroArch (libretro) | UAE (native) | Not tested. The libretro build has no RTG hardware pointer, so PrismRTG draws its software pointer (tested with WinUAE's hardware sprite turned off) |
 | FS-UAE 3.1.66 (Linux), UAE RTG | UAE (native), or P96 driver with `P96CARD=uaegfx.card` | Tested at 8, 16 and 32 bits: every test passes, both ways. FS-UAE 3.1 cannot open files that are read-only on the host, so a system folder shared from Windows with read-only files will not boot until the attribute is cleared |
-| MiSTer (FPGA), ZZ9000 core | Auto (ZZ9000) | Reported working with beta 3 (issue #2). No pointer appears by itself: add `SOFTWAREPOINTER=ON` to `ENVARC:Prism.prefs` and reboot (confirmed on a MiSTer). At 8 bits the core's text blit put glyphs a pixel or more to the left, probably the odd spacing seen in the Shell; from beta 5 on PrismRTG checks each board's text blit at start-up and draws text on the CPU where it comes out wrong (not yet run on a MiSTer). At 16 bits most drawing checks failed in that beta 3 report; no later report yet |
+| MiSTer (FPGA), ZZ9000 core | Auto (ZZ9000) | Reported working with beta 3 (issue #2). No pointer appears by itself: tick "Soft pointer" in PrismPrefs (`SOFTWAREPOINTER=ON`) and reboot (confirmed on a MiSTer). At 8 bits the core's text blit put glyphs a pixel or more to the left, probably the odd spacing seen in the Shell; from beta 5 on PrismRTG checks each board's text blit at start-up and draws text on the CPU where it comes out wrong (not yet run on a MiSTer). At 16 bits most drawing checks failed in that beta 3 report; no later report yet |
 
 On UAE's RTG card PrismRTG uses the emulator's hardware pointer ("Hardware
 sprite emulation" in the RTG settings) when it has one: WinUAE has it on by
@@ -397,9 +397,11 @@ picks one for PrismRTG's tools alone. There are no translations yet:
 
 ## Known limits
 
-* Tested on two machines by one person. Treat it as early software.
+* Tested daily on two machines by one person (the A4000 with a ZZ9000 and the
+  A2000 with a GBAPII++); the Z3660 driver on its author's own card, and the
+  Vampire and the MiSTer by users (see the card tables). Treat it as early software.
 * **Software pointer:** boards without a working hardware pointer get one
-  drawn into the screen; `SOFTWAREPOINTER=ON` in `ENV:Prism.prefs` forces it.
+  drawn into the screen; "Soft pointer" in PrismPrefs (`SOFTWAREPOINTER=ON`) forces it.
   It costs a few percent of drawing speed (WritePixel about 14%), and while a
   program draws over the pointer itself it is taken away and comes back a
   moment later.
@@ -431,7 +433,7 @@ picks one for PrismRTG's tools alone. There are no translations yet:
   windows and an 060 full ones. The ZZ9000's firmware can convert YUV on
   the card (OP_WRITE_YUV); handing it that work is on the backlog.
 * **Pointers up to 64x64.** A pointer image bigger than the board's sprite
-  (the ZZ9000's is 32x48; the Cirrus cursor is 64x64) is drawn by the
+  (the ZZ9000's and the Z3660's are 32x48; the Cirrus cursor is 64x64) is drawn by the
   software pointer instead of being cut, so the large pointers of the OS
   3.2 preferences, and programs' own through pointerclass, show whole.
 * **Oversized screens with autoscroll.** A screen opened with
@@ -439,8 +441,8 @@ picks one for PrismRTG's tools alone. There are no translations yet:
   640x480 monitor, say) gets a bitmap of that size, and the card shows a
   mode-sized part of it; Intuition scrolls it when the pointer pushes an
   edge, as on the chipset. The board must be able to step rows by the
-  larger pitch: the Cirrus family and the ZZ9000 can; a P96 card driver
-  or UAE's native board gets the mode's size instead.
+  larger pitch: the Cirrus family and the ZZ9000 can; a P96 card driver,
+  the Z3660 or UAE's native board gets the mode's size instead.
 * **Gamma** ("Gamma" in PrismPrefs, `GAMMA=1.4` in the prefs file, 0.5
   to 2.5): every palette a board is given goes through the curve, so
   256-colour screens and the Test picture brighten (above 1.0) or darken
@@ -454,8 +456,8 @@ picks one for PrismRTG's tools alone. There are no translations yet:
   Cirrus family (Picasso II, GBAPII++, Piccolo, Spectrum) computes a VESA
   GTF timing for any size up to 2048x1016 within its pixel clock, so an
   unusual monitor's 1152x864 or 1360x768 works; the ZZ9000 has its
-  firmware's list (1600x1200, 720x576, 2560x1440 and more are in it but
-  not in PrismRTG's fixed list); a P96 card driver has its own.
+  firmware's list (720x576, 720x480, 640x512 and 1920x800 are in it but
+  not in PrismRTG's list); a P96 card driver has its own.
 * **Update check** ("Updates" in PrismPrefs, `UPDATES=GITHUB|MIRROR|BOTH`,
   then "Check now"): `C:PrismUpdate` asks GitHub's release API, or a mirror
   (`MIRROR=https://host/dir/`, a directory with `latest.txt` holding
@@ -474,7 +476,14 @@ picks one for PrismRTG's tools alone. There are no translations yet:
   they cost nothing. Few programs have used it yet.
 * Vertical dragging composes the front and next RTG screen; native-chipset
   screens cannot be mixed into the split. No monitor detection (see above).
-* The Picasso II, Piccolo, Piccolo SD64, Spectrum, Graffity and Picasso IV have only run in WinUAE.
+* **Monitor power saving** ("Sleep" in PrismPrefs, `POWERSAVE=`): the Picasso II
+  family (but not the Picasso IV) and the ZZ9000 with firmware 2.7 or newer put the
+  monitor to sleep; every other board only shows black, and the monitor stays on.
+  The monitor going to sleep has been checked in the emulator, not yet watched on a real card.
+* **Mirror chipset** ("Mirror chipset" in PrismPrefs, `MIRRORCHIPSET=ON`) shows a copy of
+  a chipset screen that promotion leaves alone on the first board; the chipset
+  screen itself stays. HAM and dual-playfield screens are not mirrored.
+* The Picasso II, Piccolo, Piccolo SD64, Spectrum, Graffity and Picasso IV (Zorro II and III) have only run in WinUAE.
   A real card can differ from its emulation (the GBAPII++ did, in three
   places). If 256-colour screens on a real Piccolo or Spectrum show red and
   blue exchanged, tick **Swap red/blue** in PrismPrefs.
