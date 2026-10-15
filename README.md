@@ -19,7 +19,7 @@ the native drivers do not need them.
 
 | Card | Chip | Tested on | Status |
 |---|---|---|---|
-| MNT ZZ9000, Zorro III | firmware 2.8 | A4000, 68060 | Real hardware. Blitter fills, copies, text, lines; hardware pointer. 8/16/32-bit up to 1280x1024. |
+| MNT ZZ9000, Zorro III | firmware 2.8 | A4000, 68060 | Real hardware. Blitter fills, copies, text, lines; hardware pointer. 8/16/32-bit, tested up to 1280x1024 (1920x1080 is offered too, and up to 2560x1440 with the larger sizes switched on). Monitor sleep from firmware 2.7, video overlay from 2.8. |
 | GBAPII++ (Picasso II remake) | Cirrus GD5434, 2 MB | A2000, 68030 | Real hardware. Blitter fills, copies, text (8/16/32-bit); hardware pointer. 8/16-bit up to 1024x768, 24-bit 640x480, 32-bit 800x600. |
 | Z3660 accelerator (A4000), RTG output | firmware 1.03+, `autoconfig_rtg YES` | A4000, 68060 | Real hardware. 8/15/16-bit in the firmware's fixed modes, 32-bit up to a 108 MHz pixel clock (1280x1024, 1600x900), 320x200/240 doubled; hardware pointer, the monitor switch (`monitor_switch` in z3660cfg.txt, or `ENV:Z3660-MONSWITCH`). Blitter fills, copies, text, lines, planar blits. |
 | Village Tronic Picasso II / II+ | Cirrus GD5426/28 | WinUAE only | Emulation only: never run on a real card. 8/16-bit, 24-bit 640x480. |
@@ -122,7 +122,7 @@ P96 adapter:
 Run >RAM:PrismD.log PrismD BOARD=UAEGFX
 ```
 
-Enable UAE RTG memory and its hardware cursor. This candidate is selected
+Enable UAE RTG memory; PrismRTG uses its hardware cursor when it is on and draws its own pointer when it is off. This candidate is selected
 explicitly; see [native UAE configuration and limits](docs/uaegfx.md).
 Tested in WinUAE 6.0.3 at 8, 16 and 32 bits (every PrismRTG test and
 `p96test`).
@@ -131,7 +131,7 @@ Tested in WinUAE 6.0.3 at 8, 16 and 32 bits (every PrismRTG test and
 
 | Emulator, card | Board in PrismPrefs | Status |
 |---|---|---|
-| WinUAE, Picasso II / II+, Piccolo, Piccolo SD64, Spectrum (Zorro II and III), Picasso IV (Zorro III) | Auto | Tested: every PrismRTG test passes on each; the figures per board are in [docs/emulated-cards.md](docs/emulated-cards.md) |
+| WinUAE, Picasso II / II+, Piccolo, Piccolo SD64, Spectrum, Graffity, Picasso IV (Zorro II and III where the card has both) | Auto | Tested: every PrismRTG test passes on each; the figures per board are in [docs/emulated-cards.md](docs/emulated-cards.md) |
 | WinUAE 6.0.3, UAE RTG Zorro III or Zorro II | UAE (native), or P96 driver with `P96CARD=uaegfx.card` | Tested at 8, 16 and 32 bits: every test passes |
 | Amiberry 8.4.0 (Linux), UAE RTG | UAE (native) | Tested at 8, 16 and 32 bits: every test passes, with `rtg_nocustom=false` too. (8.3.0 lost some of what was drawn on 32-bit screens with `rtg_nocustom=false` and ZeroCopy on, [amiberry#2392](https://github.com/BlitterStudio/amiberry/issues/2392); fixed in 8.4.0) |
 | Amiberry 8.4.0 (Linux), ZZ9000 (Zorro III) | Auto | Tested: Workbench and every PrismRTG test pass, from beta 6 on (earlier PrismD builds switched the display on and off inside one frame at start-up, which 8.4.0 does not survive) |
@@ -164,15 +164,17 @@ PrismRTG draws its software pointer instead.
   results go to the nearest pens.
 * Picasso96API.library 2 (PrismRTG's own): bitmaps in any pixel format, mode
   lists and requester, screens, pixel arrays in every direct-colour format,
-  board data. `p96test` checks every call at 8, 16 and 24 bits. No
-  picture-in-picture windows.
+  board data, and picture-in-picture windows (through the compositor, see Known limits).
+  `p96test` checks every call, at 16 bits unless given `DEPTH=8`, `24` or `32`.
 * Screens that don't fit in video memory page out to fast RAM; double
   buffering through `AllocScreenBuffer` / `ChangeScreenBuffer`.
 * `Prefs/PrismPrefs`: which modes are offered, refresh rates, board,
   blitter on/off, red and blue swapped in 256-colour palettes, the debug
   log (off, on, or written at once for a machine that dies while starting),
   and a **Test** button that shows a mode for ten seconds and comes back by
-  itself.
+  itself; also screen promotion, your own sizes, gamma, the software pointer,
+  dragging, video on the board, Sleep, Mirror chipset and the update check
+  (described in this section and under Known limits).
 * Boot failsafe: hold the left mouse button while booting and PrismRTG does
   not start; a start that hangs is skipped automatically on the next boot.
 * **Two boards at once** (1.1 beta 6, emulator-tested so far): with a ZZ9000
@@ -220,14 +222,14 @@ PrismRTG draws its software pointer instead.
   sizes (up to four). The installer offers it on a first install. Timings
   are not taken: the drivers make their own.
 
-Neither card lets software read what the monitor supports (the ZZ9000
+Neither of the two cards tested here lets software read what the monitor supports (the ZZ9000
 firmware has no DDC code; the GBAPII++ does not wire the chip's DDC data
 pin), so there is no automatic monitor detection: use the Test button.
 
 ## Speed against Picasso96
 
 Same machine, same card, same benchmark (`PrismBench`), operations per
-second, higher is better. Picasso96 is the current release from Individual
+second, higher is better. Picasso96 is the release from Individual
 Computers (rtg.library 43.760 of 18 December 2025) with each card's own
 driver. Run-to-run noise is about 5%.
 
@@ -262,7 +264,7 @@ alone moves these numbers by 2-5%): against 1.0.2, RectFill 100x100 -5.2%
 in beta 4 and -2.9% in beta 5, RectFill 8x8 -7.0% / -4.0%, 4-character
 text -4.7% / -2.8%, ClipBlit -5.9% / -3.6%, ScrollRaster -8.8% / -5.4%,
 bitmap-to-screen blit -4.7% / -1.9%. The rest is a few instructions on
-every call. The A4000 columns will be measured again for beta 5.
+every call. The A4000 columns have not been measured again since beta 4.
 
 Beta 6 is ahead of beta 5 on every one of the 68030 bench's lines (three
 code alignments each, cycle-exact emulated Picasso II+): RectFill 100x100
@@ -293,7 +295,7 @@ keeps such loops as loops (`-fno-tree-loop-distribute-patterns`).
 ### A2000, 68030 at 50 MHz, GBAPII++ - 640x480
 
 Measured on 4 October 2026 with the build of that day (the A2000 has not run
-the released build yet).
+a released build yet).
 
 | Test | P96 8-bit | **PrismRTG 8** | P96 16-bit | **PrismRTG 16** |
 |---|---|---|---|---|
@@ -380,6 +382,8 @@ files keep their short names (`PrismD`, `PrismPrefs`, the monitor file
 | `SYS:Prefs/PrismPrefs` | settings editor |
 | `C:PrismSetup`, `C:PrismProbe` | installer helper, board lister |
 | `C:PrismImport` | Picasso96's screen sizes into PrismRTG's settings |
+| `C:PrismUpdate` | the update check (PrismPrefs' Updates) |
+| `LIBS:Picasso96API.library` | a small stub for programs that look for the file; the library itself is built into PrismD |
 | `ENVARC:Prism.prefs` | the settings (plain text) |
 
 If the screen stays dark: hold the left mouse button during boot, then use
@@ -515,11 +519,12 @@ finished `.info` files in `dist/`.
 
 | Tool | What it does |
 |---|---|
-| `PrismD` | The driver. `PrismD [BOARD=ZZ9000|PICASSO2|P96|UAEGFX|<name>] [P96CARD=file] [P96MONITOR=icon] [PREFS=file] [LOG]`; Ctrl-C removes its patches when no PrismRTG screen is open and no program holds a PrismRTG bitmap. P96 and UAEGFX contexts remain resident until reboot. |
+| `PrismD` | The driver. `PrismD [BOARD=ZZ9000|PICASSO2|Z3660|P96|UAEGFX|<name>] [P96CARD=file] [P96MONITOR=icon] [PREFS=file] [LOG]`; Ctrl-C removes its patches when no PrismRTG screen is open and no program holds a PrismRTG bitmap. P96 and UAEGFX contexts remain resident until reboot. |
 | `PrismPrefs` | Settings editor. `FROM= USE SAVE TEST=<slot>` work without the window. |
 | `Prism` (`out/PrismMon`) | `DEVS:Monitors` launcher with the boot failsafe. |
 | `PrismSetup` | Installer helper: `DETECT`, `WBID=<id>` (Workbench mode by ModeID, e.g. `0102` = 800x600 16-bit; `WBMODE=<slot>` still works). |
 | `PrismProbe` | Lists expansion boards and marks the ones PrismRTG can drive. Read-only. |
+| `PrismUpdate` | Asks GitHub or a mirror whether a newer release exists and offers to fetch and install it: `GET`. |
 | `PrismImport` | Picasso96's switched-on sizes and depths into `ENVARC:Prism.prefs`: `[FROM=file] [BOARD=name] [ONLY] [TEST]` (ONLY switches every other mode off, TEST writes nothing). |
 | `cgxtest`, `arexxtest.rexx` | Checks of the CyberGraphX 43 calls (`MODEID=`) and of the ARexx port (`rx arexxtest.rexx`). |
 | `mirrortest`, `muitime` | A chipset screen with its own bitmap, drawn into the planes (`DEPTH= EHB SECS= MOVE=`), for MIRRORCHIPSET; the time MUI takes to open a busy window (`N=`). |
@@ -532,7 +537,7 @@ finished `.info` files in `dist/`.
 what runs, what is patched, and how a drawing call travels from a program
 to the card. [docs/design.md](docs/design.md) has how each part was
 built, in order, and every measurement; [docs/zz9000-hw.md](docs/zz9000-hw.md) and
-[docs/cirrus-picasso2-hw.md](docs/cirrus-picasso2-hw.md) are the hardware
+[docs/cirrus-picasso2-hw.md](docs/cirrus-picasso2-hw.md) and [docs/z3660-hw.md](docs/z3660-hw.md) are the hardware
 notes the drivers were written from.
 
 ## Credits
@@ -547,7 +552,8 @@ noted in every commit. With thanks to:
   screen dragging and PIP composition (#10).
 * **Jusii** - the Z3660 driver: the board, its monitor switch, and fills,
   copies, text, lines and planar blits on its blitter (#13, #16-#20),
-  written and tested on his own Z3660.
+  written and tested on his own Z3660; the seven larger sizes (#14) and the
+  Workbench staying on the card after a ScreenMode change (#15).
 * **Dimitris Panokostas** (midwan, author of Amiberry) - reviewed the UAE
   driver and found its `SetPanning` / `BitMapExtra` bug (#5), and made
   Amiberry's RTG hardware pointer the default (8.4.0) so PrismRTG shows a
@@ -562,7 +568,8 @@ noted in every commit. With thanks to:
   Richter** - the P96 driver development headers in `src/p96sdk` (CC-BY),
   which the P96 card-driver adapter is built with.
 * **Toni Wilen** - WinUAE, in which every Cirrus board here was tested,
-  and whose source is the only public description of the Graffity.
+  and whose source is the only public description of the Graffity and of the
+  Picasso IV's board logic.
 
 ### Where the hardware knowledge came from
 
