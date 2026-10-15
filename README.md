@@ -209,7 +209,9 @@ PrismRTG draws its software pointer instead.
   PrismD converts the bitplane rows that changed every tick, follows the palette
   (EHB too) and double buffering, and puts the pointer on the copy. HAM and dual
   playfield screens stay on the chipset; copper colour changes within a frame and
-  sprites other than the pointer are not copied.
+  sprites other than the pointer are not copied. Unlike Sleep, the switch is read
+  when PrismD starts: after Use or Save in PrismPrefs it takes effect at the next
+  reboot (PrismPrefs' status line says so).
 * **ARexx port `PRISM`** (1.1 beta 8, needs RexxMast): `VERSION`, `BOARDS`,
   `BOARD`, `VRAM`, `MODES`, `MODE <n>`, `MODEID <w> <h> <bits>`,
   `TEST <w> <h> <bits> [hz]` / `TESTEND` (the Test picture), `POWERSAVE
@@ -486,7 +488,9 @@ picks one for PrismRTG's tools alone. There are no translations yet:
   The monitor going to sleep has been checked in the emulator, not yet watched on a real card.
 * **Mirror chipset** ("Mirror chipset" in PrismPrefs, `MIRRORCHIPSET=ON`) shows a copy of
   a chipset screen that promotion leaves alone on the first board; the chipset
-  screen itself stays. HAM and dual-playfield screens are not mirrored.
+  screen itself stays. HAM and dual-playfield screens are not mirrored. Switching
+  it on or off takes effect at the next reboot. Checked on the real GBAPII++ by
+  reading the card's picture back: doubled bars and rows, right.
 * The Picasso II, Piccolo, Piccolo SD64, Spectrum, Graffity and Picasso IV (Zorro II and III) have only run in WinUAE.
   A real card can differ from its emulation (the GBAPII++ did, in three
   places). If 256-colour screens on a real Piccolo or Spectrum show red and

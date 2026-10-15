@@ -223,7 +223,9 @@ Chipset screens on the board
   "Mirror chipset" in PrismPrefs (MIRRORCHIPSET=ON): a chipset screen in
   front that promotion left alone (its own bitmap, or written straight into
   the bitplanes) is shown on the board as a copy, a lores one at twice its
-  size, for card-only monitors. Not HAM or dual playfield.
+  size, for card-only monitors. Not HAM or dual playfield. Switching it on
+  or off takes effect at the next reboot (unlike Sleep, it is read when
+  PrismD starts).
 
 ARexx
   PrismD has an ARexx port, PRISM (RexxMast must run): VERSION, BOARDS,
