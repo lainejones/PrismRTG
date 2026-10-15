@@ -137,11 +137,12 @@ Tested in WinUAE 6.0.3 at 8, 16 and 32 bits (every PrismRTG test and
 | Amiberry 8.4.0 (Linux), ZZ9000 (Zorro III) | Auto | Tested: Workbench and every PrismRTG test pass, from beta 6 on (earlier PrismD builds switched the display on and off inside one frame at start-up, which 8.4.0 does not survive) |
 | Amiberry inside RetroArch (libretro) | UAE (native) | Not tested. The libretro build has no RTG hardware pointer, so PrismRTG draws its software pointer (tested with WinUAE's hardware sprite turned off) |
 | FS-UAE 3.1.66 (Linux), UAE RTG | UAE (native), or P96 driver with `P96CARD=uaegfx.card` | Tested at 8, 16 and 32 bits: every test passes, both ways. FS-UAE 3.1 cannot open files that are read-only on the host, so a system folder shared from Windows with read-only files will not boot until the attribute is cleared |
-| MiSTer (FPGA), ZZ9000 core | Auto (ZZ9000) | Reported working with no pointer and garbled text in the Shell (issue #2); `SOFTWAREPOINTER=ON` in `ENV:Prism.prefs` should give a pointer (not tested on a MiSTer yet) |
+| MiSTer (FPGA), ZZ9000 core | Auto (ZZ9000) | Reported working with beta 3 (issue #2). No pointer appears by itself: add `SOFTWAREPOINTER=ON` to `ENVARC:Prism.prefs` and reboot (confirmed on a MiSTer). At 8 bits the core's text blit put glyphs a pixel or more to the left, probably the odd spacing seen in the Shell; from beta 5 on PrismRTG checks each board's text blit at start-up and draws text on the CPU where it comes out wrong (not yet run on a MiSTer). At 16 bits most drawing checks failed in that beta 3 report; no later report yet |
 
-UAE's RTG card needs its hardware pointer ("Hardware sprite emulation" in the
-RTG settings): PrismRTG draws no pointer of its own. WinUAE has it on by
-default, and so has Amiberry from 8.4.0 on; in 8.3.0 it has to be switched on.
+On UAE's RTG card PrismRTG uses the emulator's hardware pointer ("Hardware
+sprite emulation" in the RTG settings) when it has one: WinUAE has it on by
+default, and so has Amiberry from 8.4.0 on (8.3.0 has it off). Without it,
+PrismRTG draws its software pointer instead.
 
 ## What works
 
@@ -543,7 +544,7 @@ noted in every commit. With thanks to:
   Amiberry's RTG hardware pointer the default (8.4.0) so PrismRTG shows a
   pointer there ([amiberry#2388](https://github.com/BlitterStudio/amiberry/pull/2388)),
   and fixed the 32-bit write-back ([amiberry#2392](https://github.com/BlitterStudio/amiberry/issues/2392)).
-* **polluks** and **yelworC** - the first test on a MiSTer FPGA (#2).
+* **polluks** and **yelworC** - the first test on a MiSTer FPGA (#2); **halle-saale** - passing on yelworC's PrismCheck report from it.
 * **HANSolo-0007** - the first real card through the P96 adapter, an Apollo
   Vampire, with PrismCheck reports and the findings behind beta 5's
   Workbench drag images, planar-blit check, 16:9 sizes and PrismPrefs
