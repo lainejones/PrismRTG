@@ -135,6 +135,24 @@ static struct ZZPriv zzpriv;
 #define GD16(p, off, v) (*(volatile UWORD *)((p)->gfxdata + (off)) = (UWORD)(v))
 #define GD32(p, off, v) (*(volatile ULONG *)((p)->gfxdata + (off)) = (ULONG)(v))
 
+/* Every write into the mailbox is a Zorro III cycle, about 0.6 us on the
+ * A4000's 68060 (profiled 2026-10-14: the nine field writes of an 8x8 fill
+ * were a fifth of its time, the fifteen of a 4-character Text a quarter).
+ * So the fields an op sets together go in one 32-bit write where they are
+ * neighbours: x[0..1], y[0..1], pitch[0..1], user[0..1], user[2..3],
+ * u8_user[0..1] (PAIR puts the lower offset in the high half).
+ *
+ * Every field an op uses is written every time. Writing only the fields
+ * that changed since the last op (as the Cirrus driver does with its
+ * registers) took the A4000 down: the firmware converts the header's
+ * fields in place as it reads them, so after an op the card holds x[],
+ * y[], user[], pitch[] and offset[1] byte-swapped and offset[0] zero (read
+ * back on the A4000, 2026-10-14); only rgb[], u8_user[], mask and minterm
+ * stay as written. A field left over from the last op is garbage to the
+ * next, and a template op with a swapped source offset hung the card and
+ * the bus with it. */
+#define PAIR(hi, lo)    (((ULONG)(UWORD)(hi) << 16) | (UWORD)(lo))
+
 /* Z3: the mailbox is ordinary card memory; make sure a copyback 060 cache
  * has pushed it before the firmware is told to read it. */
 static void z3_kick(struct PrismBoard *b, UWORD op)
@@ -173,10 +191,8 @@ static void zz_FillRectMode(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE 
     GD8(p, GD_U8USER0, cm);
     GD8(p, GD_MASK, 0xff);
     GD32(p, GD_RGB0, zz_colour(bpp, colour));
-    GD16(p, GD_X0, x);
-    GD16(p, GD_X1, w);
-    GD16(p, GD_Y0, y);
-    GD16(p, GD_Y1, h);
+    GD32(p, GD_X0, PAIR(x, w));
+    GD32(p, GD_Y0, PAIR(y, h));
     W16(b, REG_DMA_OP, OP_FILLRECT);
     Permit();
 }
@@ -197,10 +213,8 @@ static void zz_CopyRect(struct PrismBoard *b, ULONG base, ULONG pitch, UBYTE bpp
     GD16(p, GD_PITCH0, pitch >> 2);
     GD16(p, GD_X2, sx);
     GD16(p, GD_Y2, sy);
-    GD16(p, GD_X0, dx);
-    GD16(p, GD_Y0, dy);
-    GD16(p, GD_X1, w);
-    GD16(p, GD_Y1, h);
+    GD32(p, GD_X0, PAIR(dx, w));
+    GD32(p, GD_Y0, PAIR(dy, h));
     GD8(p, GD_U8USER0, zz_cm(bpp));
     GD8(p, GD_MASK, 0xff);
     W16(b, REG_DMA_OP, OP_COPYRECT);
@@ -215,15 +229,12 @@ static void zz_CopyBetween(struct PrismBoard *b, ULONG src, ULONG spitch, ULONG 
      * firmware wants row starts on 32-bit words; the odd bytes become x. */
     Forbid();
     GD32(p, GD_OFFSET1, src & ~3UL);
-    GD16(p, GD_PITCH1, spitch >> 2);
+    GD32(p, GD_PITCH0, PAIR(dpitch >> 2, spitch >> 2));
     GD16(p, GD_X2, src & 3);
     GD16(p, GD_Y2, 0);
     GD32(p, GD_OFFSET0, dst & ~3UL);
-    GD16(p, GD_PITCH0, dpitch >> 2);
-    GD16(p, GD_X0, dst & 3);
-    GD16(p, GD_Y0, 0);
-    GD16(p, GD_X1, wbytes);
-    GD16(p, GD_Y1, h);
+    GD32(p, GD_X0, PAIR(dst & 3, wbytes));
+    GD32(p, GD_Y0, PAIR(0, h));
     GD8(p, GD_MINTERM, MINTERM_SRC);
     GD8(p, GD_U8USER0, CM_8BIT);
     W16(b, REG_DMA_OP, OP_COPY_NOMASK);
@@ -249,20 +260,16 @@ static BOOL zz_ExpandRectMode(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYT
         for (; n < rb; n++)
             *o++ = tmpl[n];
     }
-    GD16(p, GD_X0, x);
-    GD16(p, GD_X1, w);
+    GD32(p, GD_X0, PAIR(x, w));
     GD16(p, GD_X2, 0);
-    GD16(p, GD_Y0, y);
-    GD16(p, GD_Y1, h);
+    GD32(p, GD_Y0, PAIR(y, h));
     GD16(p, GD_Y2, 0);
     GD32(p, GD_OFFSET0, dst);
     GD32(p, GD_OFFSET1, TEMPLATE_OFFSET - VRAM_OFFSET);
-    GD16(p, GD_PITCH0, pitch);
-    GD16(p, GD_PITCH1, rb);
+    GD32(p, GD_PITCH0, PAIR(pitch, rb));          /* this op: pitches in bytes */
     GD32(p, GD_RGB0, zz_colour(bpp, fg));
     GD32(p, GD_RGB1, zz_colour(bpp, bg));
-    GD8(p, GD_U8USER0, cm);
-    GD8(p, GD_U8USER1, transparent ? 0 : 1);      /* JAM1 : JAM2 */
+    GD16(p, GD_U8USER0, (cm << 8) | (transparent ? 0 : 1));   /* cm; JAM1 : JAM2 */
     GD8(p, GD_MASK, 0xff);
     W16(b, REG_DMA_OP, OP_TEMPLATE);
     Permit();
@@ -290,20 +297,13 @@ static void zz_DrawLineMode(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE 
     Forbid();
     GD32(p, GD_OFFSET0, dst);
     GD16(p, GD_PITCH0, pitch >> 2);
-    GD8(p, GD_U8USER0, cm);
-    GD8(p, GD_U8USER1, 0);                        /* JAM1 */
-    GD8(p, GD_U8USER2, 0);
-    GD8(p, GD_U8USER3, 0);
+    GD32(p, GD_U8USER0, (ULONG)cm << 24);         /* cm; JAM1; pattern offset 0; pad 0 */
     GD8(p, GD_MASK, 0xff);
     GD32(p, GD_RGB0, zz_colour(bpp, colour));
-    GD16(p, GD_X0, x);
-    GD16(p, GD_X1, dx);
-    GD16(p, GD_Y0, y);
-    GD16(p, GD_Y1, dy);
-    GD16(p, GD_USER0, len);
-    GD16(p, GD_USER1, 0xffff);                    /* solid */
-    GD16(p, GD_USER2, 0);
-    GD16(p, GD_USER3, len >> 1);                  /* halves round up */
+    GD32(p, GD_X0, PAIR(x, dx));
+    GD32(p, GD_Y0, PAIR(y, dy));
+    GD32(p, GD_USER0, PAIR(len, 0xffff));         /* length; solid */
+    GD32(p, GD_USER2, PAIR(0, len >> 1));         /* halves round up */
     W16(b, REG_DMA_OP, OP_DRAWLINE);
     Permit();
 }
@@ -394,10 +394,8 @@ static void zz_CursorImage(struct PrismBoard *b, const UBYTE *img, const UBYTE *
     for (x = 0; x < 9; x++)
         GD8(p, GD_CLUT1 + 3 + x, rgb[x]);         /* pens 1-3 */
     GD32(p, GD_OFFSET1, TEMPLATE_OFFSET);         /* this op: from the board base */
-    GD16(p, GD_X0, 0);
-    GD16(p, GD_Y0, 0);
-    GD16(p, GD_X1, ZZ_CURSOR_W);
-    GD16(p, GD_Y1, ZZ_CURSOR_H);
+    GD32(p, GD_X0, PAIR(0, ZZ_CURSOR_W));
+    GD32(p, GD_Y0, PAIR(0, ZZ_CURSOR_H));
     GD8(p, GD_U8OFFSET, 0);                       /* pen 0 = transparent */
     W16(b, REG_DMA_OP, OP_SPRITE_CLUT);
     Permit();
@@ -528,9 +526,8 @@ static void zz_pan(struct PrismBoard *b)
     if (p->z3) {
         Forbid();
         GD32(p, GD_OFFSET0, p->panOffset);
-        GD16(p, GD_X0, 0);
+        GD32(p, GD_X0, PAIR(0, p->width));
         GD16(p, GD_Y0, 0);
-        GD16(p, GD_X1, p->width);
         GD8(p, GD_U8USER0, cm);
         z3_kick(b, OP_PAN);
         Permit();
@@ -593,7 +590,6 @@ static BOOL zz_SetMode(struct PrismBoard *b, struct PrismMode *m)
     p->mode = mode;
     p->width = m->pitchPixels ? m->pitchPixels : m->width;   /* the pan width: the row's pixels */
     p->colormode = cm;
-
     W16(b, REG_CAPTURE, 0);
     W16(b, REG_MODE, p->mode);
     zz_pan(b);
@@ -623,8 +619,7 @@ static void zz_SetPalette(struct PrismBoard *b, UWORD first, UWORD count,
         Forbid();
         for (i = 0; i < count * 3; i++)
             GD8(p, GD_CLUT1 + i, rgb[i]);
-        GD16(p, GD_USER0, first);
-        GD16(p, GD_USER1, count);
+        GD32(p, GD_USER0, PAIR(first, count));
         GD8(p, GD_U8USER0, 0);           /* primary palette */
         z3_kick(b, OP_SET_PALETTE);
         Permit();
