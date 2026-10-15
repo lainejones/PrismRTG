@@ -38,6 +38,7 @@
 #include <exec/interrupts.h>
 #include <devices/input.h>
 #include <devices/inputevent.h>
+#include <devices/timer.h>
 #include <utility/tagitem.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
@@ -163,6 +164,75 @@ static void dbg_flush_file(void)
 
 static void dbg_flush(void);
 #define STAGE(what) do { if (prefs.log == 2) { dbg("stage: " what "\n"); dbg_flush(); } } while (0)
+
+/* LOG=SYNC's sleep: the main loop waits until dbg() has a line (Ctrl-F) or
+ * the next frame is due, whichever comes first, so a line reaches the file
+ * at once and the once-a-frame work (ARexx, the mirror, the pointer, power
+ * saving, the compositor) goes on. Up to 1.1 beta 8 the loop slept for log
+ * lines only, and all of that stood still while the log was on. */
+static struct MsgPort *syncPort;
+static struct timerequest *syncTr;
+static BOOL syncBusy;                     /* a frame request is out */
+
+static BOOL sync_timer(void)
+{
+    if (syncTr)
+        return TRUE;
+    if (!(syncPort = CreateMsgPort()))
+        return FALSE;
+    if (!(syncTr = (struct timerequest *)CreateIORequest(syncPort, sizeof(*syncTr))) ||
+        OpenDevice((STRPTR)TIMERNAME, UNIT_VBLANK, (struct IORequest *)syncTr, 0)) {
+        if (syncTr)
+            DeleteIORequest((struct IORequest *)syncTr);
+        DeleteMsgPort(syncPort);
+        syncTr = NULL;
+        syncPort = NULL;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static void sync_timer_close(void)
+{
+    if (!syncTr)
+        return;
+    if (syncBusy) {
+        AbortIO((struct IORequest *)syncTr);
+        WaitIO((struct IORequest *)syncTr);
+        syncBusy = FALSE;
+    }
+    CloseDevice((struct IORequest *)syncTr);
+    DeleteIORequest((struct IORequest *)syncTr);
+    DeleteMsgPort(syncPort);
+    syncTr = NULL;
+    syncPort = NULL;
+}
+
+/* the signals that came; *frame: a frame is up (the per-frame work is due) */
+static ULONG sync_sleep(BOOL *frame)
+{
+    ULONG sig;
+    if (!sync_timer()) {                  /* no timer: poll once a frame */
+        Delay(1);
+        *frame = TRUE;
+        return SetSignal(0, SIGBREAKF_CTRL_F);
+    }
+    if (!syncBusy) {
+        syncTr->tr_node.io_Command = TR_ADDREQUEST;
+        syncTr->tr_time.tv_secs = 0;
+        syncTr->tr_time.tv_micro = 20000;
+        SendIO((struct IORequest *)syncTr);
+        syncBusy = TRUE;
+    }
+    sig = Wait(SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | (1UL << syncPort->mp_SigBit));
+    *frame = FALSE;
+    if (CheckIO((struct IORequest *)syncTr)) {
+        WaitIO((struct IORequest *)syncTr);
+        syncBusy = FALSE;
+        *frame = TRUE;
+    }
+    return sig;
+}
 
 static void dbg_flush(void)
 {
@@ -3415,18 +3485,20 @@ int main(void)
                 settled = TRUE;
                 DeleteFile(PRISM_BOOTFLAG);
             }
+            /* the log switched on while running (prismlog ON or SYNC, ARexx
+             * LOG ON): its ring comes now - dbg() drops every line until it
+             * exists, and before 1.1 beta 9 it only ever came at the start */
+            if (prefs.log && !dbgRing && !(dbgRing = AllocVec(DBG_RING, MEMF_PUBLIC | MEMF_CLEAR)))
+                prefs.log = 0;
             if (prefs.log == 2) {
                 /* LOG=SYNC (or "prismlog SYNC"): sleep until dbg() has a
-                 * line, write it at once, ahead of whoever logged it -
-                 * polling once a frame until the start has settled */
+                 * line or a frame is up (sync_sleep), write the lines at
+                 * once, ahead of whoever logged them; the frame's work
+                 * below runs when the frame is up */
                 ULONG sig;
+                BOOL frame;
                 SetTaskPri(dbgMain, 10);
-                if (settled)
-                    sig = Wait(SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F);
-                else {
-                    Delay(1);
-                    sig = SetSignal(0, SIGBREAKF_CTRL_F);
-                }
+                sig = sync_sleep(&frame);
                 if (sig & SIGBREAKF_CTRL_C)
                     SetSignal(SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_C);
                 dbg_flush();
@@ -3437,9 +3509,10 @@ int main(void)
                 }
                 if (prefs.log != 2)
                     SetTaskPri(dbgMain, 0);
-                continue;
-            }
-            Delay(1);                         /* ~one frame              */
+                if (!frame)
+                    continue;                 /* a log line: the frame's work when it is due */
+            } else
+                Delay(1);                     /* ~one frame              */
             if (chipTop != 0xffffffffUL && (tick & 63) == 0 && other_rtg()) {
                 chipTop = 0xffffffffUL;       /* Picasso96 came up after us */
                 dbg("Picasso96 has started: its bitmaps are left to it from now on\n");
@@ -3455,6 +3528,7 @@ int main(void)
                 dbg_flush();
         }
         SetSignal(0, SIGBREAKF_CTRL_C);
+        sync_timer_close();               /* opened again if the loop goes on */
 #ifdef PRISM_MISSLOG
         miss_print();
 #endif
