@@ -2329,7 +2329,28 @@ LONG h_Text(struct Regs *r)
         if (i == count) {
             const UBYTE *cd = (const UBYTE *)tf->tf_CharData;
             UBYTE *o = stackbuf;
-            if (full) {
+            if (full && tf->tf_YSize == 8) {
+                /* topaz 8: each glyph's eight rows down its own column of the
+                 * template, unrolled. No offset is loaded just before it is
+                 * used as an index (the 68060 stalls on that), and the loop
+                 * runs once a character instead of once a row: copying a
+                 * 4-character string's template took 4.5 us instead of 9.4 on
+                 * the A4000's 68060 and 26 instead of 33 on a 68030 (timed
+                 * alone from the ROM font, 2026-10-14) */
+                const UWORD mod = tf->tf_Modulo;
+                for (i = 0; i < count; i++) {
+                    const UBYTE *s = cd + off[i];
+                    UBYTE *d = o + i;
+                    d[0]         = s[0];
+                    d[count]     = s[mod];
+                    d[2 * count] = s[2 * mod];
+                    d[3 * count] = s[3 * mod];
+                    d[4 * count] = s[4 * mod];
+                    d[5 * count] = s[5 * mod];
+                    d[6 * count] = s[6 * mod];
+                    d[7 * count] = s[7 * mod];
+                }
+            } else if (full) {
                 /* every glyph a whole byte wide (topaz 8 is): the gather is
                  * one read and one write a byte, a quarter of Text's time
                  * on the 68030 before (profiled 2026-10-11) */
