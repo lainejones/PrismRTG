@@ -149,7 +149,10 @@ struct PBitMap {
 /* The Prism bitmap behind a BitMap, or NULL (bitmap.c keeps the table).
  * Inline: two to four of these per drawing call. */
 extern struct PBitMap *pbmTable[PBM_MAX];
-static inline struct PBitMap *pbm_get(const struct BitMap *bm)
+/* pbm_get and pbm_expand always inlined (as before 2026-10-15): render.c's
+ * growth pushed GCC past its inlining budget, and they went out of line
+ * on the hot paths (f_WritePixel, ScrollRaster, Text) */
+static inline __attribute__((always_inline)) struct PBitMap *pbm_get(const struct BitMap *bm)
 {
     struct PBitMap *p;
     UWORD i;
@@ -286,7 +289,7 @@ static inline enum PrismResult pbm_line(struct PBitMap *p, WORD x, WORD y, WORD 
 /* Text: a timeout while the CPU feeds the template only turns blitter text
  * off (the driver counts it in faults and stops expanding), so it comes
  * back as PR_RETRY and this string is drawn on the CPU. */
-static inline enum PrismResult pbm_expand(struct PBitMap *p, UWORD x, UWORD y, UWORD w, UWORD h,
+static inline __attribute__((always_inline)) enum PrismResult pbm_expand(struct PBitMap *p, UWORD x, UWORD y, UWORD w, UWORD h,
                                           const UBYTE *src, ULONG mod, ULONG fg, ULONG bg, BOOL tr)
 {
     struct PrismBoard *b = p->bd;
@@ -479,7 +482,10 @@ static inline ULONG pf_get(UBYTE fmt, const UBYTE *s)
     return rgb32(fmt, *(const UWORD *)s);
 }
 
-static inline void pf_put(UBYTE fmt, ULONG c, UBYTE *d)
+/* always inlined: called out of line, GCC gave its callers (line_cb,
+ * f_WritePixel) a frame pointer - a register fewer in their loops, lines
+ * 15% slower on the 68030 (2026-10-15) */
+static inline __attribute__((always_inline)) void pf_put(UBYTE fmt, ULONG c, UBYTE *d)
 {
     UBYTE r = c >> 16, g = c >> 8, b = c;
     switch (fmt) {

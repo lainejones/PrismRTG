@@ -114,9 +114,11 @@ struct Surf {
     struct PBitMap *p;          /* Prism bitmap behind pix, if any       */
 };
 
-static void surf_of(struct BitMap *bm, struct Surf *s)
+/* surf_of with the PBitMap already looked up (p = pbm_get(bm), or NULL):
+ * the callbacks are handed theirs, and a blit used to look the same bitmap
+ * up five times (ClipBlit on the 68030, profiled 2026-10-15) */
+static void surf_from(struct BitMap *bm, struct PBitMap *p, struct Surf *s)
 {
-    struct PBitMap *p = pbm_get(bm);
     s->bm = bm;
     s->p = p;
     if (p) {
@@ -142,6 +144,11 @@ static void surf_of(struct BitMap *bm, struct Surf *s)
         s->w = planeBytes * 8;
         s->h = bm->Rows;
     }
+}
+
+static void surf_of(struct BitMap *bm, struct Surf *s)
+{
+    surf_from(bm, pbm_get(bm), s);
 }
 
 /* 16-bit pixel back to a pen: exact match in the table, else pen 0. */
@@ -454,6 +461,19 @@ static BOOL clip2(struct Surf *s, WORD *sx, WORD *sy, struct Surf *d, WORD *dx, 
 static void fill(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1,
                  UBYTE pen, UBYTE mask, BOOL xor);
 
+/* blit's fast path (out of line: inlined it made blit's frame 60 bytes
+ * bigger, on the caller's stack). FALSE: not done, or a copy that failed
+ * and can be done again. */
+static __attribute__((noinline)) BOOL blit_vram(struct PBitMap *p, WORD sx, WORD sy, WORD dx,
+                                                WORD dy, WORD w, WORD h)
+{
+    if (!p->blitFits || !HW_OK(p) || !p->bd->copyRect)
+        return FALSE;
+    p->bd->copyRect(p->bd, p->vramOff, p->bpr, p->bpp, sx, sy, dx, dy, w, h);
+    return !(p->bd->flags & PBF_ACCEL_BROKEN) ||
+           (sx < dx + w && dx < sx + w && sy < dy + h && dy < sy + h);
+}
+
 static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD dy,
                  WORD w, WORD h, UBYTE mt, UBYTE mask)
 {
@@ -463,6 +483,13 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
     if (!clip2(s, &sx, &sy, d, &dx, &dy, &w, &h))
         return;
     same = (s->pix && s->pix == d->pix) || (!s->pix && s->bm == d->bm);
+
+    /* the common case, as 1.0 did it: a copy inside one bitmap in VRAM
+     * (ScrollRaster, a window dragged on the screen) straight to the
+     * board's copy hook - through the checks below it was 4-6% slower */
+    if (copy && s->p && s->p == d->p && (mask == 0xff || d->bpp >= 2) && w * h > 256 &&
+        blit_vram(s->p, sx, sy, dx, dy, w, h))
+        return;
 
     /* "Clear" (0x00) and "set" (0xF0) don't look at the source: a fill with
      * pen 0 or the all-ones pen, on the blitter where there is one. Layers
@@ -784,8 +811,10 @@ static void fill(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1,
             return;
     } else if (!xor && (mask == 0xff || p->bpp == 2) && p->inVram && BOARD_CAN(p->bd, fill) &&
         w * (y1 - y0 + 1) >= 12) {
-        if (pbm_fill(p, p->bpp, x0, y0, w, y1 - y0 + 1,
-                       pixval(p, pen)) == PR_DONE) return;
+        /* (the general path: inlined, pbm_fill's own short cut made this
+         * frame 68 bytes bigger, on the caller's stack) */
+        if (pbm_hw_fill(p, p->bpp, x0, y0, w, y1 - y0 + 1,
+                        pixval(p, pen)) == PR_DONE) return;
     }
     if (p->bpp == 2) {
         UWORD v = pixval(p, pen);
@@ -820,14 +849,21 @@ void pbm_fill_pen(struct PBitMap *p, UBYTE pen)
 
 /* rect_cb and clip_rp are declared in prismint.h (cgx.c uses them) */
 
+/* The PBitMap whose drawing through this RastPort is ours, or NULL. Pen
+ * drawing goes to 8- and 16-bit bitmaps, and to 24/32-bit ones that have
+ * a screen's colours; a 24/32-bit image buffer without them
+ * (cybergraphics.library) is left to graphics.library's dummy. */
+static __attribute__((noinline)) struct PBitMap *rp_pbm(struct RastPort *rp)   /* (inlined twice, it took
+                                     h_ClipBlit's frame over tests/stack_audit.sh's budget) */
+{
+    struct PBitMap *p;
+    return rp && rp->BitMap && (p = pbm_get(rp->BitMap)) && (p->bpp <= 2 || p->rgbTab) ? p : NULL;
+}
+
 /* Is this RastPort's drawing ours? */
 static BOOL rp_is_prism(struct RastPort *rp)
 {
-    struct PBitMap *p;
-    /* pen drawing goes to 8- and 16-bit bitmaps, and to 24/32-bit ones that
-     * have a screen's colours; a 24/32-bit image buffer without them
-     * (cybergraphics.library) is left to graphics.library's dummy */
-    return rp && rp->BitMap && (p = pbm_get(rp->BitMap)) && (p->bpp <= 2 || p->rgbTab);
+    return rp_pbm(rp) != NULL;
 }
 
 /* ---- planar bitmaps outside chip RAM --------------------------------
@@ -1420,8 +1456,8 @@ LONG f_WritePixel(struct RastPort *rp, LONG ax, LONG ay)
     } else if (x < 0 || y < 0 || x >= p->w || y >= p->h) {
         goto out;
     }
-    prismActivity++;
-    p->modified = prismActivity;
+    /* one read of the volatile counter, not two (under QUICK_FORBID) */
+    p->modified = prismActivity = prismActivity + 1;
     SW_CLEAR(p, x, y, x, y);
     {
         UBYTE *row = p->pix + (ULONG)y * p->bpr;
@@ -2271,6 +2307,48 @@ static void text_buf_put(UBYTE *b)
     FreeVec(b);
 }
 
+/* Topaz-8-style fonts: each character's glyph byte offset, worked out the
+ * first time it is drawn instead of on every call (the lookup loop was a
+ * third of a 40-character string's template on the 68030). An entry is
+ * (font id << 16) | byte offset, or 0xFFFF for a glyph that is not a whole
+ * aligned byte; one long, so a reader never sees half of another task's
+ * write, and an entry whose id is not the reader's is simply worked out
+ * again. The last font drawn holds the id; another font takes a new one. */
+#define GLYPH_NONE 0xffff
+static ULONG glyphTab[256];
+static struct TextFont *glyphFont;
+static APTR glyphData, glyphLoc;
+static UWORD glyphFontId, glyphNextId;
+
+static UWORD glyph_font_id(struct TextFont *tf)
+{
+    UWORD id;
+    Forbid();
+    if (tf != glyphFont || tf->tf_CharData != glyphData || tf->tf_CharLoc != glyphLoc) {
+        if (!++glyphNextId) {
+            /* the ids wrapped: no entry may keep an id handed out again */
+            memset(glyphTab, 0, sizeof(glyphTab));
+            glyphNextId = 1;
+        }
+        glyphFont = tf;
+        glyphData = tf->tf_CharData;
+        glyphLoc = tf->tf_CharLoc;
+        glyphFontId = glyphNextId;
+    }
+    id = glyphFontId;
+    Permit();
+    return id;
+}
+
+static __attribute__((noinline)) ULONG glyph_entry(struct TextFont *tf, UBYTE c, UWORD id)
+{
+    ULONG l = ((const ULONG *)tf->tf_CharLoc)[glyph_index(tf, c)], e;
+    UWORD bo = l >> 16;
+    e = ((ULONG)id << 16) | (((bo & 7) || (l & 0xffff) != 8) ? GLYPH_NONE : bo >> 3);
+    glyphTab[c] = e;
+    return e;
+}
+
 /* Fixed 8-pixel fonts (topaz 8: Workbench, Shells, most windows) with no
  * style or extra spacing: every glyph is one byte per row at a byte offset
  * in the font data, so the template is a byte per character per row - no
@@ -2315,21 +2393,26 @@ LONG h_Text(struct Regs *r)
     if (tf->tf_XSize == 8 && !(tf->tf_Flags & FPF_PROPORTIONAL) && !kern && !space &&
         !style && !rp->TxSpacing && count <= 256 && (ULONG)count * tf->tf_YSize + 4 <= TEXT_TMPL) {
         WORD *off = (WORD *)(pool + TEXT_TMPL);     /* byte offsets, under 32 K */
-        UBYTE *msk = pool + TEXT_TMPL + 512, gy, full = 1;
-        for (i = 0; i < count; i++) {
-            ULONG l = loc[glyph_index(tf, str[i])];
-            UWORD bo = l >> 16, bw = l & 0xffff;
-            if ((bo & 7) || bw > 8)
-                break;
-            off[i] = bo >> 3;
-            msk[i] = (UBYTE)(0xff00 >> bw);
-            if (bw != 8)
-                full = 0;
+        UBYTE *msk = pool + TEXT_TMPL + 512, gy;
+        {
+            /* each character's glyph offset from glyphTab (worked out once
+             * per font and character, not per call); a separate loop from
+             * the gather below - merged into it, the 68030 build kept the
+             * eight row offsets on the stack and Text got 10% slower */
+            const UWORD id = glyph_font_id(tf);
+            for (i = 0; i < count; i++) {
+                ULONG e = glyphTab[str[i]];
+                if ((UWORD)(e >> 16) != id)
+                    e = glyph_entry(tf, str[i], id);
+                if ((UWORD)e == GLYPH_NONE)
+                    break;
+                off[i] = (UWORD)e;
+            }
         }
         if (i == count) {
             const UBYTE *cd = (const UBYTE *)tf->tf_CharData;
             UBYTE *o = stackbuf;
-            if (full && tf->tf_YSize == 8) {
+            if (tf->tf_YSize == 8) {
                 /* topaz 8: each glyph's eight rows down its own column of the
                  * template, unrolled. No offset is loaded just before it is
                  * used as an index (the 68060 stalls on that), and the loop
@@ -2350,20 +2433,34 @@ LONG h_Text(struct Regs *r)
                     d[6 * count] = s[6 * mod];
                     d[7 * count] = s[7 * mod];
                 }
-            } else if (full) {
-                /* every glyph a whole byte wide (topaz 8 is): the gather is
-                 * one read and one write a byte, a quarter of Text's time
-                 * on the 68030 before (profiled 2026-10-11) */
+            } else {
+                /* other heights (XEN 9, a Shell's own 8-wide font): a row at
+                 * a time, one read and one write a byte */
                 for (gy = 0; gy < tf->tf_YSize; gy++, cd += tf->tf_Modulo) {
                     const WORD *op = off;
                     UBYTE *e = o + count;
                     while (o < e)
                         *o++ = cd[*op++];
                 }
-            } else
-                for (gy = 0; gy < tf->tf_YSize; gy++, cd += tf->tf_Modulo)
-                    for (i = 0; i < count; i++)
-                        *o++ = cd[off[i]] & msk[i];
+            }
+            goto drawn;
+        }
+        for (i = 0; i < count; i++) {
+            ULONG l = loc[glyph_index(tf, str[i])];
+            UWORD bo = l >> 16, bw = l & 0xffff;
+            if ((bo & 7) || bw > 8)
+                break;
+            off[i] = bo >> 3;
+            msk[i] = (UBYTE)(0xff00 >> bw);
+        }
+        if (i == count) {
+            const UBYTE *cd = (const UBYTE *)tf->tf_CharData;
+            UBYTE *o = stackbuf;
+            /* glyphs narrower than a byte (whole-byte ones went above) */
+            for (gy = 0; gy < tf->tf_YSize; gy++, cd += tf->tf_Modulo)
+                for (i = 0; i < count; i++)
+                    *o++ = cd[off[i]] & msk[i];
+        drawn:
             top = rp->cp_y - tf->tf_Baseline;
             t.rp = rp;
             t.src = stackbuf;
@@ -2616,7 +2713,7 @@ static void blit_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
     WORD w = bx1 - bx0 + 1, h = by1 - by0 + 1, y, x;
     ULONG mbpr;
 
-    surf_of(p->bm, &d);
+    surf_from(p->bm, p, &d);
     /* the lock is held now: the source may have moved (VRAM paging)
      * since blit_rp looked, and if it is the shown bitmap the software
      * pointer must not be copied along */
@@ -2748,7 +2845,7 @@ static void grab_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
 {
     struct GrabCtx *g = ctx;
     struct Surf s;
-    surf_of(p->bm, &s);
+    surf_from(p->bm, p, &s);
     blit(&s, bx0, by0, g->dst, bx0 - ox - g->x0, by0 - oy - g->y0,
          bx1 - bx0 + 1, by1 - by0 + 1, 0xc0, 0xff);
 }
@@ -2791,16 +2888,17 @@ LONG h_ClipBlit(struct Regs *r)
     FOREIGN(h_ClipBlit, 1);
     struct RastPort *srp = (struct RastPort *)r->a[0], *drp = (struct RastPort *)r->a[1];
     WORD sx = RW(0), sy = RW(1), dx = RW(2), dy = RW(3), w = RW(4), h = RW(5);
-    struct PBitMap *sp;
+    struct PBitMap *sp, *dp;
     struct Surf tmp;
     struct GrabCtx g;
     struct BlitCtx b;
 
-    if (!rp_is_prism(srp) || !rp_is_prism(drp))
+    /* each side looked up once (rp_pbm), and handed on */
+    if (!(sp = rp_pbm(srp)) || !(dp = rp_pbm(drp)))
         return 0;                /* planar on either side: the original */
     if (w <= 0 || h <= 0)
         return 1;
-    if (srp->Layer == drp->Layer && pbm_get(srp->BitMap) == pbm_get(drp->BitMap)) {
+    if (srp->Layer == drp->Layer && sp == dp) {
         struct Layer *L = srp->Layer;
         WORD ox, oy, ox2, oy2;
         BOOL direct;
@@ -2811,7 +2909,7 @@ LONG h_ClipBlit(struct Regs *r)
             struct Surf s;
             ObtainSemaphore(&lock);
             prismActivity++;
-            surf_of(srp->BitMap, &s);        /* under the lock (VRAM paging) */
+            surf_from(srp->BitMap, sp, &s);  /* under the lock (VRAM paging) */
             SW_CLEAR(s.p, sx + ox, sy + oy, sx + ox + w - 1, sy + oy + h - 1);
             SW_CLEAR(s.p, dx + ox, dy + oy, dx + ox + w - 1, dy + oy + h - 1);
             if (s.p) s.p->modified = prismActivity;
@@ -2822,7 +2920,6 @@ LONG h_ClipBlit(struct Regs *r)
         if (direct)
             return 1;
     }
-    sp = pbm_get(srp->BitMap);
     memset(&tmp, 0, sizeof(tmp));
     tmp.bpp = sp->bpp;
     tmp.penTab = sp->penTab;
@@ -2855,12 +2952,18 @@ static void scroll_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
     WORD w = bx1 - bx0 + 1, h = by1 - by0 + 1;
     WORD adx = c->dx < 0 ? -c->dx : c->dx, ady = c->dy < 0 ? -c->dy : c->dy;
 
-    surf_of(p->bm, &s);
     if (adx < w && ady < h) {
         /* content moves by (-dx, -dy) inside the piece */
         WORD sx = bx0 + (c->dx > 0 ? c->dx : 0), sy = by0 + (c->dy > 0 ? c->dy : 0);
         WORD tx = bx0 + (c->dx < 0 ? -c->dx : 0), ty = by0 + (c->dy < 0 ? -c->dy : 0);
-        blit(&s, sx, sy, &s, tx, ty, w - adx, h - ady, 0xc0, 0xff);
+        /* the piece is already inside the bitmap: straight to the board's
+         * copy when it can, without blit's clipping and frame (ScrollRaster
+         * was 5% behind 1.0.2 on the 68030 through blit) */
+        if ((LONG)(w - adx) * (h - ady) <= 256 ||
+            !blit_vram(p, sx, sy, tx, ty, w - adx, h - ady)) {
+            surf_from(p->bm, p, &s);
+            blit(&s, sx, sy, &s, tx, ty, w - adx, h - ady, 0xc0, 0xff);
+        }
     }
     /* clear what scrolled in */
     if (c->dy > 0) fill(p, bx0, by1 - (ady < h ? ady : h) + 1, bx1, by1, c->bgpen, 0xff, FALSE);
@@ -2985,7 +3088,7 @@ static void read_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
     struct ArrCtx *c = ctx;
     struct Surf s;
     WORD y, w = bx1 - bx0 + 1;
-    surf_of(p->bm, &s);
+    surf_from(p->bm, p, &s);
     for (y = by0; y <= by1; y++) {
         surf_read(&s, bx0, y, w, c->buf + (LONG)(y - oy - c->y0) * c->bpr + (bx0 - ox - c->x0));
         c->count += w;
@@ -2998,7 +3101,7 @@ static void write_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
     struct ArrCtx *c = ctx;
     struct Surf s;
     WORD y, w = bx1 - bx0 + 1;
-    surf_of(p->bm, &s);
+    surf_from(p->bm, p, &s);
     for (y = by0; y <= by1; y++) {
         surf_write(&s, bx0, y, w, c->buf + (LONG)(y - oy - c->y0) * c->bpr + (bx0 - ox - c->x0),
                    0xff);
