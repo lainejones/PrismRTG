@@ -1689,3 +1689,35 @@ the fallback; where the board has an overlay the layer goes to it:
   zz_pixel, CCIR 601, nearest scaling, keyed on the stored pixel bytes) so
   vlayer.py's YCBCR case runs through the hardware path (channel error 1
   against the CPU path's 7) and frogger.py covers the real player.
+
+## Speed from 1.0 to 1.1 beta 6 (moved from the README, 2026-10-15)
+
+The README's A4000 table had 1.0.2 and 1.1 beta 4 columns measured on 9 October; the notes
+that went with them:
+
+Beta 4's clearest loss here is short text (about 11% on 4-character
+strings). It is not a text problem: on the cycle-exact 68030 + Picasso II+
+emulation, where runs repeat within 1%, beta 4 is 5-7% slower than 1.0.2 on
+most small drawing calls (small fills, WritePixel, ReadPixel, short text,
+small blits), while long lines got faster. Short operations show it most
+because a fixed cost per call is a bigger share of them. Measuring the
+builds in between puts it in two steps: the 1.1 beta 1 driver work
+(WritePixel and ReadPixel) and the move to format-aware board surfaces
+(every blitter operation, partly spent waiting for the blitter).
+
+Beta 5 takes back about half of it on the 68030 (each build measured at
+three code alignments and averaged, since where the compiler places code
+alone moves these numbers by 2-5%): against 1.0.2, RectFill 100x100 -5.2%
+in beta 4 and -2.9% in beta 5, RectFill 8x8 -7.0% / -4.0%, 4-character
+text -4.7% / -2.8%, ClipBlit -5.9% / -3.6%, ScrollRaster -8.8% / -5.4%,
+bitmap-to-screen blit -4.7% / -1.9%. The rest is a few instructions on
+every call. The A4000 columns have not been measured again since beta 4.
+
+Beta 6 is ahead of beta 5 on every one of the 68030 bench's lines (three
+code alignments each, cycle-exact emulated Picasso II+): RectFill 100x100
++11%, RectFill 8x8 +12%, ReadPixel +95%, 40-character text +3%, and the
+~390-pixel line +23%. The line speed came from a compiler detail: GCC had
+turned the 8-bit line loop's short pixel runs into calls to the C
+library's memset, which took a fifth of all line time for runs of six to
+ten pixels and moved with every change to PrismD's size; the build now
+keeps such loops as loops (`-fno-tree-loop-distribute-patterns`).

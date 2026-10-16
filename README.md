@@ -244,51 +244,35 @@ anyone can repeat the measurements on their own machine.
 ### A4000, 68060, ZZ9000 - 800x600, 8-bit
 
 PrismRTG 1.0 as released (5 October 2026); Picasso96 measured on the same
-machine two days earlier. The two right-hand columns were measured on
-9 October, alternating 1.0.2 and 1.1 beta 4 over four boots (two runs per
-boot, mean shown), to show what the code added since 1.0 costs. Speeds vary
-by up to 5-10% from one boot to the next on this machine, so only the
-differences larger than that mean much.
+machine two days earlier. The three right-hand columns were measured on
+14 and 15 October, each against its neighbour over four boots (two runs per
+boot, mean shown): 1.0.2, 1.1 beta 8, and the main branch after beta 8,
+which builds short text's template a glyph column at a time and writes the
+ZZ9000's command fields in pairs. Speeds vary by up to 5-10% from one boot
+to the next on this machine, so only the differences larger than that mean
+much.
 
-Beta 4's clearest loss here is short text (about 11% on 4-character
-strings). It is not a text problem: on the cycle-exact 68030 + Picasso II+
-emulation, where runs repeat within 1%, beta 4 is 5-7% slower than 1.0.2 on
-most small drawing calls (small fills, WritePixel, ReadPixel, short text,
-small blits), while long lines got faster. Short operations show it most
-because a fixed cost per call is a bigger share of them. Measuring the
-builds in between puts it in two steps: the 1.1 beta 1 driver work
-(WritePixel and ReadPixel) and the move to format-aware board surfaces
-(every blitter operation, partly spent waiting for the blitter).
+Beta 8 was about 9% behind 1.0.2 on 4-character text and a few percent on
+lines and scrolling. Profiling on the A4000 put most of the text loss in one
+loop that stalled the 68060 (an index loaded just before it was used); the
+main branch is level with 1.0.2 there and ahead on long text, small fills
+and lines. ScrollRaster is still about 4% behind 1.0.2, and the
+bitmap-to-screen blit moves by 5-10% with where the compiler places the
+code, so read its column as noise. How the betas before lost speed and won
+it back is in [docs/design.md](docs/design.md).
 
-Beta 5 takes back about half of it on the 68030 (each build measured at
-three code alignments and averaged, since where the compiler places code
-alone moves these numbers by 2-5%): against 1.0.2, RectFill 100x100 -5.2%
-in beta 4 and -2.9% in beta 5, RectFill 8x8 -7.0% / -4.0%, 4-character
-text -4.7% / -2.8%, ClipBlit -5.9% / -3.6%, ScrollRaster -8.8% / -5.4%,
-bitmap-to-screen blit -4.7% / -1.9%. The rest is a few instructions on
-every call. The A4000 columns have not been measured again since beta 4.
-
-Beta 6 is ahead of beta 5 on every one of the 68030 bench's lines (three
-code alignments each, cycle-exact emulated Picasso II+): RectFill 100x100
-+11%, RectFill 8x8 +12%, ReadPixel +95%, 40-character text +3%, and the
-~390-pixel line +23%. The line speed came from a compiler detail: GCC had
-turned the 8-bit line loop's short pixel runs into calls to the C
-library's memset, which took a fifth of all line time for runs of six to
-ten pixels and moved with every change to PrismD's size; the build now
-keeps such loops as loops (`-fno-tree-loop-distribute-patterns`).
-
-| Test | Picasso96 | PrismRTG 1.0 | 1.0.2 (9 Oct) | 1.1 beta 4 (9 Oct) |
-|---|---|---|---|---|
-| RectFill 100x100 | 19,933 | **22,046** | **21,157** | **21,402** |
-| RectFill 8x8 | 26,148 | **35,484** | **33,810** | **33,275** |
-| Text, 40 characters | 4,894 | **5,387** | **5,473** | **5,291** |
-| Text, 4 characters | 9,844 | **15,433** | **16,098** | **14,273** |
-| ClipBlit 200x100 | 5,493 | **8,695** | **8,618** | **8,882** |
-| ScrollRaster 400x100 | 5,520 | **11,149** | **10,736** | **10,737** |
-| Line, ~390 pixels | 18,134 | **26,761** | **25,877** | **26,289** |
-| WritePixel | 92,941 | **117,717** | **117,680** | **118,218** |
-| Planar blit 64x32 (icons) | 241 | **1,007** | **1,010** | **1,005** |
-| Bitmap-to-screen blit 64x32 | 11,178 | **24,271** | **22,923** | **24,883** |
+| Test | Picasso96 | PrismRTG 1.0 | 1.0.2 (14 Oct) | 1.1 beta 8 | main (15 Oct) |
+|---|---|---|---|---|---|
+| RectFill 100x100 | 19,933 | **22,046** | **21,506** | **21,782** | **22,091** |
+| RectFill 8x8 | 26,148 | **35,484** | **35,466** | **38,429** | **40,316** |
+| Text, 40 characters | 4,894 | **5,387** | **5,498** | **5,251** | **5,928** |
+| Text, 4 characters | 9,844 | **15,433** | **16,242** | **14,646** | **16,765** |
+| ClipBlit 200x100 | 5,493 | **8,695** | **8,616** | **8,353** | **8,629** |
+| ScrollRaster 400x100 | 5,520 | **11,149** | **10,734** | **10,230** | **10,313** |
+| Line, ~390 pixels | 18,134 | **26,761** | **26,760** | **25,520** | **28,119** |
+| WritePixel | 92,941 | **117,717** | **117,898** | **118,233** | **118,017** |
+| Planar blit 64x32 (icons) | 241 | **1,007** | **1,009** | **999** | **993** |
+| Bitmap-to-screen blit 64x32 | 11,178 | **24,271** | **23,499** | **25,638** | **23,972** |
 
 16-bit and 32-bit show the same pattern (WritePixel at 32-bit: 92,875 /
 99,498). Screen flips (`ScreenToFront` between two PrismRTG screens) run at
@@ -296,33 +280,33 @@ keeps such loops as loops (`-fno-tree-loop-distribute-patterns`).
 
 ### A2000, 68030 at 50 MHz, GBAPII++ - 640x480
 
-Measured on 4 October 2026 with the build of that day (the A2000 has not run
-a released build yet).
+PrismRTG 1.1 beta 8 measured on 15 October 2026, Picasso96 on 4 October,
+same machine and card.
 
 | Test | P96 8-bit | **PrismRTG 8** | P96 16-bit | **PrismRTG 16** |
 |---|---|---|---|---|
-| RectFill 100x100 | 3,902 | **3,987** | 2,865 | 2,807 |
-| RectFill 8x8 | 5,094 | **6,765** | 4,918 | **6,475** |
-| Text, 40 characters | 1,343 | **1,516** | 1,280 | **1,478** |
-| Text, 4 characters | 2,678 | **3,665** | 2,619 | **3,470** |
-| ClipBlit 200x100 | 1,107 | **1,408** | 652 | **730** |
-| ScrollRaster 400x100 | 698 | **819** | 383 | **409** |
-| Line, ~390 pixels | 1,805 | **2,007** | 1,488 | **1,945** |
-| WritePixel | 14,646 | **23,480** | 14,206 | **22,773** |
-| Planar blit 64x32 (icons) | 306 | **361** | 160 | **173** |
-| Bitmap-to-screen blit 64x32 | 2,378 | **4,125** | 2,025 | **3,249** |
+| RectFill 100x100 | 3,902 | **4,022** | 2,865 | 2,806 |
+| RectFill 8x8 | 5,094 | **6,762** | 4,918 | **6,580** |
+| Text, 40 characters | 1,343 | **1,491** | 1,280 | **1,473** |
+| Text, 4 characters | 2,678 | **3,404** | 2,619 | **3,338** |
+| ClipBlit 200x100 | 1,107 | **1,378** | 652 | **717** |
+| ScrollRaster 400x100 | 698 | **794** | 383 | **401** |
+| Line, ~390 pixels | 1,805 | **2,415** | 1,488 | **1,876** |
+| WritePixel | 14,646 | **22,965** | 14,206 | **22,490** |
+| Planar blit 64x32 (icons) | 306 | **345** | 160 | **166** |
+| Bitmap-to-screen blit 64x32 | 2,378 | **3,774** | 2,025 | **2,974** |
 
 True colour on the GBAPII++ comes in two formats, and they trade off:
 
 | Test | P96 "24" | PrismRTG 24-bit | PrismRTG 32-bit |
 |---|---|---|---|
-| RectFill 100x100 | 1,001 | 786 | **1,485** |
-| Text, 40 characters (JAM1) | 416 | 279 | **1,307** |
-| Text, 40 characters (JAM2) | 214 | 201 | **1,296** |
-| ClipBlit 200x100 | 406 | **430** | 304 |
-| ScrollRaster 400x100 | 213 | 188 | 162 |
-| WritePixel | 13,718 | **19,158** | **18,730** |
-| Planar blit 64x32 (icons) | 108 | 103 | **120** |
+| RectFill 100x100 | 1,001 | 763 | **1,441** |
+| Text, 40 characters (JAM1) | 416 | 287 | **1,312** |
+| Text, 40 characters (JAM2) | 214 | 200 | **1,304** |
+| ClipBlit 200x100 | 406 | **427** | 299 |
+| ScrollRaster 400x100 | 213 | 181 | 160 |
+| WritePixel | 13,718 | **18,736** | **15,900** |
+| Planar blit 64x32 (icons) | 108 | 104 | **124** |
 
 The chip's blitter can fill and draw text at 32 bits but not at 24, and it
 copies about the same number of bytes per second in either format. So

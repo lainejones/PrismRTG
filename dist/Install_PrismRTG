@@ -3,7 +3,8 @@
 ; -------------------------------------------------------------------------
 ; PrismRTG - Installer script
 ; RTG (graphics card) software for AmigaOS 3.x:
-;   Village Tronic Picasso II / GBAPII++ (Zorro II) and MNT ZZ9000.
+;   MNT ZZ9000, the Z3660's RTG output, the Picasso II family (GBAPII++,
+;   Piccolo, Spectrum, Graffity) and the Picasso IV.
 ; Needs the standard Installer, Kickstart 3.1 or newer and a 68020 or better.
 ; Double-click Install_PrismRTG, or from a Shell in this drawer:
 ;     Installer Install_PrismRTG
@@ -135,9 +136,9 @@
 ; ---- a first install: say what it is, and check the card -----------------
 (if fresh
     (message "Welcome to PrismRTG.\n\n"
-             "PrismRTG is graphics card (RTG) software for the Picasso II, the GBAPII++ and "
-             "the MNT ZZ9000: Workbench and programs in 256 colours, 16-bit and "
-             "24/32-bit, drawn by the card's blitter, with its own built-in "
+             "PrismRTG is graphics card software for the MNT ZZ9000, the Z3660, the "
+             "GBAPII++ and Picasso II family and the Picasso IV: Workbench and programs "
+             "in 256 colours, 16-bit and 24/32-bit on the card's blitter, with its own "
              "cybergraphics.library and Picasso96API.library for programs that ask "
              "for one.\n\n"
              "It takes the place of Picasso96: the two cannot be active on the same "
@@ -147,8 +148,9 @@
 (if (= card "0")
     (if (not (askbool
             (prompt "No graphics card that PrismRTG knows was found in this Amiga.\n\n"
-                    "PrismRTG drives the Picasso II, GBAPII++, Piccolo, Piccolo SD64, "
-                    "Spectrum 28/24 and the MNT ZZ9000.\n\n"
+                    "PrismRTG drives the MNT ZZ9000, the Z3660's RTG output, the "
+                    "Picasso II, GBAPII++, Piccolo, Piccolo SD64, Spectrum 28/24, "
+                    "Graffity and Picasso IV.\n\n"
                     "Install it anyway?")
             (help "Without one of these cards PrismRTG starts, finds nothing and stops: "
                   "the Amiga works as before. Installing anyway only makes sense if the "
