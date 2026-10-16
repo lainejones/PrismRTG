@@ -68,6 +68,7 @@ static UWORD gamma_index(UBYTE g)
 
 struct Gui {
     struct Screen *scr;
+    BOOL ownScr;                     /* scr is our own tall screen, not Workbench */
     APTR vi;
     struct Window *win;
     struct Gadget *glist, *gList, *gOn, *gHz, *gBoard, *gBlit, *gLog, *gBgr, *gDrag, *gSoft, *gHwOvl, *gStatus;
@@ -696,14 +697,49 @@ static BOOL make_gadgets(struct Gui *g, WORD *innerW, WORD *innerH)
     return TRUE;
 }
 
+/* The window needs about 460 lines with topaz 8. A Workbench shorter than
+ * that (640x256 PAL, 640x200 NTSC: any machine without an RTG Workbench,
+ * so most machines PrismRTG isn't installed on yet) left half the gadgets,
+ * Save and Cancel among them, outside the window - and a crash on some
+ * systems. Then the editor opens its own screen like the Workbench,
+ * interlaced where the mode has an interlaced form, as tall as it needs
+ * (scrolling if the display is shorter still). */
+static struct Screen *tall_screen(struct Screen *wb, WORD h)
+{
+    ULONG id = GetVPModeID(&wb->ViewPort);
+    if (id != INVALID_ID && !(id & LACE) && !ModeNotAvailable(id | LACE))
+        id |= LACE;
+    return OpenScreenTags(NULL,
+        SA_LikeWorkbench, TRUE,
+        id != INVALID_ID ? SA_DisplayID : TAG_IGNORE, id,
+        SA_Height, (ULONG)h,
+        SA_AutoScroll, TRUE,
+        SA_Title, (ULONG)S(ID_PRISMRTG_PREFERENCES, "PrismRTG Preferences"),
+        TAG_END);
+}
+
 static BOOL open_window(struct Gui *g)
 {
-    WORD iw, ih;
+    WORD iw, ih, need;
+    struct Screen *own;
 
     if (!(g->scr = LockPubScreen(NULL)) || !(g->vi = GetVisualInfo(g->scr, TAG_END)))
         return FALSE;
     if (!make_gadgets(g, &iw, &ih))
         return FALSE;
+    /* the window's outer height, from where it opens */
+    need = g->scr->BarHeight + 4 + g->scr->WBorTop + g->scr->RastPort.Font->tf_YSize + 1 + ih +
+           g->scr->WBorBottom;
+    if (need > g->scr->Height && (own = tall_screen(g->scr, need + 2))) {
+        FreeGadgets(g->glist);
+        g->glist = NULL;
+        FreeVisualInfo(g->vi);
+        UnlockPubScreen(NULL, g->scr);
+        g->scr = own;
+        g->ownScr = TRUE;
+        if (!(g->vi = GetVisualInfo(g->scr, TAG_END)) || !make_gadgets(g, &iw, &ih))
+            return FALSE;
+    }
     g->win = OpenWindowTags(NULL,
         WA_Title, (ULONG)S(ID_PRISMRTG_PREFERENCES, "PrismRTG Preferences"),
         WA_Left, 20, WA_Top, g->scr->BarHeight + 4,
@@ -715,7 +751,7 @@ static BOOL open_window(struct Gui *g)
                   IDCMP_MOUSEBUTTONS |
                   BUTTONIDCMP | CHECKBOXIDCMP | CYCLEIDCMP | LISTVIEWIDCMP | STRINGIDCMP,
         WA_Gadgets, (ULONG)g->glist,
-        WA_PubScreen, (ULONG)g->scr,
+        g->ownScr ? WA_CustomScreen : WA_PubScreen, (ULONG)g->scr,
         TAG_END);
     if (!g->win)
         return FALSE;
@@ -977,7 +1013,8 @@ out:
     if (g.win) CloseWindow(g.win);
     if (g.glist) FreeGadgets(g.glist);
     if (g.vi) FreeVisualInfo(g.vi);
-    if (g.scr) UnlockPubScreen(NULL, g.scr);
+    if (g.scr && g.ownScr) CloseScreen(g.scr);
+    else if (g.scr) UnlockPubScreen(NULL, g.scr);
     if (GadToolsBase) CloseLibrary(GadToolsBase);
     if (GfxBase) CloseLibrary((struct Library *)GfxBase);
     if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);
