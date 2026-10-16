@@ -258,10 +258,12 @@ loop that stalled the 68060 (an index loaded just before it was used); the
 main branch is level with 1.0.2 there and ahead on long text, small fills
 and lines. ScrollRaster is still about 4% behind 1.0.2, and the
 bitmap-to-screen blit moves by 5-10% with where the compiler places the
-code, so read its column as noise. How the betas before lost speed and won
-it back is in [docs/design.md](docs/design.md).
+code, so read its column as noise. Beta 9 adds more on top of that main
+branch (text, ScrollRaster and ClipBlit, measured on the A2000 below and on
+the emulator) and has not been timed on the A4000 yet. How the betas before
+lost speed and won it back is in [docs/design.md](docs/design.md).
 
-| Test | Picasso96 | PrismRTG 1.0 | 1.0.2 (14 Oct) | 1.1 beta 8 | main (15 Oct) |
+| Test | Picasso96 | PrismRTG 1.0 | 1.0.2 (14 Oct) | 1.1 beta 8 | main before beta 9 (15 Oct) |
 |---|---|---|---|---|---|
 | RectFill 100x100 | 19,933 | **22,046** | **21,506** | **21,782** | **22,091** |
 | RectFill 8x8 | 26,148 | **35,484** | **35,466** | **38,429** | **40,316** |
@@ -280,33 +282,33 @@ it back is in [docs/design.md](docs/design.md).
 
 ### A2000, 68030 at 50 MHz, GBAPII++ - 640x480
 
-PrismRTG 1.1 beta 8 measured on 15 October 2026, Picasso96 on 4 October,
+PrismRTG 1.1 beta 9 measured on 15 October 2026, Picasso96 on 4 October,
 same machine and card.
 
 | Test | P96 8-bit | **PrismRTG 8** | P96 16-bit | **PrismRTG 16** |
 |---|---|---|---|---|
-| RectFill 100x100 | 3,902 | **4,022** | 2,865 | 2,806 |
-| RectFill 8x8 | 5,094 | **6,762** | 4,918 | **6,580** |
-| Text, 40 characters | 1,343 | **1,491** | 1,280 | **1,473** |
-| Text, 4 characters | 2,678 | **3,404** | 2,619 | **3,338** |
-| ClipBlit 200x100 | 1,107 | **1,378** | 652 | **717** |
-| ScrollRaster 400x100 | 698 | **794** | 383 | **401** |
-| Line, ~390 pixels | 1,805 | **2,415** | 1,488 | **1,876** |
-| WritePixel | 14,646 | **22,965** | 14,206 | **22,490** |
-| Planar blit 64x32 (icons) | 306 | **345** | 160 | **166** |
-| Bitmap-to-screen blit 64x32 | 2,378 | **3,774** | 2,025 | **2,974** |
+| RectFill 100x100 | 3,902 | **4,028** | 2,865 | 2,814 |
+| RectFill 8x8 | 5,094 | **6,815** | 4,918 | **6,692** |
+| Text, 40 characters | 1,343 | **1,781** | 1,280 | **1,756** |
+| Text, 4 characters | 2,678 | **3,519** | 2,619 | **3,405** |
+| ClipBlit 200x100 | 1,107 | **1,401** | 652 | **723** |
+| ScrollRaster 400x100 | 698 | **811** | 383 | **402** |
+| Line, ~390 pixels | 1,805 | **2,404** | 1,488 | **1,867** |
+| WritePixel | 14,646 | **22,534** | 14,206 | **21,792** |
+| Planar blit 64x32 (icons) | 306 | **345** | 160 | **165** |
+| Bitmap-to-screen blit 64x32 | 2,378 | **3,784** | 2,025 | **2,987** |
 
 True colour on the GBAPII++ comes in two formats, and they trade off:
 
 | Test | P96 "24" | PrismRTG 24-bit | PrismRTG 32-bit |
 |---|---|---|---|
-| RectFill 100x100 | 1,001 | 763 | **1,441** |
-| Text, 40 characters (JAM1) | 416 | 287 | **1,312** |
-| Text, 40 characters (JAM2) | 214 | 200 | **1,304** |
-| ClipBlit 200x100 | 406 | **427** | 299 |
-| ScrollRaster 400x100 | 213 | 181 | 160 |
-| WritePixel | 13,718 | **18,736** | **15,900** |
-| Planar blit 64x32 (icons) | 108 | 104 | **124** |
+| RectFill 100x100 | 1,001 | 758 | **1,450** |
+| Text, 40 characters (JAM1) | 416 | 298 | **1,530** |
+| Text, 40 characters (JAM2) | 214 | 204 | **1,522** |
+| ClipBlit 200x100 | 406 | **428** | 300 |
+| ScrollRaster 400x100 | 213 | 182 | 161 |
+| WritePixel | 13,718 | **19,692** | **20,009** |
+| Planar blit 64x32 (icons) | 108 | 103 | **123** |
 
 The chip's blitter can fill and draw text at 32 bits but not at 24, and it
 copies about the same number of bytes per second in either format. So

@@ -43,6 +43,12 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.1 beta 9
+  Speed: text in 8-pixel-wide fonts, ScrollRaster and ClipBlit within a
+  window are faster (on a 68030 with a Picasso II+: 40-character text 30%,
+  ScrollRaster 13%, ClipBlit 6% over beta 8), and the ZZ9000 driver hands
+  each operation to the board in fewer writes. Log: SYNC no longer holds up
+  the display, and a log switched on while PrismD runs now logs.
 New in 1.1 beta 8
   Monitor power saving: "Sleep" in PrismPrefs, the minutes without input
   before the monitors go dark (off by default). The Picasso II family and
