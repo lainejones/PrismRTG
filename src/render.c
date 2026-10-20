@@ -2742,26 +2742,17 @@ static WORD maskRuns[MAXW + 2], maskRuns2[MAXW + 2];
  * Picasso II, 2026-10-20) */
 #define MASK_HW_BYTES 256
 
-static void blit_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
-                    WORD ox, WORD oy, void *ctx)
+/* The masked part of blit_cb, out of line: inlined it made blit_cb's
+ * frame 64 bytes bigger on every blit's path, past the stack budget
+ * (tests/stack_audit.sh). */
+static __attribute__((noinline)) void blit_masked(struct BlitCtx *b, struct PBitMap *p,
+                                                  const struct Surf *dp, WORD sx, WORD sy,
+                                                  WORD bx0, WORD by0, WORD w, WORD h)
 {
-    struct BlitCtx *b = ctx;
-    struct Surf d;
-    WORD sx = b->sx + (bx0 - ox - b->dx), sy = b->sy + (by0 - oy - b->dy);
-    WORD w = bx1 - bx0 + 1, h = by1 - by0 + 1, y, x;
+    struct Surf d = *dp;
+    WORD y, x;
     ULONG mbpr;
 
-    surf_from(p->bm, p, &d);
-    /* the lock is held now: the source may have moved (VRAM paging)
-     * since blit_rp looked, and if it is the shown bitmap the software
-     * pointer must not be copied along */
-    if (b->srcbm && b->src.p && b->src.pix != b->src.p->pix)
-        surf_of(b->srcbm, &b->src);
-    SW_CLEAR(b->src.p, sx, sy, sx + w - 1, sy + h - 1);
-    if (!b->amask) {
-        blit(&b->src, sx, sy, &d, bx0, by0, w, h, b->mt, b->mask);
-        return;
-    }
     /* Masked: the mask plane has one plane's worth of rows - the source's
      * plane stride if planar, the planar row size of its width if chunky.
      * Where the mask is set the minterm applies as in BltBitMap; elsewhere
@@ -2883,6 +2874,28 @@ static void blit_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
             surf_write(&d, bx0, by0 + y, w, rowA, b->mask);
         }
     }
+}
+
+static void blit_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
+                    WORD ox, WORD oy, void *ctx)
+{
+    struct BlitCtx *b = ctx;
+    struct Surf d;
+    WORD sx = b->sx + (bx0 - ox - b->dx), sy = b->sy + (by0 - oy - b->dy);
+    WORD w = bx1 - bx0 + 1, h = by1 - by0 + 1;
+
+    surf_from(p->bm, p, &d);
+    /* the lock is held now: the source may have moved (VRAM paging)
+     * since blit_rp looked, and if it is the shown bitmap the software
+     * pointer must not be copied along */
+    if (b->srcbm && b->src.p && b->src.pix != b->src.p->pix)
+        surf_of(b->srcbm, &b->src);
+    SW_CLEAR(b->src.p, sx, sy, sx + w - 1, sy + h - 1);
+    if (!b->amask) {
+        blit(&b->src, sx, sy, &d, bx0, by0, w, h, b->mt, b->mask);
+        return;
+    }
+    blit_masked(b, p, &d, sx, sy, bx0, by0, w, h);
 }
 
 static LONG blit_rp(struct Regs *r, const UBYTE *amask)
