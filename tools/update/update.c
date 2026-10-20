@@ -1,31 +1,34 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Laine Jones */
 /*
- * PrismUpdate - is there a newer PrismRTG release, and fetch and install it.
+ * update.c - is there a newer release, and fetch and install it. Shared by
+ * Laine's Amiga projects: everything product-specific (name, repository,
+ * archive and installer names, version, where the settings live) comes from
+ * upd_cfg.h and the product's upd_load_prefs(). Started as PrismRTG's
+ * PrismUpdate.
  *
- *   PrismUpdate [GET] [SOURCE=GITHUB|MIRROR|BOTH] [MIRROR=https://host/dir/] [QUIET]
+ *   <tool> [GET] [FETCH] [SOURCE=GITHUB|MIRROR|BOTH] [MIRROR=https://...] [QUIET]
  *
  * Needs a running TCP/IP stack (bsdsocket.library) and AmiSSL 5
  * (amisslmaster.library), or anything that answers to the same API, such
- * as an SSL offload. Everything is fetched over HTTPS: GitHub's release
- * API and release files, and a mirror alike. The client here keeps to the
- * basic SSL calls (context, SNI, connect, read, write) so an offload that
- * implements those works too.
+ * as an SSL offload. Everything is fetched over HTTPS. The client keeps to
+ * the basic SSL calls (context, SNI, connect, read, write) so an offload
+ * that implements those works too.
  *
- * SOURCE and MIRROR default to UPDATES= and MIRROR= in ENV:Prism.prefs.
- * GitHub: a beta looks at the newest release including pre-releases, a
- * final release only at the newest final one. A mirror is a directory with
- * latest.txt, whose first line is "<version> <archive>" (the archive's
- * name in the same directory, or a full https URL).
+ * Sources: GitHub's release API (a beta looks at the newest release
+ * including pre-releases, a final release only at the newest final one), or
+ * a mirror. MIRROR= is either a directory with latest.txt, whose first line
+ * is "<version> <archive>" (the archive's name in the same directory, or a
+ * full https URL), or a Forgejo/Gitea repository's address
+ * (https://host/owner/repo), whose release API answers like GitHub's.
  *
  * GET downloads the archive to T:, unpacks it with LhA and runs its
- * Install_PrismRTG with the Installer: the usual questions follow, and
- * the update takes effect at the next reboot. FETCH only downloads it
- * (T:PrismRTG-update.lha) and unpacks it.
+ * installer with the Installer: the usual questions follow. FETCH only
+ * downloads and unpacks it.
  *
  * Exit codes: 0 up to date, 5 a newer release exists (printed), 10 could
  * not check (no stack, no AmiSSL, no connection), 20 a fetch or install
- * failed. The last line printed is the result, which PrismPrefs shows.
+ * failed. The last line printed is the result, which a Prefs program shows.
  */
 #include <exec/types.h>
 #include <exec/memory.h>
@@ -46,25 +49,25 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
-#include "../src/prism.h"
-#include "../src/prefs.h"
+#include "upd_cfg.h"
 
-static const char version[] __attribute__((used)) = "$VER: PrismUpdate " PRISM_RELEASE " (" PRISM_RELDATE ")";
+static const char version[] __attribute__((used)) = "$VER: " UPD_TOOL " " UPD_VERSION " (" UPD_RELDATE ")";
 
 #define TEMPLATE "GET/S,FETCH/S,SOURCE/K,MIRROR/K,QUIET/S,STK/S"
 enum { A_GET, A_FETCH, A_SOURCE, A_MIRROR, A_QUIET, A_STK, A_COUNT };
 
-#define REPO      "lainejones/PrismRTG"
 #define API_HOST  "api.github.com"
-#define AGENT     "PrismUpdate/" PRISM_RELEASE
-#define ARCHIVE   "T:PrismRTG-update.lha"
-#define UNPACKED  "T:PrismRTG-update"
+#define AGENT     UPD_TOOL "/" UPD_VERSION
+#define ARCHIVE   "T:" UPD_PRODUCT "-update.lha"
+#define UNPACKED  "T:" UPD_PRODUCT "-update"
+#define SCRIPT    "T:" UPD_PRODUCT "-update.script"
 #define MAX_JSON  (512 * 1024)
 #define MAX_LHA   (4L * 1024 * 1024)
 #define NEED_STACK 65536
 
 struct Library *SocketBase, *AmiSSLMasterBase, *AmiSSLBase, *AmiSSLExtBase;
 static BOOL quiet;
+static const char *why = "";          /* the reason a check failed, for the last line */
 
 static void say(const char *fmt, ...)
 {
@@ -167,7 +170,7 @@ struct Fetch {
 static SSL_CTX *ctx;
 static BOOL verify;                      /* the peer's certificate is checked */
 
-/* Ctrl-C in a Shell, or PrismPrefs' window closing: stop waiting */
+/* Ctrl-C in a Shell, or the Prefs window closing: stop waiting */
 static BOOL broken(void)
 {
     return (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0;
@@ -180,10 +183,14 @@ static LONG tcp_connect(const char *host, int port)
     LONG s;
     ULONG tv[2] = { 30, 0 };                 /* a timeval: 30 s, 0 us */
 
-    if (!(he = gethostbyname((STRPTR)host)))
+    if (!(he = gethostbyname((STRPTR)host))) {
+        say(UPD_TOOL ": could not look up %s (DNS)\n", host);
         return -1;
-    if ((s = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    }
+    if ((s = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        say(UPD_TOOL ": no socket (errno %ld)\n", (long)Errno());
         return -1;
+    }
     memset(&sa, 0, sizeof(sa));
     sa.sin_family = AF_INET;
     sa.sin_port = htons(port);
@@ -191,6 +198,7 @@ static LONG tcp_connect(const char *host, int port)
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     if (connect(s, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+        say(UPD_TOOL ": could not connect to %s port %d (errno %ld)\n", host, port, (long)Errno());
         CloseSocket(s);
         return -1;
     }
@@ -265,7 +273,7 @@ static BOOL fetch_once(const struct Url *u, struct Fetch *f)
             /* the handshake with the certificate check on failed: most
              * likely no certificates to check against (AmiSSL:Certs is
              * not there). Once more without, and the report says so. */
-            say("PrismUpdate: note: the certificate of %s could not be checked "
+            say(UPD_TOOL ": note: the certificate of %s could not be checked "
                 "(no AmiSSL:Certs?); the connection is not verified\n", u->host);
             verify = FALSE;
             SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
@@ -273,6 +281,7 @@ static BOOL fetch_once(const struct Url *u, struct Fetch *f)
             CloseSocket(s);
             return fetch_once(u, f);
         }
+        say(UPD_TOOL ": the TLS handshake with %s failed\n", u->host);
         goto out;
     }
     sprintf(req, "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: " AGENT "\r\n"
@@ -350,11 +359,11 @@ static BOOL fetch(const char *url, struct Fetch *f)
     cur[sizeof(cur) - 1] = 0;
     for (hops = 0; hops < 5; hops++) {
         if (!url_parse(cur, &u)) {
-            say("PrismUpdate: not an https URL: %s\n", cur);
+            say(UPD_TOOL ": not an https URL: %s\n", cur);
             return FALSE;
         }
         if (!fetch_once(&u, f)) {
-            say("PrismUpdate: could not fetch from %s (status %ld)\n", u.host, f->status);
+            say(UPD_TOOL ": could not fetch from %s (status %ld)\n", u.host, f->status);
             return FALSE;
         }
         if (f->status / 100 != 3)
@@ -369,7 +378,11 @@ static BOOL fetch(const char *url, struct Fetch *f)
         }
     }
     if (f->status != 200) {
-        say("PrismUpdate: %s answered %ld\n", u.host, f->status);
+        say(UPD_TOOL ": %s answered %ld\n", u.host, f->status);
+        /* GitHub answers 403 or 429 once an address has made its 60 API
+         * calls in the hour that it allows without an account */
+        if ((f->status == 403 || f->status == 429) && !strcmp(u.host, "api.github.com"))
+            why = ": GitHub's hourly limit is used up, try again later";
         return FALSE;
     }
     return TRUE;
@@ -395,11 +408,13 @@ static const char *json_str(const char *p, const char *key, char *out, int n)
     return e;
 }
 
-static BOOL from_github(const struct Ver *mine, struct Latest *l)
+/* a release API that answers like GitHub's: base = "https://api.github.com/repos/
+ * owner/repo" or a Forgejo/Gitea "https://host/api/v1/repos/owner/repo" */
+static BOOL from_api(const char *base, const char *from, const struct Ver *mine, struct Latest *l)
 {
     struct Fetch f;
     const char *p, *end;
-    char url[200];
+    static char url[URL_MAX];
     static char asset[URL_MAX];
     BOOL ok = FALSE;
 
@@ -407,43 +422,69 @@ static BOOL from_github(const struct Ver *mine, struct Latest *l)
     f.limit = MAX_JSON;
     /* a beta sees pre-releases (the newest release of any kind comes
      * first); a final release only the newest final one */
-    sprintf(url, "https://" API_HOST "/repos/" REPO "/releases%s", mine->beta ? "?per_page=5" : "/latest");
+    sprintf(url, "%s/releases%s", base, mine->beta ? "?limit=5&per_page=5" : "/latest");
     if (!fetch(url, &f))
         goto out;
     p = (const char *)f.body;
     if (!(p = json_str(p, "tag_name", l->tag, sizeof(l->tag))))
         goto out;
-    /* the release archive among the assets: PrismRTG-<ver>.lha, not
-     * PrismCheck; stop at the next release's tag */
+    /* the release archive among the assets: <product>-<ver>.lha; stop at
+     * the next release's tag */
     end = strstr(p, "\"tag_name\":");
     l->url[0] = 0;
     while ((p = json_str(p, "browser_download_url", asset, sizeof(asset))) && (!end || p < end)) {
         const char *nm = strrchr(asset, '/');
-        if (nm && !strncmp(nm + 1, "PrismRTG-", 9) && strstr(nm, ".lha")) {
+        if (nm && !strncmp(nm + 1, UPD_ASSET, sizeof(UPD_ASSET) - 1) && strstr(nm, ".lha")) {
             strcpy(l->url, asset);
             break;
         }
     }
-    l->from = "GitHub";
+    l->from = from;
     ok = TRUE;
 out:
     if (f.body) FreeVec(f.body);
     return ok;
 }
 
-static BOOL from_mirror(const char *mirror, struct Latest *l)
+static BOOL from_github(const struct Ver *mine, struct Latest *l)
+{
+    return from_api("https://" API_HOST "/repos/" UPD_REPO, "GitHub", mine, l);
+}
+
+/* https://host/owner/repo (a Forgejo or Gitea repository): its release API */
+static BOOL forge_base(const char *mirror, char *base, int n)
+{
+    static struct Url u;
+    const char *p;
+    int parts = 0;
+    if (!url_parse(mirror, &u) || strstr(u.path, ".txt"))
+        return FALSE;
+    for (p = u.path; *p; p++)
+        if (*p == '/' && p[1] && p[1] != '/')
+            parts++;
+    if (parts != 2 || strlen(mirror) + 32 > (size_t)n)
+        return FALSE;
+    sprintf(base, "https://%s/api/v1/repos%s", u.host, u.path);
+    if (base[strlen(base) - 1] == '/')
+        base[strlen(base) - 1] = 0;
+    return TRUE;
+}
+
+static BOOL from_mirror(const char *mirror, const struct Ver *mine, struct Latest *l)
 {
     struct Fetch f;
     static char url[URL_MAX];
     char *p, *e;
     BOOL ok = FALSE;
 
+    if (mirror[0] && forge_base(mirror, url, sizeof(url)))   /* a Forgejo/Gitea repository */
+        return from_api(url, "the mirror", mine, l);
     if (!mirror[0]) {
-        say("PrismUpdate: no mirror is set (MIRROR= in the prefs)\n");
+        say(UPD_TOOL ": no mirror is set (MIRROR= in the prefs)\n");
         return FALSE;
     }
     if (strlen(mirror) > URL_MAX - 64) {
-        say("PrismUpdate: the mirror address is too long\n");
+        say(UPD_TOOL ": the mirror address is too long\n");
         return FALSE;
     }
     memset(&f, 0, sizeof(f));
@@ -466,7 +507,7 @@ static BOOL from_mirror(const char *mirror, struct Latest *l)
     if ((e = strpbrk(p, " \r\n")))
         *e = 0;
     if (!*p || strlen(p) + strlen(mirror) + 2 > sizeof(l->url)) {
-        say("PrismUpdate: the mirror's latest.txt names no archive, or too long a one\n");
+        say(UPD_TOOL ": the mirror's latest.txt names no archive, or too long a one\n");
         goto out;
     }
     if (!strncmp(p, "https://", 8))
@@ -495,13 +536,13 @@ static BOOL exists(const char *path)
     return l != 0;
 }
 
-/* the drawer the archive unpacked Install_PrismRTG into, or FALSE */
+/* the drawer the archive unpacked the installer into, or FALSE */
 static BOOL find_installer(char *dir, int n)
 {
     BPTR l;
     struct FileInfoBlock *fib;
     BOOL ok = FALSE;
-    sprintf(dir, UNPACKED "/Install_PrismRTG");
+    sprintf(dir, UNPACKED "/" UPD_INSTALLER);
     if (exists(dir)) {
         strcpy(dir, UNPACKED);
         return TRUE;
@@ -513,7 +554,7 @@ static BOOL find_installer(char *dir, int n)
             while (!ok && ExNext(l, fib)) {
                 if (fib->fib_DirEntryType > 0) {
                     char t[300];
-                    sprintf(t, UNPACKED "/%s/Install_PrismRTG", fib->fib_FileName);
+                    sprintf(t, UNPACKED "/%s/" UPD_INSTALLER, fib->fib_FileName);
                     if (exists(t)) {
                         sprintf(dir, UNPACKED "/%s", fib->fib_FileName);
                         ok = TRUE;
@@ -535,14 +576,14 @@ static BOOL get_and_install(const struct Latest *l, BOOL install)
     BPTR out;
 
     if (!l->url[0]) {
-        say("PrismUpdate: the release has no PrismRTG archive to download\n");
+        say(UPD_TOOL ": the release has no " UPD_PRODUCT " archive to download\n");
         return FALSE;
     }
-    say("PrismUpdate: fetching %s\n", l->url);
+    say(UPD_TOOL ": fetching %s\n", l->url);
     memset(&f, 0, sizeof(f));
     f.limit = MAX_LHA;
     if (!(f.file = Open(ARCHIVE, MODE_NEWFILE))) {
-        say("PrismUpdate: can't write " ARCHIVE "\n");
+        say(UPD_TOOL ": can't write " ARCHIVE "\n");
         return FALSE;
     }
     if (!fetch(l->url, &f)) {
@@ -551,31 +592,31 @@ static BOOL get_and_install(const struct Latest *l, BOOL install)
         return FALSE;
     }
     Close(f.file);
-    say("PrismUpdate: %lu bytes, unpacking\n", f.len);
+    say(UPD_TOOL ": %lu bytes, unpacking\n", f.len);
     run("Delete >NIL: " UNPACKED " ALL QUIET");
     if (!run("C:LhA >NIL: x -q " ARCHIVE " " UNPACKED "/")) {
-        say("PrismUpdate: LhA could not unpack the archive (is C:LhA there?)\n");
+        say(UPD_TOOL ": LhA could not unpack the archive (is C:LhA there?)\n");
         return FALSE;
     }
     if (!find_installer(dir, sizeof(dir))) {
-        say("PrismUpdate: no Install_PrismRTG in the archive\n");
+        say(UPD_TOOL ": no " UPD_INSTALLER " in the archive\n");
         return FALSE;
     }
     if (!install) {
-        say("PrismUpdate: unpacked into %s; its Install_PrismRTG installs it\n", dir);
+        say(UPD_TOOL ": unpacked into %s; its " UPD_INSTALLER " installs it\n", dir);
         return TRUE;
     }
     /* the Installer with the archive's drawer as the current one: its
      * (source) paths are relative to it */
-    if (!(out = Open("T:PrismRTG-update.script", MODE_NEWFILE)))
+    if (!(out = Open(SCRIPT, MODE_NEWFILE)))
         return FALSE;
     /* MINUSER AVERAGE as the icon has it: Novice would answer the
      * installer's questions by itself */
-    sprintf(script, "CD \"%s\"\n%s Install_PrismRTG APPNAME PrismRTG MINUSER AVERAGE\n", dir, installer);
+    sprintf(script, "CD \"%s\"\n%s " UPD_INSTALLER " APPNAME " UPD_PRODUCT " MINUSER AVERAGE\n", dir, installer);
     Write(out, script, strlen(script));
     Close(out);
-    say("PrismUpdate: starting the installer (%s)\n", installer);
-    return run("Execute T:PrismRTG-update.script");
+    say(UPD_TOOL ": starting the installer (%s)\n", installer);
+    return run("Execute " SCRIPT);
 }
 
 /* ---- main --------------------------------------------------------------- */
@@ -591,7 +632,7 @@ static LONG relaunch(void)
     if (dir[strlen(dir) - 1] != ':' && dir[strlen(dir) - 1] != '/')
         strcat(dir, "/");
     if (!GetProgramName((STRPTR)name, sizeof(name)))
-        strcpy(name, "PrismUpdate");
+        strcpy(name, UPD_TOOL);
     /* the argument string ends in the Shell's newline: not into the
      * command, or what follows runs as a second one */
     strncpy(args, a ? a : "", sizeof(args) - 1);
@@ -607,7 +648,7 @@ int main(void)
 {
     LONG args[A_COUNT] = { 0 };
     struct RDArgs *rda;
-    struct PrismPrefs prefs;
+    static char mirror_buf[UPD_MIRROR_MAX + 1];
     struct Ver mine, theirs;
     struct Latest l;
     char have[24], want[24];
@@ -617,7 +658,7 @@ int main(void)
     struct Task *me = FindTask(NULL);
 
     if (!(rda = ReadArgs(TEMPLATE, args, NULL))) {
-        PrintFault(IoErr(), "PrismUpdate");
+        PrintFault(IoErr(), UPD_TOOL);
         return RETURN_FAIL;
     }
     quiet = args[A_QUIET] != 0;
@@ -627,30 +668,29 @@ int main(void)
         return rc;
     }
 
-    prefs_load(&prefs, PREFS_ENV);
-    source = prefs.updates;
+    source = upd_load_prefs(mirror_buf, sizeof(mirror_buf));
     if (args[A_SOURCE]) {
         const char *s = (const char *)args[A_SOURCE];
         source = !stricmp(s, "GITHUB") ? UPD_GITHUB : !stricmp(s, "MIRROR") ? UPD_MIRROR :
                  !stricmp(s, "BOTH") ? UPD_BOTH : UPD_OFF;
     }
-    mirror = args[A_MIRROR] ? (const char *)args[A_MIRROR] : prefs.mirror;
+    mirror = args[A_MIRROR] ? (const char *)args[A_MIRROR] : mirror_buf;
     if (source == UPD_OFF) {
-        say("PrismUpdate: update checks are off (UPDATES= in the prefs, or SOURCE=)\n");
+        say(UPD_TOOL ": update checks are off (UPDATES= in " UPD_PREFS_NAME ", or SOURCE=)\n");
         goto done;
     }
     if (source == UPD_MIRROR && !mirror[0]) {
-        say("PrismUpdate: no mirror is set (MIRROR= in the prefs)\n");
+        say(UPD_TOOL ": no mirror is set (MIRROR= in the prefs)\n");
         goto done;
     }
-    ver_parse(PRISM_RELEASE, &mine);
+    ver_parse(UPD_VERSION, &mine);
 
     if (!(SocketBase = OpenLibrary((STRPTR)"bsdsocket.library", 4))) {
-        say("PrismUpdate: no TCP/IP stack is running (bsdsocket.library)\n");
+        say(UPD_TOOL ": no TCP/IP stack is running (bsdsocket.library)\n");
         goto done;
     }
     if (!(AmiSSLMasterBase = OpenLibrary((STRPTR)"amisslmaster.library", AMISSLMASTER_MIN_VERSION))) {
-        say("PrismUpdate: needs AmiSSL 5 (amisslmaster.library) for HTTPS\n");
+        say(UPD_TOOL ": needs AmiSSL 5 (amisslmaster.library) for HTTPS\n");
         goto done;
     }
     /* the OpenSSL 3 baseline, not the headers' newest: any AmiSSL 5 (or
@@ -662,12 +702,12 @@ int main(void)
                        AmiSSL_SocketBase, (ULONG)SocketBase,
                        AmiSSL_ErrNoPtr, (ULONG)&errno,
                        TAG_DONE) != 0) {
-        say("PrismUpdate: AmiSSL would not start\n");
+        say(UPD_TOOL ": AmiSSL would not start\n");
         AmiSSLBase = NULL;
         goto done;
     }
     if (!(ctx = SSL_CTX_new(TLS_client_method()))) {
-        say("PrismUpdate: no SSL context\n");
+        say(UPD_TOOL ": no SSL context\n");
         goto done;
     }
     /* the server's certificate against the ones AmiSSL ships (AmiSSL:Certs);
@@ -681,24 +721,24 @@ int main(void)
     memset(&l, 0, sizeof(l));
     if ((source == UPD_GITHUB || source == UPD_BOTH) && from_github(&mine, &l))
         ;
-    else if ((source == UPD_MIRROR || source == UPD_BOTH) && from_mirror(mirror, &l))
+    else if ((source == UPD_MIRROR || source == UPD_BOTH) && from_mirror(mirror, &mine, &l))
         ;
     else {
-        say("PrismUpdate: could not check for an update\n");
+        say(UPD_TOOL ": could not check for an update%s\n", why);
         goto done;
     }
     if (!ver_parse(l.tag, &theirs)) {
-        say("PrismUpdate: %s names a release oddly: %s\n", l.from, l.tag);
+        say(UPD_TOOL ": %s names a release oddly: %s\n", l.from, l.tag);
         goto done;
     }
     ver_str(&mine, have);
     ver_str(&theirs, want);
     if (ver_cmp(&theirs, &mine) <= 0) {
-        say("PrismUpdate: up to date: %s installed, %s has %s\n", have, l.from, want);
+        say(UPD_TOOL ": up to date: %s installed, %s has %s\n", have, l.from, want);
         rc = RETURN_OK;
         goto done;
     }
-    say("PrismUpdate: %s is available on %s (%s installed)\n", want, l.from, have);
+    say(UPD_TOOL ": %s is available on %s (%s installed)\n", want, l.from, have);
     rc = RETURN_WARN;
     if (args[A_GET] || args[A_FETCH])
         rc = get_and_install(&l, args[A_GET] != 0) ? RETURN_OK : RETURN_ERROR;

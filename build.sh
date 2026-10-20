@@ -49,7 +49,7 @@ $CC $CFLAGS -s -o out/PrismPrefs tools/prismprefs.c src/prefs.c src/catalog.c
 # ~/amissl-sdk/include. Without them the rest still builds.
 AMISSL_INC=${AMISSL_INC:-$HOME/amissl-sdk/include}
 if [ -d "$AMISSL_INC" ]; then
-  $CC $CFLAGS -I"$AMISSL_INC" -s -o out/PrismUpdate tools/prismupdate.c src/prefs.c
+  $CC $CFLAGS -I"$AMISSL_INC" -s -o out/PrismUpdate tools/update/update.c tools/update/upd_prismrtg.c src/prefs.c
 else
   echo "PrismUpdate skipped: no AmiSSL SDK headers at $AMISSL_INC"
 fi
