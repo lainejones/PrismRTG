@@ -43,6 +43,23 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.1 (everything since 1.0.2, in short; the betas follow below)
+  More boards: PrismRTG drives a card through its existing Picasso96 card
+  driver (BOARD=P96), UAE's own RTG card, the Z3660's RTG output (by
+  Jusii), and - in emulators so far - Piccolo, Piccolo SD64, Spectrum
+  28/24, Graffity and Picasso IV. Board drivers are modules in LIBS:Prism
+  with a frozen interface (Stefan Reinauer's work). Two boards at once,
+  each with its own monitor. Screen mode promotion, your own sizes, video
+  layers for players, gamma, oversized screens with autoscroll, big
+  pointers, a software pointer, monitor power saving, chipset screens on
+  the board, an ARexx port, Picasso96's sizes imported, and an update
+  check. Faster drawing throughout. Needs Kickstart 3.1 or newer.
+  Since beta 9: PrismPrefs opens on its own screen when the Workbench is
+  too short for its window; the update check says which step failed (name
+  lookup, connection, TLS, or GitHub's hourly limit); a new drawer icon.
+  Thanks to Stefan Reinauer, Jusii, Dimitris Panokostas (midwan), polluks,
+  yelworC, halle-saale and HANSolo-0007 - see Credits on GitHub.
+
 New in 1.1 beta 9
   Speed: text in 8-pixel-wide fonts, ScrollRaster and ClipBlit within a
   window are faster (on a 68030 with a Picasso II+: 40-character text 30%,
