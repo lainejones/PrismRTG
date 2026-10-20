@@ -707,7 +707,12 @@ static BOOL make_gadgets(struct Gui *g, WORD *innerW, WORD *innerH)
 static struct Screen *tall_screen(struct Screen *wb, WORD h)
 {
     ULONG id = GetVPModeID(&wb->ViewPort);
-    if (id != INVALID_ID && !(id & LACE) && !ModeNotAvailable(id | LACE))
+    struct DisplayInfo di;
+    /* the LACE bit means "interlaced" only for chipset modes: take id|LACE
+     * only when the system says that mode is the interlaced one */
+    if (id != INVALID_ID && !(id & LACE) && !ModeNotAvailable(id | LACE) &&
+        GetDisplayInfoData(NULL, (UBYTE *)&di, sizeof(di), DTAG_DISP, id | LACE) &&
+        (di.PropertyFlags & DIPF_IS_LACE))
         id |= LACE;
     return OpenScreenTags(NULL,
         SA_LikeWorkbench, TRUE,

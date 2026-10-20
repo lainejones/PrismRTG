@@ -68,6 +68,7 @@ enum { A_GET, A_FETCH, A_SOURCE, A_MIRROR, A_QUIET, A_STK, A_COUNT };
 struct Library *SocketBase, *AmiSSLMasterBase, *AmiSSLBase, *AmiSSLExtBase;
 static BOOL quiet;
 static const char *why = "";          /* the reason a check failed, for the last line */
+static char whybuf[96];
 
 static void say(const char *fmt, ...)
 {
@@ -185,6 +186,8 @@ static LONG tcp_connect(const char *host, int port)
 
     if (!(he = gethostbyname((STRPTR)host))) {
         say(UPD_TOOL ": could not look up %s (DNS)\n", host);
+        sprintf(whybuf, ": %.60s not found (DNS)", host);
+        why = whybuf;
         return -1;
     }
     if ((s = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -199,6 +202,8 @@ static LONG tcp_connect(const char *host, int port)
     setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     if (connect(s, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
         say(UPD_TOOL ": could not connect to %s port %d (errno %ld)\n", host, port, (long)Errno());
+        sprintf(whybuf, ": no connection to %.60s", host);
+        why = whybuf;
         CloseSocket(s);
         return -1;
     }
@@ -282,6 +287,8 @@ static BOOL fetch_once(const struct Url *u, struct Fetch *f)
             return fetch_once(u, f);
         }
         say(UPD_TOOL ": the TLS handshake with %s failed\n", u->host);
+        sprintf(whybuf, ": the TLS handshake with %.60s failed", u->host);
+        why = whybuf;
         goto out;
     }
     sprintf(req, "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: " AGENT "\r\n"
@@ -477,8 +484,10 @@ static BOOL from_mirror(const char *mirror, const struct Ver *mine, struct Lates
     char *p, *e;
     BOOL ok = FALSE;
 
-    if (mirror[0] && forge_base(mirror, url, sizeof(url)))   /* a Forgejo/Gitea repository */
-        return from_api(url, "the mirror", mine, l);
+    /* an owner/repository path may be a Forgejo/Gitea repository; if its
+     * release API doesn't answer, it is a plain directory after all */
+    if (mirror[0] && forge_base(mirror, url, sizeof(url)) && from_api(url, "the mirror", mine, l))
+        return TRUE;
     if (!mirror[0]) {
         say(UPD_TOOL ": no mirror is set (MIRROR= in the prefs)\n");
         return FALSE;
