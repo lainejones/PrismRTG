@@ -427,14 +427,29 @@ static BOOL from_api(const char *base, const char *from, const struct Ver *mine,
 
     memset(&f, 0, sizeof(f));
     f.limit = MAX_JSON;
-    /* a beta sees pre-releases (the newest release of any kind comes
-     * first); a final release only the newest final one */
+    /* a beta sees pre-releases (the highest version of the newest few);
+     * a final release only the newest final one */
     sprintf(url, "%s/releases%s", base, mine->beta ? "?limit=5&per_page=5" : "/latest");
     if (!fetch(url, &f))
         goto out;
     p = (const char *)f.body;
     if (!(p = json_str(p, "tag_name", l->tag, sizeof(l->tag))))
         goto out;
+    if (mine->beta) {
+        /* the list does not start with the newest: GitHub puts the release
+         * marked Latest first (1.1 above 1.2 beta 1), so the highest
+         * version of the list is taken */
+        struct Ver best, v;
+        const char *q = p;
+        static char tag[48];
+        ver_parse(l->tag, &best);
+        while ((q = json_str(q, "tag_name", tag, sizeof(tag))) != NULL)
+            if (ver_parse(tag, &v) && ver_cmp(&v, &best) > 0) {
+                best = v;
+                strcpy(l->tag, tag);
+                p = q;
+            }
+    }
     /* the release archive among the assets: <product>-<ver>.lha; stop at
      * the next release's tag */
     end = strstr(p, "\"tag_name\":");
