@@ -18,6 +18,7 @@
 #include <libraries/gadtools.h>
 #include <graphics/displayinfo.h>
 #include <dos/dostags.h>
+#include <dos/dosextens.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/intuition.h>
@@ -957,10 +958,14 @@ static void event_loop(struct Gui *g)
 int main(void)
 {
     LONG args[5] = { 0 };
-    struct RDArgs *rda;
+    struct RDArgs *rda = NULL;
     int rc = 20;
 
-    if (!(rda = ReadArgs(TEMPLATE, args, NULL))) {
+    /* Shell arguments only from a Shell: started from its icon there is no
+     * argument line, and ReadArgs then waited for one on an empty console
+     * window that the C library opened for it */
+    if (((struct Process *)FindTask(NULL))->pr_CLI &&
+        !(rda = ReadArgs(TEMPLATE, args, NULL))) {
         PrintFault(IoErr(), "PrismPrefs");
         return 20;
     }
@@ -1024,6 +1029,6 @@ out:
     if (GfxBase) CloseLibrary((struct Library *)GfxBase);
     if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);
     cat_close();
-    FreeArgs(rda);
+    if (rda) FreeArgs(rda);
     return rc;
 }
