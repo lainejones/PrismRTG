@@ -56,7 +56,8 @@ New in 1.1 (everything since 1.0.2, in short; the betas follow below)
   check. Faster drawing throughout. Needs Kickstart 3.1 or newer.
   Since beta 9: PrismPrefs opens on its own screen when the Workbench is
   too short for its window; the update check says which step failed (name
-  lookup, connection, TLS, or GitHub's hourly limit); a new drawer icon.
+  lookup, connection, TLS, or GitHub's hourly limit); a new drawer icon;
+  PrismPrefs started from its icon no longer leaves an empty window open.
   Thanks to Stefan Reinauer, Jusii, Dimitris Panokostas (midwan), polluks,
   yelworC, halle-saale and HANSolo-0007 - see Credits on GitHub.
 
