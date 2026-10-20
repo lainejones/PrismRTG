@@ -25,7 +25,7 @@
  * its "v" and "-beta" (v1.1-beta5 = 1.1b5): PrismUpdate compares it with
  * GitHub's */
 #ifndef PRISM_RELEASE
-#define PRISM_RELEASE     "1.1"
+#define PRISM_RELEASE     "1.2b1"
 #endif
 #define PRISM_RELDATE     "20.10.26"      /* the $VER date, dd.mm.yy */
 

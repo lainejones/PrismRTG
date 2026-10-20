@@ -43,6 +43,15 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.2 beta 1
+  Icons and other masked images (BltMaskBitMapRastPort, how Workbench
+  draws icons) are drawn much faster: only the pixels the mask lets
+  through are written, the screen is no longer read back for them, and an
+  image already in the board's memory is copied by the board. Against 1.1,
+  on an Amiga 2000 (68030, GBAPII++) 2.2-4x at 8 bits and up to 7x at
+  24/32 bits; on an Amiga 4000 (68060, ZZ9000) 2-3.4x, 9x at 32 bits.
+  PrismBench measures them and checks every pixel. Tested on both.
+
 New in 1.1 (everything since 1.0.2, in short; the betas follow below)
   More boards: PrismRTG drives a card through its existing Picasso96 card
   driver (BOARD=P96), UAE's own RTG card, the Z3660's RTG output (by
