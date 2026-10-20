@@ -167,6 +167,50 @@ static void t_blit_friend(struct RastPort *rp, LONG i)
     BltBitMapRastPort(friendBM, 0, 0, rp, 420 + (i & 3) * 4, 170, 64, 32, 0xc0);
 }
 
+/* the same images through an icon-shaped mask (BltMaskBitMapRastPort, as
+ * Workbench draws icons): a drawer - a tab with a slanted edge on a body
+ * with rounded corners, so both uneven edges and runs of equal rows */
+static PLANEPTR maskPl;
+
+static BOOL in_icon(LONG x, LONG y)
+{
+    if (y < 6)
+        return x >= 5 && x < 24 + y;               /* the tab */
+    if (y == 6 || y == 31)
+        return x >= 2 && x < 62;                   /* rounded corners */
+    if (y == 7 || y == 30)
+        return x >= 1 && x < 63;
+    return x < 64;
+}
+
+static void make_mask(void)
+{
+    LONG x, y;
+    for (y = 0; y < 32; y++)
+        for (x = 0; x < 64; x++) {
+            UBYTE bit = 0x80 >> (x & 7);
+            if (in_icon(x, y))
+                maskPl[y * 8 + (x >> 3)] |= bit;
+            else
+                maskPl[y * 8 + (x >> 3)] &= ~bit;
+        }
+}
+
+static BOOL mask_at(LONG x, LONG y)
+{
+    return (maskPl[y * 8 + (x >> 3)] & (0x80 >> (x & 7))) != 0;
+}
+
+static void t_mask_planar(struct RastPort *rp, LONG i)
+{
+    BltMaskBitMapRastPort(planarBM, 0, 0, rp, 420 + (i & 3) * 4, 120, 64, 32, 0xe0, maskPl);
+}
+
+static void t_mask_friend(struct RastPort *rp, LONG i)
+{
+    BltMaskBitMapRastPort(friendBM, 0, 0, rp, 420 + (i & 3) * 4, 170, 64, 32, 0xe0, maskPl);
+}
+
 /* Time in EClock ticks, integer only: the clock is read once per 8 calls
  * and no floating point runs inside the loop. (The first version did
  * soft-float maths after every call, which on an FPU-less 68030 cost more
@@ -342,6 +386,11 @@ int main(void)
         WaitBlit();
         run("Blit planar 64x32", t_blit_planar, w->RPort, "Kpix", 2);
         run("Blit friend 64x32", t_blit_friend, w->RPort, "Kpix", 2);
+        if ((maskPl = AllocRaster(64, 32))) {
+            make_mask();
+            run("Blit masked planar", t_mask_planar, w->RPort, "Kpix", 2);
+            run("Blit masked friend", t_mask_friend, w->RPort, "Kpix", 2);
+        }
         if (depth == 8 && s->ViewPort.ColorMap && s->ViewPort.ColorMap->Count >= 256) {
             /* exactness: every pen, blitted at odd x offsets, read back
              * (8-bit-deep screens only: a shallower native screen has
@@ -404,6 +453,38 @@ int main(void)
                     }
             }
             printf("  friend blit check: %ld wrong of %ld\n", (long)bad, 32L * (61 + 60 + 59 + 58));
+
+            /* masked: both images through the mask at odd source and
+             * destination offsets over a patterned background; where the
+             * mask is clear the background must stay */
+            if (maskPl) {
+                LONG k, total = 0;
+                bad = 0;
+                for (k = 0; k < 2; k++)
+                    for (dx = 0; dx < 4; dx++) {
+                        LONG bx = 421, by = 340, ox = 2 + dx * 3, sw = 61 - dx;
+                        for (y = 0; y < 32; y++)
+                            for (x = 0; x < 72; x++) {
+                                SetAPen(w->RPort, (x * 3 + y * 5) & 255);
+                                WritePixel(w->RPort, bx + x, by + y);
+                            }
+                        BltMaskBitMapRastPort(k ? friendBM : planarBM, dx, 0, w->RPort, bx + ox, by,
+                                              sw, 32, 0xe0, maskPl);
+                        WaitBlit();
+                        for (y = 0; y < 32; y++)
+                            for (x = 0; x < 72; x++, total++) {
+                                LONG sx = x - ox + dx, want = (x * 3 + y * 5) & 255;
+                                if (x >= ox && x < ox + sw && mask_at(sx, y))
+                                    want = k ? (sx * 11 + y * 29) & 255 : (sx * 7 + y * 37) & 255;
+                                pen = ReadPixel(w->RPort, bx + x, by + y);
+                                if (pen != want && bad++ < 3)
+                                    printf("  masked blit WRONG at %ld,%ld (%s, offset %ld): %ld, want %ld\n",
+                                           (long)x, (long)y, k ? "friend" : "planar", (long)dx,
+                                           (long)pen, (long)want);
+                            }
+                    }
+                printf("  masked blit check: %ld wrong of %ld\n", (long)bad, (long)total);
+            }
         }
     }
     if (depth == 8) {
@@ -530,6 +611,7 @@ int main(void)
             FreeBitMap(lb);
         }
     }
+    if (maskPl) FreeRaster(maskPl, 64, 32);
     if (planarBM) FreeBitMap(planarBM);
     if (friendBM) FreeBitMap(friendBM);
     rc = 0;

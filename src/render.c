@@ -2704,6 +2704,44 @@ struct BlitCtx {
     const UBYTE *amask;          /* BltMaskBitMapRastPort mask plane      */
 };
 
+/* The set stretches of n mask bits from bit x0 of mrow, as start/length
+ * pairs (from 0) in runs; returns how many. Whole bytes of 0 or 1 bits are
+ * taken in one step: icon masks are mostly that. */
+static WORD mask_runs(const UBYTE *mrow, WORD x0, WORD n, WORD *runs)
+{
+    WORD i = 0, nr = 0, start = -1;
+    while (i < n) {
+        WORD b = x0 + i;
+        if (!(b & 7) && i + 8 <= n) {
+            UBYTE m = mrow[b >> 3];
+            if (m == 0xff) {
+                if (start < 0) start = i;
+                i += 8;
+                continue;
+            }
+            if (!m) {
+                if (start >= 0) { runs[nr * 2] = start; runs[nr * 2 + 1] = i - start; nr++; start = -1; }
+                i += 8;
+                continue;
+            }
+        }
+        if (mrow[b >> 3] & (0x80 >> (b & 7))) {
+            if (start < 0) start = i;
+        } else if (start >= 0) {
+            runs[nr * 2] = start; runs[nr * 2 + 1] = i - start; nr++; start = -1;
+        }
+        i++;
+    }
+    if (start >= 0) { runs[nr * 2] = start; runs[nr * 2 + 1] = n - start; nr++; }
+    return nr;
+}
+
+static WORD maskRuns[MAXW + 2], maskRuns2[MAXW + 2];
+/* below this many bytes a run is quicker copied by the CPU than set up on
+ * the board's blitter (a 64-pixel 8-bit row alone was slower on the
+ * Picasso II, 2026-10-20) */
+#define MASK_HW_BYTES 256
+
 static void blit_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
                     WORD ox, WORD oy, void *ctx)
 {
@@ -2731,6 +2769,83 @@ static void blit_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
      * (ABC|ABNC|ANBC) = 0xE0 means copy. */
     mbpr = b->src.pix ? (((ULONG)b->src.w + 15) >> 4) << 1 : b->src.bpr;
     if (w > MAXW) w = MAXW;
+    if ((b->mt == 0xe0 || (b->mt & 0xf0) == 0xc0) && (d.bpp >= 2 || b->mask == 0xff)) {
+        /* A copy through the mask (icons): the mask in runs, the source read
+         * over the span they cover, and only the runs written - the
+         * destination is never read back from the board */
+        WORD lo = sx < 0 ? -sx : 0, hi = b->src.w - sx, k;
+        WORD y0 = sy < 0 ? -sy : 0, y1 = h;
+        /* a source in the same board's memory, in the screen's format (a
+         * bitmap made with the screen as friend): the runs go to the board's
+         * copy, rows with the same runs as one rectangle */
+        BOOL hw = b->src.pix && b->src.p && b->src.p != p && b->src.bpp == d.bpp &&
+                  b->src.fmt == d.fmt && HW_OK(b->src.p);
+        if (hi > w) hi = w;
+        if (d.w - bx0 < hi) hi = d.w - bx0;
+        if (b->src.h - sy < y1) y1 = b->src.h - sy;
+        if (d.h - by0 < y1) y1 = d.h - by0;
+        if (hi <= lo)
+            return;
+        for (y = y0; y < y1; ) {
+            WORD nr, first, span, band = 1;
+            nr = mask_runs(b->amask + (ULONG)(sy + y) * mbpr, sx + lo, hi - lo, maskRuns);
+            if (!nr) {
+                y++;
+                continue;
+            }
+            if (hw) {
+                while (y + band < y1 &&
+                       mask_runs(b->amask + (ULONG)(sy + y + band) * mbpr, sx + lo, hi - lo,
+                                 maskRuns2) == nr &&
+                       !memcmp(maskRuns, maskRuns2, (ULONG)nr * 4))
+                    band++;
+                for (k = 0; k < nr; k++) {
+                    WORD at = lo + maskRuns[k * 2], n = maskRuns[k * 2 + 1], r;
+                    if ((ULONG)n * band * d.bpp >= MASK_HW_BYTES &&
+                        pbm_copy(b->src.p, p, sx + at, sy + y, bx0 + at, by0 + y, n, band) == PR_DONE)
+                        continue;
+                    for (r = 0; r < band; r++)
+                        CopyMem(b->src.pix + (ULONG)(sy + y + r) * b->src.bpr + (ULONG)(sx + at) * d.bpp,
+                                d.pix + (ULONG)(by0 + y + r) * d.bpr + (ULONG)(bx0 + at) * d.bpp,
+                                (ULONG)n * d.bpp);
+                }
+                y += band;
+                continue;
+            }
+            first = lo + maskRuns[0];
+            span = lo + maskRuns[nr * 2 - 2] + maskRuns[nr * 2 - 1] - first;
+            if (d.bpp == 1) {
+                UBYTE *drow = d.pix + (ULONG)(by0 + y) * d.bpr + bx0;
+                surf_read(&b->src, sx + first, sy + y, span, rowA);
+                for (k = 0; k < nr; k++) {
+                    WORD at = lo + maskRuns[k * 2];
+                    CopyMem(rowA + (at - first), drow + at, maskRuns[k * 2 + 1]);
+                }
+            } else if (d.bpp == 2) {
+                UWORD *drow = (UWORD *)(d.pix + (ULONG)(by0 + y) * d.bpr) + bx0;
+                surf_read16(&b->src, sx + first, sy + y, span, wA, d.penTab, d.fmt);
+                for (k = 0; k < nr; k++) {
+                    WORD at = lo + maskRuns[k * 2];
+                    CopyMem(wA + (at - first), drow + at, (ULONG)maskRuns[k * 2 + 1] * 2);
+                }
+            } else {
+                UBYTE *drow = d.pix + (ULONG)(by0 + y) * d.bpr + (ULONG)bx0 * d.bpp;
+                surf_rgb(&b->src, sx + first, sy + y, span, rgbRow,
+                         b->src.rgbTab ? b->src.rgbTab : d.rgbTab);
+                for (k = 0; k < nr; k++) {
+                    WORD at = lo + maskRuns[k * 2], n = maskRuns[k * 2 + 1];
+                    const ULONG *c = rgbRow + (at - first);
+                    UBYTE *dp = drow + (ULONG)at * d.bpp;
+                    while (n--) {
+                        pf_put(d.fmt, *c++, dp);
+                        dp += d.bpp;
+                    }
+                }
+            }
+            y++;
+        }
+        return;
+    }
     for (y = 0; y < h; y++) {
         const UBYTE *mrow = b->amask + (ULONG)(sy + y) * mbpr;
         BOOL copy = (b->mt == 0xe0 || (b->mt & 0xf0) == 0xc0);
