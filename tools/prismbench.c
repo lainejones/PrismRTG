@@ -201,6 +201,53 @@ static BOOL mask_at(LONG x, LONG y)
     return (maskPl[y * 8 + (x >> 3)] & (0x80 >> (x & 7))) != 0;
 }
 
+/* One masked-blit case for the exactness check: paint a patterned
+ * background over the area (ax, ay, aw x ah in rp), blit src (sx, sy, w x h)
+ * through mask (mbpr bytes a row) to (dx, dy) with the rp's write mask
+ * wmask (8-bit screens only: deeper ones ignore it, as 1.1 did), then read
+ * every pixel of the area back. srcpen(x, y) gives the source's pen. Only
+ * pixels inside 0..rw-1, 0..rh-1 of the rp are looked at (an area partly
+ * off the window). Returns the number wrong; *n counts the pixels. */
+static LONG masked_case(struct RastPort *rp, LONG rw, LONG rh, const char *name, struct BitMap *src,
+                        LONG (*srcpen)(LONG, LONG), LONG sx, LONG sy, LONG dx, LONG dy, LONG w, LONG h,
+                        PLANEPTR mask, LONG mbpr, UBYTE wmask, BOOL deep, LONG ax, LONG ay, LONG aw,
+                        LONG ah, LONG *n)
+{
+    LONG x, y, bad = 0;
+    SetWriteMask(rp, 0xff);
+    for (y = ay; y < ay + ah; y++)
+        for (x = ax; x < ax + aw; x++)
+            if (x >= 0 && y >= 0 && x < rw && y < rh) {
+                SetAPen(rp, (x * 3 + y * 5) & 255);
+                WritePixel(rp, x, y);
+            }
+    SetWriteMask(rp, wmask);
+    BltMaskBitMapRastPort(src, sx, sy, rp, dx, dy, w, h, 0xe0, mask);
+    WaitBlit();
+    SetWriteMask(rp, 0xff);
+    for (y = ay; y < ay + ah; y++)
+        for (x = ax; x < ax + aw; x++) {
+            LONG want = (x * 3 + y * 5) & 255, got, mx = x - dx + sx, my = y - dy + sy;
+            if (x < 0 || y < 0 || x >= rw || y >= rh)
+                continue;
+            if (x >= dx && x < dx + w && y >= dy && y < dy + h &&
+                (mask[my * mbpr + (mx >> 3)] & (0x80 >> (mx & 7)))) {
+                LONG s = srcpen(mx, my);
+                want = deep ? s : ((want & ~wmask) | (s & wmask)) & 255;
+            }
+            got = ReadPixel(rp, x, y);
+            (*n)++;
+            if (got != want && bad++ < 2)
+                printf("  masked %s WRONG at %ld,%ld: %ld, want %ld\n", name, (long)x, (long)y,
+                       (long)got, (long)want);
+        }
+    return bad;
+}
+
+static LONG pen_friend(LONG x, LONG y) { return (x * 11 + y * 29) & 255; }
+static LONG pen_other(LONG x, LONG y) { return (x * 13 + y * 17 + 5) & 255; }
+static LONG pen_planar(LONG x, LONG y) { return (x * 7 + y * 37) & 255; }
+
 static void t_mask_planar(struct RastPort *rp, LONG i)
 {
     BltMaskBitMapRastPort(planarBM, 0, 0, rp, 420 + (i & 3) * 4, 120, 64, 32, 0xe0, maskPl);
@@ -484,6 +531,94 @@ int main(void)
                             }
                     }
                 printf("  masked blit check: %ld wrong of %ld\n", (long)bad, (long)total);
+
+                /* the harder cases (the 1.2 beta 1 review's list): a source of
+                 * another width, one in fast RAM, a write mask, the window's
+                 * edges, and an obscured window */
+                {
+                    struct RastPort *rp = w->RPort, srp;
+                    LONG rw = w->Width, rh = w->Height, n = 0, k2 = 0;
+                    BOOL deep = GetBitMapAttr(rp->BitMap, BMA_DEPTH) > 8;
+                    struct BitMap *odd = AllocBitMap(40, 20, 8, BMF_CLEAR, NULL);
+                    struct BitMap *fast = AllocBitMap(64, 32, 8, 0x80, rp->BitMap);   /* LUT8: fast RAM */
+                    /* the mask has the source plane's row size, as graphics.library's own
+                     * BltMaskBitMapRastPort expects */
+                    LONG mb40 = odd ? odd->BytesPerRow : 6;
+                    PLANEPTR m40 = AllocRaster(mb40 * 8, 20);
+                    struct Window *over;
+                    bad = 0;
+                    if (odd && m40) {
+                        /* short runs everywhere: a diagonal pattern */
+                        for (y = 0; y < 20; y++)
+                            for (x = 0; x < 40; x++) {
+                                UBYTE bit = 0x80 >> (x & 7);
+                                if ((x + 2 * y) % 7 < 4) m40[y * mb40 + (x >> 3)] |= bit;
+                                else                     m40[y * mb40 + (x >> 3)] &= ~bit;
+                            }
+                        InitRastPort(&srp);
+                        srp.BitMap = odd;
+                        for (y = 0; y < 20; y++)
+                            for (x = 0; x < 40; x++) {
+                                SetAPen(&srp, pen_other(x, y));
+                                WritePixel(&srp, x, y);
+                            }
+                        bad += masked_case(rp, rw, rh, "40-wide planar", odd, pen_other, 1, 2, 424, 342,
+                                           37, 17, m40, mb40, 0xff, deep, 421, 340, 48, 22, &n);
+                        k2++;
+                    }
+                    if (fast) {
+                        InitRastPort(&srp);
+                        srp.BitMap = fast;
+                        for (y = 0; y < 32; y++)
+                            for (x = 0; x < 64; x++) {
+                                SetAPen(&srp, pen_friend(x, y));
+                                WritePixel(&srp, x, y);
+                            }
+                        bad += masked_case(rp, rw, rh, "fast-RAM source", fast, pen_friend, 3, 0, 425, 340,
+                                           58, 32, maskPl, 8, 0xff, deep, 421, 340, 72, 32, &n);
+                        k2++;
+                    }
+                    /* a write mask: only the low four bits may change */
+                    bad += masked_case(rp, rw, rh, "write mask", friendBM, pen_friend, 0, 0, 423, 340,
+                                       64, 32, maskPl, 8, 0x0f, deep, 421, 340, 72, 32, &n);
+                    /* the window's right, bottom and left edges cut the blit */
+                    bad += masked_case(rp, rw, rh, "right edge", friendBM, pen_friend, 0, 0, rw - 30, 300,
+                                       64, 32, maskPl, 8, 0xff, deep, rw - 34, 300, 34, 32, &n);
+                    bad += masked_case(rp, rw, rh, "bottom edge", planarBM, pen_planar, 0, 0, 200, rh - 12,
+                                       64, 32, maskPl, 8, 0xff, deep, 200, rh - 16, 64, 16, &n);
+                    bad += masked_case(rp, rw, rh, "left edge", friendBM, pen_friend, 0, 0, -20, 300,
+                                       64, 32, maskPl, 8, 0xff, deep, 0, 300, 44, 32, &n);
+                    k2 += 4;
+                    /* an obscured window: another window over part of the area;
+                     * the covered part goes to the backing store, and must be
+                     * right there and on screen once uncovered */
+                    over = OpenWindowTags(NULL, WA_CustomScreen, (ULONG)s, WA_Left, 440, WA_Top, 12 + 345,
+                                          WA_Width, 30, WA_Height, 20, WA_Flags, WFLG_BORDERLESS |
+                                          WFLG_SMART_REFRESH, TAG_DONE);
+                    if (over) {
+                        LONG n0 = n;
+                        bad += masked_case(rp, rw, rh, "obscured", friendBM, pen_friend, 0, 0, 423, 340,
+                                           64, 32, maskPl, 8, 0xff, deep, 421, 340, 72, 32, &n);
+                        CloseWindow(over);
+                        WaitBlit();
+                        /* uncovered: the same pixels, now from the screen */
+                        for (y = 340; y < 372; y++)
+                            for (x = 421; x < 493; x++) {
+                                LONG want = (x * 3 + y * 5) & 255, mx = x - 423, my = y - 340;
+                                if (x >= 423 && x < 487 && (maskPl[my * 8 + (mx >> 3)] & (0x80 >> (mx & 7))))
+                                    want = pen_friend(mx, my);
+                                n++;
+                                if (ReadPixel(rp, x, y) != want && bad++ < 3)
+                                    printf("  masked uncovered WRONG at %ld,%ld\n", (long)x, (long)y);
+                            }
+                        (void)n0;
+                        k2++;
+                    }
+                    printf("  masked cases check (%ld cases): %ld wrong of %ld\n", (long)k2, (long)bad, (long)n);
+                    if (m40) FreeRaster(m40, mb40 * 8, 20);
+                    if (odd) FreeBitMap(odd);
+                    if (fast) FreeBitMap(fast);
+                }
             }
         }
     }
