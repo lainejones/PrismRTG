@@ -135,16 +135,18 @@ static BOOL boardtype_matches(const char *bt, int card)
 
 #define PARK_DIR "SYS:Storage/Picasso96-parked"
 
-/* UAE's RTG card: the emulator puts its uaegfx.card in the library list
- * (PrismD's UAEGFX driver tests the same - a uaegfx.card file on a disk is
- * not the emulator's) */
+/* UAE's RTG card: the emulator puts its uaegfx.card in the library list.
+ * The same test as PrismD's UAEGFX driver (src/drv_uaegfx.c, UAEGFX_Probe)
+ * - a uaegfx.card file on a disk is not the emulator's, and a card PrismD
+ * would refuse must not make the installer park Picasso96 */
 static BOOL uae_rtg(void)
 {
     struct Library *lib;
     BOOL ok;
     Forbid();
     lib = (struct Library *)FindName(&SysBase->LibList, "uaegfx.card");
-    ok = lib && lib->lib_IdString && !strncmp((char *)lib->lib_IdString, "UAE Graphics Card", 17);
+    ok = lib && lib->lib_Version >= 3 && lib->lib_NegSize >= 36 && lib->lib_IdString &&
+         !strncmp((char *)lib->lib_IdString, "UAE Graphics Card", 17);
     Permit();
     return ok;
 }
@@ -606,7 +608,8 @@ static int startup(const char *how)
 {
     char *buf, *out;
     const char *p, *after = NULL, *b, *e;
-    BOOL named = FALSE;
+    BOOL named = FALSE, lab = FALSE, pending = FALSE;
+    int depth = 0;
     LONG len, blen = sizeof(ssBlock) - 1;
     int rc;
 
@@ -616,20 +619,33 @@ static int startup(const char *how)
     }
     /* LoadMonDrvs given names ("A|B|C"): the stock one takes none */
     for (p = buf; *p; p = next_line(p)) {
+        if (line_word(p, "IF"))
+            depth++;
+        else if (line_word(p, "EndIF") && depth > 0 && !--depth && pending && !lab) {
+            after = next_line(p);                  /* the IF around the last one */
+            pending = FALSE;
+        }
         if (line_word(p, "LoadMonDrvs") || line_word(p, "C:LoadMonDrvs")) {
             const char *q;
             for (q = p; *q && *q != 10; q++)
                 if (*q == '"') named = TRUE;
-            after = next_line(p);
+            if (!lab) {
+                if (depth) pending = TRUE;
+                else after = next_line(p), pending = FALSE;
+            }
         }
         if (line_word(p, "LAB")) {
             const char *q = p;
             while (*q == ' ' || *q == 9) q++;
             q += 3;
-            if (line_word(q, "ENDMONITORS"))
+            if (line_word(q, "ENDMONITORS")) {
                 after = next_line(p);
+                lab = TRUE;
+            }
         }
     }
+    if (pending)
+        after = NULL;                              /* an IF never closed: don't guess */
     b = strstr(buf, SS_BEGIN);
     e = b ? strstr(b, SS_END) : NULL;
     if (same_nocase(how, "CHECK")) {
@@ -645,8 +661,12 @@ static int startup(const char *how)
             if (!write_file(SS, buf, len)) {
                 printf("PrismSetup: can't write %s\n", SS);
                 rc = 10;
-            } else
+            } else {
+                /* the copy from before the block: stale now (the file may
+                 * have been edited since), and the next ADD keeps a new one */
+                DeleteFile(SS_KEEP);
                 printf("PrismSetup: the PrismRTG block is out of %s\n", SS);
+            }
         }
     } else if (same_nocase(how, "ADD")) {
         if (b)

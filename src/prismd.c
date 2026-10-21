@@ -3350,8 +3350,14 @@ int main(void)
              * when the settings name one (P96CARD=, e.g. a PiStorm's
              * VideoCore or a Vampire) */
             if(!found) {
+                struct Library *uae;
                 driverQuiet=TRUE;
-                found=driver_open(&board,"UAEGFX",&config);
+                /* only where the emulator's card is: the UAEGFX driver
+                 * says why it can't run, on every Amiga without one */
+                Forbid();
+                uae=(struct Library *)FindName(&SysBase->LibList,"uaegfx.card");
+                Permit();
+                if(uae) found=driver_open(&board,"UAEGFX",&config);
                 if(!found && config.card[0]) found=driver_open(&board,"P96",&config);
                 driverQuiet=FALSE;
             }
