@@ -659,30 +659,41 @@ static BOOL get_and_install(const struct Latest *l, BOOL install)
 
 /* ---- main --------------------------------------------------------------- */
 
-/* AmiSSL wants more stack than a Shell gives: run again with enough */
-static LONG relaunch(void)
-{
-    char cmd[700], dir[256], name[108], args[300];
-    BPTR pd = GetProgramDir();
-    const char *a = (const char *)GetArgStr();
-    if (!pd || !NameFromLock(pd, (STRPTR)dir, sizeof(dir)))
-        strcpy(dir, "C:");
-    if (dir[strlen(dir) - 1] != ':' && dir[strlen(dir) - 1] != '/')
-        strcat(dir, "/");
-    if (!GetProgramName((STRPTR)name, sizeof(name)))
-        strcpy(name, UPD_TOOL);
-    /* the argument string ends in the Shell's newline: not into the
-     * command, or what follows runs as a second one */
-    strncpy(args, a ? a : "", sizeof(args) - 1);
-    args[sizeof(args) - 1] = 0;
-    while (args[0] && (args[strlen(args) - 1] == '\n' || args[strlen(args) - 1] == '\r'))
-        args[strlen(args) - 1] = 0;
-    sprintf(cmd, "\"%s%s\" %s STK", dir, (const char *)FilePart((STRPTR)name), args);
-    return SystemTags((STRPTR)cmd, SYS_Input, (ULONG)Input(), SYS_Output, (ULONG)Output(),
-                      NP_StackSize, NEED_STACK, TAG_DONE);
-}
+/* AmiSSL wants more stack than a Shell gives (4 KB by default): the program
+ * runs on its own 64 KB. It used to start itself again through SystemTags()
+ * with NP_StackSize - but that sets the new Shell's stack, and the command it
+ * runs gets the Shell's DEFAULT stack, 4 KB again; told not to check twice
+ * (STK), the TLS handshake then overran it and corrupted memory: gurus of
+ * every kind, mostly on the second or third run (real AmiSSL 5.27, 68030,
+ * 2026-10-21; the AmiSSL-Tunnel shim needs little stack and never showed it).
+ * StackSwap() here instead; across it only globals are used. STK is still
+ * accepted, and ignored. */
+static struct StackSwapStruct swap;
+static APTR swapMem;
+static int swapRc;
+
+static int upd_main(void);
 
 int main(void)
+{
+    struct Task *me = FindTask(NULL);
+    if ((ULONG)me->tc_SPUpper - (ULONG)me->tc_SPLower >= NEED_STACK - 4096)
+        return upd_main();
+    if (!(swapMem = AllocVec(NEED_STACK, MEMF_ANY))) {
+        printf(UPD_TOOL ": not enough memory for its stack\n");
+        return RETURN_FAIL;
+    }
+    swap.stk_Lower = swapMem;
+    swap.stk_Upper = (ULONG)swapMem + NEED_STACK;
+    swap.stk_Pointer = (APTR)swap.stk_Upper;
+    StackSwap(&swap);
+    swapRc = upd_main();
+    StackSwap(&swap);
+    FreeVec(swapMem);
+    return swapRc;
+}
+
+static int upd_main(void)
 {
     LONG args[A_COUNT] = { 0 };
     struct RDArgs *rda;
@@ -693,18 +704,12 @@ int main(void)
     UBYTE source;
     const char *mirror;
     LONG rc = RETURN_ERROR;
-    struct Task *me = FindTask(NULL);
 
     if (!(rda = ReadArgs(TEMPLATE, args, NULL))) {
         PrintFault(IoErr(), UPD_TOOL);
         return RETURN_FAIL;
     }
     quiet = args[A_QUIET] != 0;
-    if (!args[A_STK] && (ULONG)me->tc_SPUpper - (ULONG)me->tc_SPLower < NEED_STACK - 4096) {
-        rc = relaunch();
-        FreeArgs(rda);
-        return rc;
-    }
 
     source = upd_load_prefs(mirror_buf, sizeof(mirror_buf));
     if (args[A_SOURCE]) {
