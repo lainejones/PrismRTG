@@ -43,6 +43,17 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.2 beta 3
+  A fix for the update check (PrismUpdate, and Check in PrismPrefs): with
+  AmiSSL 5 it could crash the Amiga (gurus of every kind, mostly on the
+  second or third check). Started from a Shell with a small stack it ran a
+  second copy of itself meant to have 64 KB of stack, but that copy got the
+  Shell's 4 KB, and AmiSSL overran it. It now runs on its own 64 KB stack.
+  Install this one by hand: beta 2's check may crash while looking for it.
+  The same fix is in 1.1.1.
+  PrismBench checks ClipBlit from a planar buffer in fast RAM into one in
+  chip RAM as well.
+
 New in 1.2 beta 2
   Install this one by hand: the update check in 1.1 and 1.2 beta 1 can't
   find it. GitHub began sending its release information pretty-printed,
