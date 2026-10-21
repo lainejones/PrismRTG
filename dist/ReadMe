@@ -43,6 +43,22 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.2 beta 2
+  Install this one by hand: the update check in 1.1 and 1.2 beta 1 can't
+  find it. GitHub began sending its release information pretty-printed,
+  and PrismUpdate found nothing in it ("could not check"); it reads both
+  forms now, and a beta also sees the newest beta even while a full
+  release is GitHub's Latest.
+  Workbench drawers open faster: Workbench (with PeterK's icon.library)
+  draws through planar bitmaps in fast RAM, which the blitter can't
+  reach; PrismRTG now copies those plane to plane instead of through
+  chunky pixels and back. The Prefs drawer on an Amiga 2000 (68030,
+  GBAPII++, 16-bit Workbench) opens in 2.1 s instead of 3.4 s.
+  Fixed: ClipBlit between a window and an off-screen planar RastPort
+  (a program saving what is under something) - it was black at 16 bits
+  and more, and is now done by PrismRTG in both directions; a 16/24/32-
+  bit screen copied into a planar bitmap came out black.
+
 New in 1.2 beta 1
   Icons and other masked images (BltMaskBitMapRastPort, how Workbench
   draws icons) are drawn much faster: only the pixels the mask lets
