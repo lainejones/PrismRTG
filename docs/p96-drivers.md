@@ -1,13 +1,31 @@
 # P96 card-driver backend
 
 `drv_p96.c` lets Prism use a P96 card driver without running P96's RTG core.
-Native Prism drivers remain the default. The adapter is explicitly selected
-and does not scan or load every installed card driver.
+Native Prism drivers remain the default. The adapter never scans or loads
+every installed card driver: it opens the one card library the settings
+name.
 
 ## Configuration
 
-Install Prism normally. For a card the installer does not recognize, choose
-"Install anyway", then configure the backend before rebooting. Keep P96's
+Since 1.2 beta 2 the installer does this for you when Prism has no
+native driver for the card. It looks at the Picasso96 monitors (in
+`DEVS:Monitors`, or where an earlier install parked them): a monitor
+whose `BOARDTYPE` tooltype names a driver that exists as
+`LIBS:Picasso96/<BOARDTYPE>.card` is taken as the card (`PrismSetup
+DETECT` returns card 12 and sets `ENV:PrismP96Card`). The installer then
+parks Picasso96's monitors as usual and writes `P96CARD=` and
+`P96MONITOR=` (the parked monitor icon) into the settings with
+`PrismSetup P96CARD=<card> P96MONITOR=<monitor>`. With `BOARD=AUTO`,
+Prism tries this adapter last, after its own drivers and UAE's card, and
+only when `P96CARD` is set.
+
+This has been tested with UAE's card. A PiStorm's VideoCore driver, a
+Vampire's SAGA driver and other cards found this way have not been tried
+yet - reports are welcome. Holding the left mouse button while booting
+always starts the Amiga without Prism.
+
+To configure it by hand instead: install Prism normally, choosing
+"Install anyway" for a card the installer does not recognize. Keep P96's
 monitor programs disabled; the installer can park them. The `.card` and
 any required `.chip` library must remain installed.
 

@@ -1,17 +1,24 @@
 # Native UAE RTG candidate
 
-The native backend is packaged as `LIBS:Prism/UAEGFX.driver`. Select it
-explicitly:
+The native backend is packaged as `LIBS:Prism/UAEGFX.driver`.
+
+Since 1.2 beta 2 nothing has to be set by hand. The installer recognises
+UAE's RTG card (it reports "UAE RTG card"; `PrismSetup DETECT` returns
+card 11), and `BOARD=AUTO` falls back to this driver when none of
+Prism's own boards is found and the emulator's `uaegfx.card` is in the
+library list. The installer suggests a 16-bit Workbench on it. To select
+it explicitly anyway:
 
 ```text
 Run >RAM:PrismD.log PrismD BOARD=UAEGFX
 ```
 
 For boot-time use, set `BOARD=UAEGFX` in both `ENV:Prism.prefs` and
-`ENVARC:Prism.prefs`. PrismPrefs calls this option "UAE (native)". If the
-installer does not recognize the virtual board, choose "Install anyway"
-and set the preference before rebooting. Automatic board selection does
-not select this candidate yet.
+`ENVARC:Prism.prefs`. PrismPrefs calls this option "UAE (native)".
+
+Caffeine OS in WinUAE was the test system for this: see
+[installing on systems that name their monitors](install-named-monitors.md)
+for what the installer changes there.
 
 Enable UAE RTG memory. The emulator's hardware cursor is optional. Keep P96's
 monitor programs disabled, just as for other Prism drivers. Neither

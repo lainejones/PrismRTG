@@ -104,6 +104,10 @@ use a path such as `LIBS:Picasso96/CyberVision64.card`. Leave any required
 chip driver installed as well. The existing P96 monitor programs must
 remain disabled, as with native Prism drivers.
 
+Since 1.2 beta 2 the installer sets this up itself when a Picasso96
+monitor names a card driver that is in `LIBS:Picasso96` and Prism has no
+native driver for the card, and `BOARD=AUTO` tries the adapter last.
+
 See [P96 driver configuration and limits](docs/p96-drivers.md) before
 using this backend. It supports linear framebuffers, not every P96 memory
 model, and a claimed driver remains resident until reboot. This provides
@@ -122,8 +126,12 @@ P96 adapter:
 Run >RAM:PrismD.log PrismD BOARD=UAEGFX
 ```
 
-Enable UAE RTG memory; PrismRTG uses its hardware cursor when it is on and draws its own pointer when it is off. This candidate is selected
-explicitly; see [native UAE configuration and limits](docs/uaegfx.md).
+Enable UAE RTG memory; PrismRTG uses its hardware cursor when it is on and draws its own pointer when it is off. Since 1.2 beta 2 the installer
+recognises UAE's RTG card and `BOARD=AUTO` falls back to this driver when
+none of Prism's own boards is there; see [native UAE configuration and
+limits](docs/uaegfx.md). For Caffeine OS and other systems whose
+Startup-Sequence loads only the monitors it names, see
+[installing on systems that name their monitors](docs/install-named-monitors.md).
 Tested in WinUAE 6.0.3 at 8, 16 and 32 bits (every PrismRTG test and
 `p96test`).
 

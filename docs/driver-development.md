@@ -427,6 +427,6 @@ checklist for drivers written here):
   pointer, the compositor.
 * [driver-modules.md](driver-modules.md): the module protocol, handshake
   and lifetime in detail.
-* [p96-drivers.md](p96-drivers.md), [uaegfx.md](uaegfx.md): the adapters.
+* [p96-drivers.md](p96-drivers.md), [uaegfx.md](uaegfx.md): the adapters; [install-named-monitors.md](install-named-monitors.md): what the installer changes on Caffeine OS-style startups.
 * [zz9000-hw.md](zz9000-hw.md), [cirrus-picasso2-hw.md](cirrus-picasso2-hw.md):
   what two real boards taught us; the shape a `<board>-hw.md` takes.
