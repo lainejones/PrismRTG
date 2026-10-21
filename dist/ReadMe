@@ -43,6 +43,20 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.1.1
+  A fix for the update check (PrismUpdate, and Check in PrismPrefs) - the
+  rest of PrismRTG is 1.1 unchanged. Install this one by hand: 1.1's check
+  cannot find it.
+  - With AmiSSL 5 the check could crash the Amiga (gurus of every kind,
+    mostly on the second or third check). Started from a Shell with a
+    small stack it ran a second copy of itself meant to have 64 KB of
+    stack, but that copy got the Shell's 4 KB, and AmiSSL overran it. It
+    now runs on its own 64 KB stack.
+  - GitHub began sending its release information pretty-printed, and
+    1.1's check found nothing in it ("could not check"); it reads both now.
+  - A beta sees the newest beta even while a full release is GitHub's
+    Latest.
+
 New in 1.1 (everything since 1.0.2, in short; the betas follow below)
   More boards: PrismRTG drives a card through its existing Picasso96 card
   driver (BOARD=P96), UAE's own RTG card, the Z3660's RTG output (by
