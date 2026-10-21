@@ -4,7 +4,8 @@
 ; PrismRTG - Installer script
 ; RTG (graphics card) software for AmigaOS 3.x:
 ;   MNT ZZ9000, the Z3660's RTG output, the Picasso II family (GBAPII++,
-;   Piccolo, Spectrum, Graffity) and the Picasso IV.
+;   Piccolo, Spectrum, Graffity) and the Picasso IV; also UAE's RTG card in an
+;   emulator, and other cards through their own Picasso96 driver.
 ; Needs the standard Installer, Kickstart 3.1 or newer and a 68020 or better.
 ; Double-click Install_PrismRTG, or from a Shell in this drawer:
 ;     Installer Install_PrismRTG
@@ -88,17 +89,23 @@
             (if (< (getsize plib) 2000)
                 (run (cat "Delete >NIL: \"" plib "\" QUIET"))))
         ; Picasso96 back out of the backup drawer, while PrismSetup is still there
-        (set back "")
+        ; (not "back": that is an Installer parameter name, and the OS 3.9 Installer
+        ; 44.10 refused the whole script for it - seen on Caffeine OS)
+        (set p96msg "")
         (if (exists "SYS:Storage/Picasso96-parked/Prism.manifest")
             (
                 (if (exists "C:PrismSetup")
                     (run "C:PrismSetup >NIL: P96RESTORE")
                     (run "PrismSetup >NIL: P96RESTORE"))
                 (if (exists "SYS:Storage/Picasso96-parked/Prism.manifest")
-                    (set back (cat "\n\nSome of Picasso96 could not be moved back and is still "
+                    (set p96msg (cat "\n\nSome of Picasso96 could not be moved back and is still "
                                    "in SYS:Storage/Picasso96-parked."))
-                    (set back "\n\nPicasso96 is back where it was."))
+                    (set p96msg "\n\nPicasso96 is back where it was."))
             ))
+        ; the block an install put in a Startup-Sequence whose LoadMonDrvs names
+        ; its monitors (Caffeine OS), while PrismSetup is still there
+        (if (exists "C:PrismSetup")
+            (run "C:PrismSetup >NIL: STARTUP=REMOVE"))
         ; (run takes ONE string: several are not joined - always (cat ...) the command)
         (run (cat "Delete >NIL: C:PrismD C:PrismSetup C:PrismProbe C:PrismUpdate C:PrismImport \"" (tackon mon "Prism")
                   "\" \"" (tackon mon "Prism.info") "\" QUIET"))
@@ -113,6 +120,14 @@
                 (run (cat "Copy >NIL: \"" sback "\" \"" smode "\" CLONE"))
                 (run (cat "Delete >NIL: \"" sback "\" QUIET"))
             ))
+        ; Caffeine OS keeps a screen mode per machine next to it (PrismSetup kept each)
+        (foreach "ENVARC:Sys" "screenmode.prefs.#?.before-prism"
+            (
+                (set kept (tackon "ENVARC:Sys" @each-name))
+                (set was (substr kept 0 (- (strlen kept) 13)))      ; less ".before-prism"
+                (run (cat "Copy >NIL: \"" kept "\" \"" was "\" CLONE"))
+                (run (cat "Delete >NIL: \"" kept "\" QUIET"))
+            ))
         ; (a monitor file moved away by an older version of this installer)
         (if (exists pnote)
             (
@@ -125,11 +140,11 @@
                         (if (exists (tackon store (cat old ".info")))
                             (run (cat "Rename >NIL: \"" (tackon store (cat old ".info")) "\" \""
                                       (tackon mon (cat old ".info")) "\"")))
-                        (set back (cat "\n\nThe Picasso96 monitor \"" old "\" is back in " mon "."))
+                        (set p96msg (cat "\n\nThe Picasso96 monitor \"" old "\" is back in " mon "."))
                     ))
                 (run (cat "Delete >NIL: \"" pnote "\" ENV:Prism.p96monitor QUIET"))
             ))
-        (exit "PrismRTG is removed." back "\n\n"
+        (exit "PrismRTG is removed." p96msg "\n\n"
               "Reboot now: PrismRTG keeps running until then." (quiet))
     ))
 
@@ -137,10 +152,10 @@
 (if fresh
     (message "Welcome to PrismRTG.\n\n"
              "PrismRTG is graphics card software for the MNT ZZ9000, the Z3660, the "
-             "GBAPII++ and Picasso II family and the Picasso IV: Workbench and programs "
-             "in 256 colours, 16-bit and 24/32-bit on the card's blitter, with its own "
-             "cybergraphics.library and Picasso96API.library for programs that ask "
-             "for one.\n\n"
+             "GBAPII++ and Picasso II family and the Picasso IV - and for UAE's RTG "
+             "card and other cards through their own Picasso96 driver: Workbench and "
+             "programs in 256 colours, 16-bit and 24/32-bit, with its own "
+             "cybergraphics.library and Picasso96API.library.\n\n"
              "It takes the place of Picasso96: the two cannot be active on the same "
              "Amiga. If Picasso96 is installed, the installer asks before it touches "
              "anything, and nothing of Picasso96 is ever deleted."))
@@ -150,7 +165,9 @@
             (prompt "No graphics card that PrismRTG knows was found in this Amiga.\n\n"
                     "PrismRTG drives the MNT ZZ9000, the Z3660's RTG output, the "
                     "Picasso II, GBAPII++, Piccolo, Piccolo SD64, Spectrum 28/24, "
-                    "Graffity and Picasso IV.\n\n"
+                    "Graffity and Picasso IV, UAE's RTG card in an emulator, and other "
+                    "cards through their Picasso96 driver (when a monitor in "
+                    "DEVS:Monitors names one that is in LIBS:Picasso96).\n\n"
                     "Install it anyway?")
             (help "Without one of these cards PrismRTG starts, finds nothing and stops: "
                   "the Amiga works as before. Installing anyway only makes sense if the "
@@ -164,6 +181,19 @@
              "It may work, or the picture may be wrong. Picasso96 is not touched "
              "unless you say so, and holding the left mouse button while booting "
              "always starts the Amiga without PrismRTG."))
+(if (= card "11")
+    (message "This Amiga is an emulator with UAE's RTG card.\n\n"
+             "PrismRTG drives it directly; Picasso96 is not needed for it."))
+; a true-colour Workbench (Caffeine OS's backdrops and icons) on these: 16-bit
+(set wbdef 1)
+(if (or (= card "11") (= card "12")) (set wbdef 2))
+(if (= card "12")
+    (message "PrismRTG will drive this card (" cardname ") through its own Picasso96 "
+             "driver, " (getenv "PrismP96Card") ".\n\n"
+             "That driver stays where it is. PrismRTG has been tested this way with UAE's "
+             "card, not with this one: it may work, or the picture may be wrong. Holding "
+             "the left mouse button while booting always starts the Amiga without "
+             "PrismRTG, and running this installer again removes it."))
 (if (= card "4")
     (message "This ZZ9000 is running in Zorro II mode.\n\n"
              "PrismRTG can show pictures on it, but the card's blitter and mouse pointer "
@@ -241,6 +271,34 @@
     (run "Delete >NIL: ENVARC:Prism.prefs ENV:Prism.prefs QUIET"))
 (if (not (exists "ENVARC:Prism.prefs"))
     (run "SYS:Prefs/PrismPrefs >NIL: SAVE"))
+; a card through its Picasso96 driver: PrismD's P96 adapter is told which one
+; (looked up again: Picasso96's monitor may have been backed up just now)
+(if (= card "12")
+    (
+        (run "C:PrismSetup >NIL: DETECT")
+        (if (<> (getenv "PrismP96Card") "")
+            (run (cat "C:PrismSetup >NIL: P96CARD=\"" (getenv "PrismP96Card") "\" P96MONITOR=\""
+                      (tackon (getenv "PrismP96MonDir") (getenv "PrismP96Mon")) "\"")))
+    ))
+; a Startup-Sequence whose LoadMonDrvs loads only the monitors it names
+; (Caffeine OS) never starts PrismRTG's: PrismSetup adds a few lines after
+; it, keeping the old file as S:Startup-Sequence.before-prism
+(set ssmsg "")
+(if (= (run "C:PrismSetup >NIL: STARTUP=CHECK") 10)
+    (if (askbool
+            (prompt "This Amiga's S:Startup-Sequence loads only the monitors it names "
+                    "(LoadMonDrvs \"...\"), so PrismRTG would never start.\n\n"
+                    "Add the lines that start it?")
+            (help "A few lines go in after the monitors are loaded: IF EXISTS "
+                  "DEVS:Monitors/Prism, start it, EndIF, between ;BEGIN PrismRTG and "
+                  ";END PrismRTG. The file as it is now is kept as "
+                  "S:Startup-Sequence.before-prism. Removing PrismRTG with this "
+                  "installer takes the lines out again.")
+            (default 1))
+        (if (= (run "C:PrismSetup >NIL: STARTUP=ADD") 0)
+            (set ssmsg "\n\nS:Startup-Sequence now starts PrismRTG (the old one is S:Startup-Sequence.before-prism).")
+            (set ssmsg "\n\nS:Startup-Sequence could not be changed: PrismRTG will not start at boot until DEVS:Monitors/Prism is run from it."))
+        (set ssmsg "\n\nS:Startup-Sequence was left alone: PrismRTG will not start at boot until DEVS:Monitors/Prism is run from it.")))
 
 ; the screen sizes and depths switched on in Picasso96, on a first install
 ; (PrismImport; added to PrismRTG's own, which stay on)
@@ -285,13 +343,14 @@
                       "\"Leave it as it is\" keeps today's Workbench screen: choose a "
                       "PRISM: mode in Prefs/ScreenMode yourself later.\n\n"
                       "Today's setting is kept in " sback " and comes back when PrismRTG "
-                      "is removed.")
+                      "is removed (Caffeine OS's per-machine copies, screenmode.prefs.UAE "
+                      "and .PI, are set and kept the same way).")
                 (choices "Prism 640 x 480, 256 colours"
                          "Prism 800 x 600, 256 colours"
                          "Prism 800 x 600, 16-bit"
                          "Prism 1024 x 768, 16-bit"
                          "Leave it as it is")
-                (default 1)))
+                (default wbdef)))
         (if (< wb 4)
             (
                 (if (and (exists smode) (not (exists sback)))
@@ -312,7 +371,7 @@
           (quiet)))
 (exit (if fresh "PrismRTG is installed" "PrismRTG is updated")
       (if (<> cardname "") (cat " for the " cardname) "")
-      ".\n\n"
+      "." ssmsg "\n\n"
       "Reboot to start it.\n\n"
       "If the screen stays dark or looks wrong: hold the LEFT MOUSE BUTTON while "
       "booting and PrismRTG does not start. A start that hangs is also skipped by "

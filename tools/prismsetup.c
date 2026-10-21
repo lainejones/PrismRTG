@@ -12,9 +12,19 @@
  *         ENV:PrismCard      0 none, 1 Picasso II, 2 GBAPII++,
  *                            3 ZZ9000 (Zorro III), 4 ZZ9000 (Zorro II),
  *                            5 Piccolo SD64, 6 Piccolo, 7 Spectrum 28/24,
- *                            8 Graffity, 9 Z3660, 10 Picasso IV
+ *                            8 Graffity, 9 Z3660, 10 Picasso IV,
+ *                            11 UAE's RTG card (an emulator: its
+ *                               uaegfx.card is in memory),
+ *                            12 a card through its Picasso96 driver (a
+ *                               monitor names a BOARDTYPE whose
+ *                               LIBS:Picasso96/<it>.card is there: a
+ *                               PiStorm's VideoCore, a Vampire)
+ *                            - 11 and 12 only when none of ours is there
  *         ENV:PrismCardName  the card's name, or ""
  *         ENV:PrismP96Mon    the Picasso96 monitor file's name, or ""
+ *         ENV:PrismP96Card   for 12: the card driver, for P96CARD=
+ *         ENV:PrismP96MonDir for 12: the monitor's drawer (DEVS:Monitors,
+ *                            or the parked one), for P96MONITOR=
  *       and returns the same number as PrismCard.
  *
  *       It also looks for an installed Picasso96 (see p96_scan) and sets
@@ -35,6 +45,24 @@
  *       with ModeID $7A00<id> (the low word: depth slot << 8 | size slot, e.g. $0102 =
  *       800x600 16-bit), 256 pens. Returns 0, or 10. The installer uses this: a ModeID
  *       never changes when sizes are added.
+ *
+ *       Where the system keeps a screen mode per machine (Caffeine OS:
+ *       screenmode.prefs.UAE and .PI next to it, one picked at boot), those
+ *       get the mode too; each is kept first as <name>.before-prism.
+ *
+ *   PrismSetup P96CARD=<card driver> [P96MONITOR=<monitor>]
+ *       Set PrismD's Picasso96 adapter in ENVARC:Prism.prefs (and ENV:):
+ *       the installer does this for a card it found through its Picasso96
+ *       driver (DETECT's card 12).
+ *
+ *   PrismSetup STARTUP=ADD|REMOVE|CHECK
+ *       A Startup-Sequence whose LoadMonDrvs is given the monitors to load
+ *       by name (Caffeine OS) never starts DEVS:Monitors/Prism. ADD puts a
+ *       block that does after those lines (after "LAB ENDMONITORS" when
+ *       there is one), keeping the old file as
+ *       S:Startup-Sequence.before-prism; REMOVE takes the block out; CHECK
+ *       only answers. Returns 0 = done (or the block is there), 5 = this
+ *       Startup-Sequence needs no block, 10 = error (CHECK: one is missing).
  *
  *   PrismSetup WBMODE=<slot>
  *       The same by prefs slot number (prefs.h: depth * PREFS_NSIZES + size). Slot
@@ -63,7 +91,7 @@ static const char version[] __attribute__((used)) = "$VER: PrismSetup " PRISM_RE
 struct ExpansionBase *ExpansionBase;
 struct Library *IconBase;
 
-#define TEMPLATE "DETECT/S,WBMODE/K/N,P96PARK/S,P96RESTORE/S,WBID/K"
+#define TEMPLATE "DETECT/S,WBMODE/K/N,P96PARK/S,P96RESTORE/S,WBID/K,P96CARD/K,P96MONITOR/K,STARTUP/K"
 
 static void setenv_str(const char *name, const char *val)
 {
@@ -78,9 +106,15 @@ static BOOL same_nocase(const char *a, const char *b)
     return !*a && !*b;
 }
 
+static char p96type[64];                    /* card 12's BOARDTYPE */
+
 /* Is this Picasso96 BOARDTYPE the driver for card `card`? */
 static BOOL boardtype_matches(const char *bt, int card)
 {
+    if (card == 11)
+        return same_nocase(bt, "uaegfx");
+    if (card == 12)
+        return same_nocase(bt, p96type);
     if (card == 3 || card == 4)
         return same_nocase(bt, "ZZ9000");
     if (card == 1 || card == 2)
@@ -99,8 +133,72 @@ static BOOL boardtype_matches(const char *bt, int card)
     return FALSE;
 }
 
-/* The monitor in DEVS:Monitors whose icon says BOARDTYPE=<this card>. */
-static void find_p96_monitor(int card, char *out, int outLen)
+#define PARK_DIR "SYS:Storage/Picasso96-parked"
+
+/* UAE's RTG card: the emulator puts its uaegfx.card in the library list
+ * (PrismD's UAEGFX driver tests the same - a uaegfx.card file on a disk is
+ * not the emulator's) */
+static BOOL uae_rtg(void)
+{
+    struct Library *lib;
+    BOOL ok;
+    Forbid();
+    lib = (struct Library *)FindName(&SysBase->LibList, "uaegfx.card");
+    ok = lib && lib->lib_IdString && !strncmp((char *)lib->lib_IdString, "UAE Graphics Card", 17);
+    Permit();
+    return ok;
+}
+
+/* A monitor whose icon names a BOARDTYPE (not UAE's) that has a driver in
+ * LIBS:Picasso96: a card Prism can drive through that driver. Looks in
+ * DEVS:Monitors, then where a earlier install parked Picasso96's monitors. */
+static BOOL find_p96_card(const char *dirName, char *card, int cardLen)
+{
+    BPTR lock;
+    struct FileInfoBlock *fib;
+    BOOL found = FALSE;
+
+    if (!(IconBase = OpenLibrary("icon.library", 37)))
+        return FALSE;
+    fib = AllocDosObject(DOS_FIB, NULL);
+    lock = Lock((STRPTR)dirName, ACCESS_READ);
+    if (fib && lock && Examine(lock, fib)) {
+        while (!found && ExNext(lock, fib)) {
+            int n = strlen(fib->fib_FileName);
+            char path[180], cpath[100];
+            struct DiskObject *dob;
+            STRPTR bt;
+            BPTR cl;
+
+            if (fib->fib_DirEntryType > 0 || n < 6 || n > 100 ||
+                !same_nocase(fib->fib_FileName + n - 5, ".info"))
+                continue;
+            sprintf(path, "%s/%s", dirName, fib->fib_FileName);
+            path[strlen(path) - 5] = 0;
+            if (!(dob = GetDiskObject(path)))
+                continue;
+            if (dob->do_ToolTypes && (bt = FindToolType((void *)dob->do_ToolTypes, "BOARDTYPE")) &&
+                *bt && strlen(bt) < sizeof(p96type) && !same_nocase(bt, "uaegfx")) {
+                sprintf(cpath, "LIBS:Picasso96/%s.card", bt);
+                if ((int)strlen(cpath) < cardLen && (cl = Lock(cpath, ACCESS_READ))) {
+                    UnLock(cl);
+                    strcpy(card, cpath);
+                    strcpy(p96type, bt);
+                    found = TRUE;
+                }
+            }
+            FreeDiskObject(dob);
+        }
+    }
+    if (lock) UnLock(lock);
+    if (fib) FreeDosObject(DOS_FIB, fib);
+    CloseLibrary(IconBase);
+    return found;
+}
+
+/* The monitor in DEVS:Monitors (or `dirName`) whose icon says
+ * BOARDTYPE=<this card>. */
+static void find_p96_monitor(int card, const char *dirName, char *out, int outLen)
 {
     BPTR lock;
     struct FileInfoBlock *fib;
@@ -109,7 +207,7 @@ static void find_p96_monitor(int card, char *out, int outLen)
     if (!card || !(IconBase = OpenLibrary("icon.library", 37)))
         return;
     fib = AllocDosObject(DOS_FIB, NULL);
-    lock = Lock("DEVS:Monitors", ACCESS_READ);
+    lock = Lock((STRPTR)dirName, ACCESS_READ);
     if (fib && lock && Examine(lock, fib)) {
         while (ExNext(lock, fib) && !out[0]) {
             int n = strlen(fib->fib_FileName);
@@ -120,7 +218,7 @@ static void find_p96_monitor(int card, char *out, int outLen)
             if (fib->fib_DirEntryType > 0 || n < 6 || n > 100 ||
                 !same_nocase(fib->fib_FileName + n - 5, ".info"))
                 continue;
-            sprintf(path, "DEVS:Monitors/%s", fib->fib_FileName);
+            sprintf(path, "%s/%s", dirName, fib->fib_FileName);
             path[strlen(path) - 5] = 0;              /* GetDiskObject adds .info */
             if (!(dob = GetDiskObject(path)))
                 continue;
@@ -156,7 +254,6 @@ static void find_p96_monitor(int card, char *out, int outLen)
  * card drivers, its preferences program, its settings, its drawer - does
  * nothing without a monitor file and stays where it is. Nothing is ever
  * deleted. */
-#define PARK_DIR "SYS:Storage/Picasso96-parked"
 #define MANIFEST PARK_DIR "/Prism.manifest"
 #define MAXPIECES 40
 
@@ -334,7 +431,9 @@ static int detect(void)
     static const char *names[] = { "", "Picasso II", "GBAPII++", "ZZ9000 (Zorro III)",
                                    "ZZ9000 (Zorro II)", "Piccolo SD64", "Piccolo",
                                    "Spectrum 28/24", "Graffity",
-                                   "Z3660", "Picasso IV" };
+                                   "Z3660", "Picasso IV", "UAE RTG card", "" };
+    static char p96name[100];
+    char p96card[100], monDir[40];
     int card = 0;
     char num[4], mon[108];
     struct ConfigDev *p4;
@@ -355,14 +454,32 @@ static int detect(void)
     }
     {
         /* test hook for the installer script: ENV:PrismFakeCard = 1..10
-         * stands in for a card this machine doesn't have */
+         * stands in for a card this machine doesn't have (11 and 12 are
+         * found by what is installed, not faked) */
         char fake[8];
         int fc;
         if (GetVar("PrismFakeCard", fake, sizeof(fake), GVF_GLOBAL_ONLY) > 0 &&
             sscanf(fake, "%d", &fc) == 1 && fc >= 1 && fc <= 10)
             card = fc;
     }
-    find_p96_monitor(card, mon, sizeof(mon));
+    p96card[0] = 0;
+    strcpy(monDir, "DEVS:Monitors");
+    if (!card && uae_rtg())
+        card = 11;
+    if (!card) {
+        if (find_p96_card("DEVS:Monitors", p96card, sizeof(p96card)) ||
+            (find_p96_card(PARK_DIR "/Monitors", p96card, sizeof(p96card)) &&
+             strcpy(monDir, PARK_DIR "/Monitors"))) {
+            card = 12;
+            sprintf(p96name, "%s (through its Picasso96 driver)", p96type);
+            names[12] = p96name;
+        }
+    }
+    find_p96_monitor(card, monDir, mon, sizeof(mon));
+    if (card == 11 && !mon[0])
+        find_p96_monitor(card, PARK_DIR "/Monitors", mon, sizeof(mon));
+    setenv_str("PrismP96Card", p96card);
+    setenv_str("PrismP96MonDir", card == 12 ? monDir : "");
     sprintf(num, "%d", card);
     setenv_str("PrismCard", num);
     setenv_str("PrismCardName", names[card]);
@@ -394,13 +511,199 @@ static int detect(void)
     return card;
 }
 
+/* A whole small file into a buffer (NUL-ended); NULL if it can't be read */
+static char *read_file(const char *path, LONG *len)
+{
+    LONG n = size_of(path);
+    char *buf;
+    BPTR fh;
+
+    if (n < 0 || n > 200000 || !(buf = AllocVec(n + 1, MEMF_ANY)))
+        return NULL;
+    if (!(fh = Open((STRPTR)path, MODE_OLDFILE)) || Read(fh, buf, n) != n) {
+        if (fh) Close(fh);
+        FreeVec(buf);
+        return NULL;
+    }
+    Close(fh);
+    buf[n] = 0;
+    *len = n;
+    return buf;
+}
+
+static BOOL write_file(const char *path, const char *buf, LONG len)
+{
+    struct FileInfoBlock *fib = AllocDosObject(DOS_FIB, NULL);
+    BPTR fh, l = Lock((STRPTR)path, ACCESS_READ);
+    LONG prot = -1;
+    BOOL ok;
+    if (fib && l && Examine(l, fib))
+        prot = fib->fib_Protection;               /* a new file loses them: put them back */
+    if (l) UnLock(l);
+    if (fib) FreeDosObject(DOS_FIB, fib);
+    fh = Open((STRPTR)path, MODE_NEWFILE);
+    ok = fh && Write(fh, (APTR)buf, len) == len;
+    if (fh) Close(fh);
+    if (ok && prot != -1)
+        SetProtection((STRPTR)path, prot);
+    return ok;
+}
+
+/* `from` kept as `to`, unless `to` is there already (the first copy is the
+ * one from before PrismRTG) */
+static BOOL keep_copy(const char *from, const char *to)
+{
+    char *buf;
+    LONG len;
+    BOOL ok;
+    if (there(to))
+        return TRUE;
+    if (!(buf = read_file(from, &len)))
+        return FALSE;
+    ok = write_file(to, buf, len);
+    FreeVec(buf);
+    if (ok) {
+        /* with the original's protection bits, so a copy back is the same */
+        struct FileInfoBlock *fib = AllocDosObject(DOS_FIB, NULL);
+        BPTR l = Lock((STRPTR)from, ACCESS_READ);
+        if (fib && l && Examine(l, fib))
+            SetProtection((STRPTR)to, fib->fib_Protection);
+        if (l) UnLock(l);
+        if (fib) FreeDosObject(DOS_FIB, fib);
+    }
+    return ok;
+}
+
+/* ---- a Startup-Sequence that names its monitors ------------------------- */
+#define SS       "S:Startup-Sequence"
+#define SS_KEEP  "S:Startup-Sequence.before-prism"
+#define SS_BEGIN ";BEGIN PrismRTG"
+#define SS_END   ";END PrismRTG"
+static const char ssBlock[] =
+    SS_BEGIN " - LoadMonDrvs here starts only the monitors it names\n"
+    "IF EXISTS DEVS:Monitors/Prism\n"
+    " DEVS:Monitors/Prism >NIL:\n"
+    "EndIF\n"
+    SS_END "\n";
+
+/* the line at p starts (after blanks) with the word `word`, any case */
+static BOOL line_word(const char *p, const char *word)
+{
+    while (*p == ' ' || *p == 9) p++;
+    for (; *word; p++, word++)
+        if (lower(*p) != lower(*word))
+            return FALSE;
+    return *p == ' ' || *p == 9 || *p == 10 || *p == 0;
+}
+
+static const char *next_line(const char *p)
+{
+    while (*p && *p != 10) p++;
+    return *p ? p + 1 : p;
+}
+
+static int startup(const char *how)
+{
+    char *buf, *out;
+    const char *p, *after = NULL, *b, *e;
+    BOOL named = FALSE;
+    LONG len, blen = sizeof(ssBlock) - 1;
+    int rc;
+
+    if (!(buf = read_file(SS, &len))) {
+        printf("PrismSetup: can't read %s\n", SS);
+        return 10;
+    }
+    /* LoadMonDrvs given names ("A|B|C"): the stock one takes none */
+    for (p = buf; *p; p = next_line(p)) {
+        if (line_word(p, "LoadMonDrvs") || line_word(p, "C:LoadMonDrvs")) {
+            const char *q;
+            for (q = p; *q && *q != 10; q++)
+                if (*q == '"') named = TRUE;
+            after = next_line(p);
+        }
+        if (line_word(p, "LAB")) {
+            const char *q = p;
+            while (*q == ' ' || *q == 9) q++;
+            q += 3;
+            if (line_word(q, "ENDMONITORS"))
+                after = next_line(p);
+        }
+    }
+    b = strstr(buf, SS_BEGIN);
+    e = b ? strstr(b, SS_END) : NULL;
+    if (same_nocase(how, "CHECK")) {
+        rc = b ? 0 : named ? 10 : 5;
+        printf("PrismSetup: %s\n", b ? "the PrismRTG block is in " SS :
+               named ? "the PrismRTG block is NOT in " SS : SS " needs no PrismRTG block");
+    } else if (same_nocase(how, "REMOVE")) {
+        rc = 0;
+        if (b && e) {
+            e = next_line(e);
+            memmove((char *)b, e, buf + len - e + 1);
+            len -= e - b;
+            if (!write_file(SS, buf, len)) {
+                printf("PrismSetup: can't write %s\n", SS);
+                rc = 10;
+            } else
+                printf("PrismSetup: the PrismRTG block is out of %s\n", SS);
+        }
+    } else if (same_nocase(how, "ADD")) {
+        if (b)
+            rc = 0;                                /* there already */
+        else if (!named || !after)
+            rc = 5;
+        else if (!keep_copy(SS, SS_KEEP) || !(out = AllocVec(len + blen + 2, MEMF_ANY))) {
+            printf("PrismSetup: can't keep %s as %s\n", SS, SS_KEEP);
+            rc = 10;
+        } else {
+            LONG at = after - buf, rest = len - at;
+            memcpy(out, buf, at);
+            if (at && out[at - 1] != 10)
+                out[at++] = 10;                    /* a last line without its newline */
+            memcpy(out + at, ssBlock, blen);
+            memcpy(out + at + blen, after, rest);
+            rc = write_file(SS, out, at + blen + rest) ? 0 : 10;
+            printf(rc ? "PrismSetup: can't write %s\n" : "PrismSetup: PrismRTG block added to %s\n", SS);
+            FreeVec(out);
+        }
+    } else {
+        printf("PrismSetup: STARTUP=ADD, REMOVE or CHECK\n");
+        rc = 10;
+    }
+    FreeVec(buf);
+    return rc;
+}
+
+/* P96CARD= and P96MONITOR= into the settings */
+static int set_p96(const char *card, const char *monitor)
+{
+    static struct PrismPrefs prefs;
+    if (!prefs_load(&prefs, PREFS_ENVARC) && !prefs_load(&prefs, PREFS_ENV))
+        prefs_default(&prefs);
+    if (strlen(card) >= sizeof(prefs.p96card) ||
+        (monitor && strlen(monitor) >= sizeof(prefs.p96monitor)))
+        return 10;
+    strcpy(prefs.p96card, card);
+    strcpy(prefs.p96monitor, monitor ? monitor : "");
+    if (!prefs_save(&prefs, PREFS_ENVARC)) {
+        printf(S(ID_PRISMSETUP_CAN_T_WRITE, "PrismSetup: can't write %s\n"), PREFS_ENVARC);
+        return 10;
+    }
+    prefs_save(&prefs, PREFS_ENV);
+    printf("PrismSetup: P96CARD=%s P96MONITOR=%s\n", prefs.p96card, prefs.p96monitor);
+    return 0;
+}
+
 /* IFF PREF with one SCRM chunk (prefs/screenmode.h), 62 bytes */
 static int write_wbmode(LONG slot)
 {
     /* ENVARC: only - it takes effect at the next boot. Writing ENV: as
      * well makes IPrefs try to reset the Workbench screen there and then
      * ("please close all windows"), under the installer's own window. */
-    static const char *files[1] = { "ENVARC:Sys/screenmode.prefs" };
+    static const char *files[3] = { "ENVARC:Sys/screenmode.prefs",
+                                     "ENVARC:Sys/screenmode.prefs.UAE",
+                                     "ENVARC:Sys/screenmode.prefs.PI" };
     static struct PrismPrefs prefs;  /* for the custom sizes' slots */
     UBYTE f[62];
     ULONG id;
@@ -430,8 +733,22 @@ static int write_wbmode(LONG slot)
     f[54] = f[55] = f[56] = f[57] = 0xff;
     f[59] = 8;                     /* depth: 256 pens at every Prism depth */
     f[61] = 1;                     /* control: autoscroll                   */
-    for (i = 0; i < 1; i++) {
-        BPTR fh = Open((STRPTR)files[i], MODE_NEWFILE);
+    for (i = 0; i < 3; i++) {
+        BPTR fh;
+        if (i) {
+            /* Caffeine OS's per-machine copies: only where they are, and
+             * each one kept first */
+            char keep[60];
+            if (!there(files[i]))
+                continue;
+            sprintf(keep, "%s.before-prism", files[i]);
+            if (!keep_copy(files[i], keep)) {
+                printf(S(ID_PRISMSETUP_CAN_T_WRITE, "PrismSetup: can't write %s\n"), keep);
+                rc = 10;
+                continue;
+            }
+        }
+        fh = Open((STRPTR)files[i], MODE_NEWFILE);
         if (!fh || Write(fh, f, sizeof(f)) != sizeof(f)) {
             printf(S(ID_PRISMSETUP_CAN_T_WRITE, "PrismSetup: can't write %s\n"), files[i]);
             rc = 10;
@@ -445,7 +762,7 @@ static int write_wbmode(LONG slot)
 
 int main(void)
 {
-    LONG args[5] = { 0 };
+    LONG args[8] = { 0 };
     struct RDArgs *rda;
     int rc = 0;
 
@@ -454,7 +771,11 @@ int main(void)
         return 20;
     }
     cat_open();                              /* the texts: a translation, or the English */
-    if (args[4]) {
+    if (args[7])
+        rc = startup((const char *)args[7]);
+    else if (args[5])
+        rc = set_p96((const char *)args[5], (const char *)args[6]);
+    else if (args[4]) {
         /* $0102, 0x0102, 0102 or the whole $7A000102: depth slot, size slot */
         const char *a = (const char *)args[4];
         ULONG id, depth, size;

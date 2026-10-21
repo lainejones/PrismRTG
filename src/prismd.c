@@ -3344,6 +3344,17 @@ int main(void)
             /* then any other driver installed (a new board's): the P96
              * and UAE adapters stay explicit choices, they claim contexts */
             if(!found) found=driver_scan(&board,&config);
+            /* nothing of our own: the adapters, last - UAE's RTG card (an
+             * emulator, Caffeine OS in WinUAE: Auto found nothing there and
+             * PrismRTG stayed off), then a card through its Picasso96 driver
+             * when the settings name one (P96CARD=, e.g. a PiStorm's
+             * VideoCore or a Vampire) */
+            if(!found) {
+                driverQuiet=TRUE;
+                found=driver_open(&board,"UAEGFX",&config);
+                if(!found && config.card[0]) found=driver_open(&board,"P96",&config);
+                driverQuiet=FALSE;
+            }
             /* Auto drives a second board too (multi-board.md): one the
              * other supplied driver finds, else a second of the first one's
              * kind (a second copy of its driver; drivers skip boards

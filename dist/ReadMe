@@ -58,6 +58,16 @@ New in 1.2 beta 2
   (a program saving what is under something) - it was black at 16 bits
   and more, and is now done by PrismRTG in both directions; a 16/24/32-
   bit screen copied into a planar bitmap came out black.
+  Caffeine OS (tested in WinUAE): the installer finds UAE's RTG card and
+  cards that have a Picasso96 driver (a PiStorm's VideoCore, a Vampire)
+  and sets PrismRTG up to drive them through it; BOARD=AUTO falls back to
+  UAE's card and to that driver when none of PrismRTG's own boards is
+  there. A Startup-Sequence whose LoadMonDrvs loads only the monitors it
+  names gets a few lines that start PrismRTG (asked first, the old file
+  kept as S:Startup-Sequence.before-prism), and the Workbench screen mode
+  is also set in its per-machine copies (screenmode.prefs.UAE and .PI).
+  Removing PrismRTG undoes all of it. The installer also works with the
+  OS 3.9 Installer now (it refused the whole script).
 
 New in 1.2 beta 1
   Icons and other masked images (BltMaskBitMapRastPort, how Workbench
