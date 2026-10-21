@@ -400,19 +400,33 @@ static BOOL fetch(const char *url, struct Fetch *f)
 struct Latest { char tag[48]; char url[URL_MAX]; const char *from; };
 
 /* the value of the first "key":"..." at or after p */
+/* "key": "value" - with or without white space around the colon: GitHub's
+ * API began answering pretty-printed ("tag_name": "v1.0.2") in October 2026,
+ * and looking for "tag_name":" found nothing, so every check through GitHub
+ * failed ("could not check for an update"). Forgejo still answers compact. */
 static const char *json_str(const char *p, const char *key, char *out, int n)
 {
     char pat[48];
     const char *q, *e;
-    sprintf(pat, "\"%s\":\"", key);
-    if (!(q = strstr(p, pat)))
-        return NULL;
-    q += strlen(pat);
-    if (!(e = strchr(q, '"')) || e - q >= n)
-        return NULL;
-    memcpy(out, q, e - q);
-    out[e - q] = 0;
-    return e;
+    sprintf(pat, "\"%s\"", key);
+    while ((q = strstr(p, pat)) != NULL) {
+        p = q + strlen(pat);                 /* the next search starts past it */
+        q = p;
+        while (*q == ' ' || *q == '\t' || *q == '\r' || *q == '\n')
+            q++;
+        if (*q++ != ':')
+            continue;                        /* a value that is this word, not a key */
+        while (*q == ' ' || *q == '\t' || *q == '\r' || *q == '\n')
+            q++;
+        if (*q++ != '"')
+            continue;                        /* not a string */
+        if (!(e = strchr(q, '"')) || e - q >= n)
+            return NULL;
+        memcpy(out, q, e - q);
+        out[e - q] = 0;
+        return e;
+    }
+    return NULL;
 }
 
 /* a release API that answers like GitHub's: base = "https://api.github.com/repos/
