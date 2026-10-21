@@ -96,7 +96,31 @@ _stub_BltBitMap:
 3:      BODY BltBitMap
 
         PATCH_RP BltBitMapRastPort, a1, a0
-        PATCH_RP ClipBlit, a1, a0
+
+| ClipBlit: source RastPort in a0, destination in a1. The handler is wanted
+| when either side's bitmap is Prism's (PATCH_RP looked at the destination
+| only, so a Prism window copied into a plain planar RastPort - an off-screen
+| buffer - went to the ROM, which can't read Prism's pixels: pen 0 at 16
+| bits), or when the destination's planes are above chip RAM.
+        .globl _stub_ClipBlit
+_stub_ClipBlit:
+        move.l  a2,-(sp)
+        movea.l 4(a1),a2                | destination rp->BitMap
+        btst    #7,4(a2)
+        bne.s   2f
+        movea.l 4(a0),a2                | source rp->BitMap
+        btst    #7,4(a2)
+        bne.s   2f
+        movea.l 4(a1),a2
+        movea.l 8(a2),a2                | destination's first plane
+        cmpa.l  _chipTop,a2
+        movea.l (sp)+,a2
+        bcc.s   3f
+        move.l  _o_ClipBlit,-(sp)
+        rts
+2:      movea.l (sp)+,a2
+3:      BODY ClipBlit
+
         PATCH_RP BltMaskBitMapRastPort, a1, a0
         PATCH_RP BltTemplate, a1, a0
         PATCH_RP BltPattern, a1, a0

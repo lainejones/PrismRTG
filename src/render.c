@@ -73,18 +73,29 @@ UBYTE dbgOn;
  * answer is kept - conversions ask for the same colour many times. */
 volatile ULONG paletteGen;
 
+/* A colour's answer is kept in a small cache (1024 entries by colour,
+ * each valid for its table and palette generation): reading a 16-bit screen
+ * back as pens (Workbench does it while it draws a drawer) asked for the
+ * same few colours over and over, and the search was 47% of opening a
+ * drawer on the A2000 (2026-10-20). */
+#define PENCACHE 1024
+/* each entry knows its table and palette generation: callers alternate
+ * between tables (the screen's and a bitmap's), and emptying the whole
+ * cache at every switch left it useless */
+struct PenCache { const void *tab; ULONG gen, key; UBYTE pen; };
+static struct PenCache pc[PENCACHE];
+
 UBYTE pen_nearest(const ULONG *tab, ULONG c)
 {
-    static const ULONG *lastTab;
-    static ULONG lastC, lastGen;
-    static UBYTE lastPen;
-    UWORD i, best = 0;
+    UWORD i, best = 0, h;
     LONG bd = 0x7fffffff;
     if (!tab)
         return 0;
     c &= 0xffffff;
-    if (tab == lastTab && c == lastC && lastGen == paletteGen)
-        return lastPen;
+    h = (c ^ (c >> 10) ^ (c >> 20)) & (PENCACHE - 1);
+    if (pc[h].key == c + 1 && pc[h].tab == tab && pc[h].gen == paletteGen) {
+        return pc[h].pen;
+    }
     for (i = 0; i < 256; i++) {
         LONG dr = (LONG)((tab[i] >> 16) & 255) - ((c >> 16) & 255);
         LONG dg = (LONG)((tab[i] >> 8) & 255) - ((c >> 8) & 255);
@@ -96,7 +107,11 @@ UBYTE pen_nearest(const ULONG *tab, ULONG c)
                 break;
         }
     }
-    lastTab = tab; lastC = c; lastPen = best; lastGen = paletteGen;
+    pc[h].key = 0;                          /* the answer first, then its key */
+    pc[h].pen = best;
+    pc[h].tab = tab;
+    pc[h].gen = paletteGen;
+    pc[h].key = c + 1;
     return best;
 }
 
@@ -151,15 +166,31 @@ static void surf_of(struct BitMap *bm, struct Surf *s)
     surf_from(bm, pbm_get(bm), s);
 }
 
-/* 16-bit pixel back to a pen: exact match in the table, else pen 0. */
+/* 16-bit pixel back to a pen: exact match in the table (the first one),
+ * else pen 0. Cached like pen_nearest (by pixel value). */
+static struct PenCache p16[PENCACHE];
+
 static UBYTE pen_of(const UWORD *tab, UWORD v)
 {
-    UWORD i;
-    if (tab)
-        for (i = 0; i < 256; i++)
-            if (tab[i] == v)
-                return i;
-    return 0;
+    UWORD i, h;
+    UBYTE pen = 0;
+    if (!tab)
+        return 0;
+    h = (v ^ (v >> 10)) & (PENCACHE - 1);
+    if (p16[h].key == (ULONG)v + 1 && p16[h].tab == tab && p16[h].gen == paletteGen) {
+        return p16[h].pen;
+    }
+    for (i = 0; i < 256; i++)
+        if (tab[i] == v) {
+            pen = i;
+            break;
+        }
+    p16[h].key = 0;
+    p16[h].pen = pen;
+    p16[h].tab = tab;
+    p16[h].gen = paletteGen;
+    p16[h].key = (ULONG)v + 1;
+    return pen;
 }
 
 /* 24/32-bit: a pen's colour, and a colour back to a pen (exact match,
@@ -370,6 +401,88 @@ static void surf_rgb(struct Surf *s, WORD x, WORD y, WORD n, ULONG *out, const U
         out[i] = pen_rgb(ptab, rowT[i]);
 }
 
+/* Pens into a planar bitmap, a destination byte (8 pixels) at a time: each
+ * pixel's pen is looked up once for its place in the byte, giving its bit
+ * in all eight plane bytes (planes 0-3 in the first long, 4-7 in the
+ * second), and each plane's byte is then written once. It used to set or
+ * clear one bit per pixel per plane: Workbench copies the 16-bit screen
+ * into planar bitmaps while it opens a drawer, and that loop was 37% of
+ * the time on the A2000 (2026-10-20). Only the planes in mask change;
+ * NULL and -1 planes (all 0 / all 1) are left alone. */
+static ULONG c2pT[8][256][2];
+static UBYTE c2pReady;
+
+static void c2p_init(void)
+{
+    UWORD pos, pen, k;
+    for (pos = 0; pos < 8; pos++)
+        for (pen = 0; pen < 256; pen++) {
+            ULONG a = 0, b = 0;
+            for (k = 0; k < 8; k++)
+                if (pen & (1 << k)) {
+                    ULONG bit = (ULONG)(0x80 >> pos) << (8 * (3 - (k & 3)));
+                    if (k < 4) a |= bit; else b |= bit;
+                }
+            c2pT[pos][pen][0] = a;
+            c2pT[pos][pen][1] = b;
+        }
+    c2pReady = 1;
+}
+
+static void planar_write(struct BitMap *bm, WORD x, WORD y, WORD n, const UBYTE *in, UBYTE mask)
+{
+    UBYTE *rows[8];
+    UBYTE pl, np = 0, idx[8];
+    WORD bx, bx1 = (x + n - 1) >> 3;
+    const UBYTE *p = in;
+
+    if (n <= 0)
+        return;
+    if (!c2pReady)
+        c2p_init();
+    for (pl = 0; pl < bm->Depth && pl < 8; pl++) {
+        UBYTE *row = bm->Planes[pl];
+        if (!(mask & (1 << pl)) || !row || row == (UBYTE *)-1)
+            continue;
+        rows[np] = row + (ULONG)y * bm->BytesPerRow;
+        idx[np++] = pl;
+    }
+    if (!np)
+        return;
+    for (bx = x >> 3; bx <= bx1; bx++) {
+        WORD first = bx == (x >> 3) ? (x & 7) : 0;
+        WORD last = bx == bx1 ? ((x + n - 1) & 7) : 7;
+        UBYTE bmask = (UBYTE)((0xff >> first) & (0xff << (7 - last)));
+        ULONG a = 0, b = 0;
+        UBYTE k;
+        if (bmask == 0xff) {
+            /* a whole byte, written out: amiga-gcc 6.5 compiled the loop
+             * below so that it lost the first pixel of every whole byte
+             * after a partial one (right on the PC, wrong on the A2000) */
+            const ULONG *t0 = c2pT[0][p[0]], *t1 = c2pT[1][p[1]], *t2 = c2pT[2][p[2]], *t3 = c2pT[3][p[3]];
+            const ULONG *t4 = c2pT[4][p[4]], *t5 = c2pT[5][p[5]], *t6 = c2pT[6][p[6]], *t7 = c2pT[7][p[7]];
+            a = t0[0] | t1[0] | t2[0] | t3[0] | t4[0] | t5[0] | t6[0] | t7[0];
+            b = t0[1] | t1[1] | t2[1] | t3[1] | t4[1] | t5[1] | t6[1] | t7[1];
+            p += 8;
+        } else {
+            WORD cnt = last - first + 1;
+            const ULONG *t = c2pT[first][0];
+            while (cnt-- > 0) {
+                a |= t[(ULONG)*p * 2];
+                b |= t[(ULONG)*p * 2 + 1];
+                p++;
+                t += 256 * 2;
+            }
+        }
+        for (k = 0; k < np; k++) {
+            UBYTE q = idx[k];
+            UBYTE v = (UBYTE)((q < 4 ? a : b) >> (8 * (3 - (q & 3))));
+            UBYTE *d = rows[k] + bx;
+            *d = bmask == 0xff ? v : (UBYTE)((*d & ~bmask) | (v & bmask));
+        }
+    }
+}
+
 /* Write n pens at (x,y); only the bits in mask change (pen surfaces). */
 static void surf_write(struct Surf *s, WORD x, WORD y, WORD n, const UBYTE *in, UBYTE mask)
 {
@@ -402,19 +515,8 @@ static void surf_write(struct Surf *s, WORD x, WORD y, WORD n, const UBYTE *in, 
         return;
     }
     bm = s->bm;
-    for (pl = 0; pl < bm->Depth && pl < 8; pl++) {
-        UBYTE *row = bm->Planes[pl];
-        UBYTE bit = 1 << pl;
-        if (!(mask & bit) || !row || row == (UBYTE *)-1)
-            continue;
-        row += (ULONG)y * bm->BytesPerRow;
-        for (i = 0; i < n; i++) {
-            WORD xx = x + i;
-            UBYTE m = 0x80 >> (xx & 7);
-            if (in[i] & bit) row[xx >> 3] |= m;
-            else             row[xx >> 3] &= ~m;
-        }
-    }
+    planar_write(bm, x, y, n, in, mask);
+    (void)pl; (void)i;
 }
 
 /* Blitter minterm with A = all ones: f(B = source, C = destination). */
@@ -474,6 +576,62 @@ static __attribute__((noinline)) BOOL blit_vram(struct PBitMap *p, WORD sx, WORD
            (sx < dx + w && dx < sx + w && sy < dy + h && dy < sy + h);
 }
 
+/* Planes to planes, as the blitter would: for each plane of the
+ * destination in mask, each row's source bits shifted to the destination's
+ * position a byte at a time, the minterm applied bit-wise (A all ones, B the
+ * source, C the destination), the edges masked. Source planes past its
+ * depth, or NULL, are 0; -1 planes are 1; NULL and -1 destination planes
+ * are left alone. Rows go bottom-up when a bitmap copies down onto itself;
+ * a row is read whole before it is written, so overlap within a row is
+ * safe. Used for planar bitmaps the blitter cannot reach (fast RAM):
+ * through chunky pixels and back, Workbench's 120 such blits while it opens
+ * a drawer were most of the 3.3 s it took on the A2000 (2026-10-20). */
+static UBYTE pbRow[MAXW / 8 + 4];
+
+static void planar_blit(struct BitMap *sb, WORD sx, WORD sy, struct BitMap *db, WORD dx, WORD dy,
+                        WORD w, WORD h, UBYTE mt, UBYTE mask)
+{
+    UBYTE m80 = (mt & 0x80) ? 0xff : 0, m40 = (mt & 0x40) ? 0xff : 0;
+    UBYTE m20 = (mt & 0x20) ? 0xff : 0, m10 = (mt & 0x10) ? 0xff : 0;
+    WORD dbx0 = dx >> 3, nb = ((dx + w - 1) >> 3) - dbx0 + 1;
+    UBYTE lmask = 0xff >> (dx & 7), rmask = (UBYTE)(0xff << (7 - ((dx + w - 1) & 7)));
+    LONG sbit0 = (LONG)dbx0 * 8 - dx + sx;         /* source bit under destination byte dbx0 */
+    WORD sbpr = sb->BytesPerRow, y, y0, y1, step, k;
+    UBYTE pl;
+
+    if (nb == 1)
+        lmask &= rmask;
+    if (sb == db && dy > sy) { y0 = h - 1; y1 = -1; step = -1; }
+    else                     { y0 = 0;     y1 = h;  step = 1;  }
+    for (pl = 0; pl < db->Depth && pl < 8; pl++) {
+        UBYTE *dplane = db->Planes[pl];
+        const UBYTE *splane = pl < sb->Depth ? sb->Planes[pl] : NULL;
+        if (!(mask & (1 << pl)) || !dplane || dplane == (UBYTE *)-1)
+            continue;
+        for (y = y0; y != y1; y += step) {
+            UBYTE *drow = dplane + (ULONG)(dy + y) * db->BytesPerRow + dbx0;
+            if (!splane || splane == (const UBYTE *)-1) {
+                memset(pbRow, splane ? 0xff : 0, nb);
+            } else {
+                const UBYTE *srow = splane + (ULONG)(sy + y) * sbpr;
+                for (k = 0; k < nb; k++) {
+                    LONG b = sbit0 + (LONG)k * 8;  /* may be off the row: those bits are masked */
+                    LONG i = b >> 3;               /* (arithmetic shift: floor) */
+                    UWORD v = (i >= 0 && i < sbpr ? srow[i] << 8 : 0) |
+                              (i + 1 >= 0 && i + 1 < sbpr ? srow[i + 1] : 0);
+                    pbRow[k] = (UBYTE)((v << (b & 7)) >> 8);
+                }
+            }
+            for (k = 0; k < nb; k++) {
+                UBYTE B = pbRow[k], C = drow[k];
+                UBYTE out = (B & C & m80) | (B & ~C & m40) | (~B & C & m20) | (~B & ~C & m10);
+                UBYTE m = k == 0 ? lmask : k == nb - 1 ? rmask : 0xff;
+                drow[k] = (UBYTE)((C & ~m) | (out & m));
+            }
+        }
+    }
+}
+
 static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD dy,
                  WORD w, WORD h, UBYTE mt, UBYTE mask)
 {
@@ -482,6 +640,10 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
 
     if (!clip2(s, &sx, &sy, d, &dx, &dy, &w, &h))
         return;
+    if (!s->pix && !d->pix) {             /* planes to planes (fast RAM): no chunky detour */
+        planar_blit(s->bm, sx, sy, d->bm, dx, dy, w, h, mt, mask);
+        return;
+    }
     same = (s->pix && s->pix == d->pix) || (!s->pix && s->bm == d->bm);
 
     /* the common case, as 1.0 did it: a copy inside one bitmap in VRAM
@@ -592,9 +754,17 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
                     pf_put(d->fmt, rgbRow[x], dp);
                 CopyMem(rowW, d->pix + (ULONG)(dy + y) * d->bpr + (ULONG)dx * d->bpp,
                         (ULONG)w * d->bpp);
-            } else {
+            } else if (d->rgbTab) {
                 for (x = 0; x < w; x++)
                     rowA[x] = pen_nearest(d->rgbTab, rgbRow[x]);
+                surf_write(d, dx, dy + y, w, rowA, mask);
+            } else {
+                /* into a plain planar bitmap, which has no colours of its own:
+                 * the source's pens (its own palette, read back exactly). The
+                 * nearest pen in a missing table was pen 0 for every pixel -
+                 * a 16-bit screen copied into an off-screen planar buffer came
+                 * out black. */
+                surf_read(s, sx, sy + y, w, rowA);
                 surf_write(d, dx, dy + y, w, rowA, mask);
             }
         }
@@ -3022,8 +3192,44 @@ LONG h_ClipBlit(struct Regs *r)
     struct BlitCtx b;
 
     /* each side looked up once (rp_pbm), and handed on */
-    if (!(sp = rp_pbm(srp)) || !(dp = rp_pbm(drp)))
-        return 0;                /* planar on either side: the original */
+    sp = rp_pbm(srp);
+    dp = rp_pbm(drp);
+    if (!sp || !dp) {
+        /* Ours on one side, a plain planar RastPort without a layer on the
+         * other (an off-screen buffer - a program saving what is under
+         * something): ROM ClipBlit cannot read or write our side (it saw the
+         * dummy plane - pen 0 - and wrote into it), so it is done here, as
+         * BltBitMap is. A planar side with a layer stays with the ROM. */
+        struct RastPort *prp = sp ? drp : srp;
+        if ((!sp && !dp) || prp->Layer || !prp->BitMap || (prp->BitMap->Flags & BMF_PRISM))
+            return 0;
+        if (w <= 0 || h <= 0)
+            return 1;
+        if (sp) {
+            struct Surf d;
+            memset(&tmp, 0, sizeof(tmp));
+            tmp.bpp = sp->bpp; tmp.penTab = sp->penTab; tmp.rgbTab = sp->rgbTab; tmp.fmt = sp->fmt;
+            tmp.bpr = (ULONG)w * tmp.bpp; tmp.w = w; tmp.h = h;
+            if (!(tmp.pix = AllocVec(tmp.bpr * h, MEMF_ANY | MEMF_CLEAR)))
+                return 1;
+            g.dst = &tmp; g.x0 = sx; g.y0 = sy;
+            clip_rp(srp, sx, sy, sx + w - 1, sy + h - 1, grab_cb, &g);
+            blit_settle();                       /* the planar side: the blitter's */
+            ObtainSemaphore(&lock);
+            surf_of(drp->BitMap, &d);
+            blit(&tmp, 0, 0, &d, dx, dy, w, h, (UBYTE)r->d[6], drp->Mask);
+            ReleaseSemaphore(&lock);
+            FreeVec(tmp.pix);
+        } else {
+            surf_of(srp->BitMap, &b.src);
+            b.srcbm = srp->BitMap;
+            b.sx = sx; b.sy = sy; b.dx = dx; b.dy = dy;
+            b.mt = (UBYTE)r->d[6]; b.mask = drp->Mask; b.amask = NULL;
+            blit_settle();
+            clip_rp(drp, dx, dy, dx + w - 1, dy + h - 1, blit_cb, &b);
+        }
+        return 1;
+    }
     if (w <= 0 || h <= 0)
         return 1;
     if (srp->Layer == drp->Layer && sp == dp) {

@@ -10,6 +10,7 @@
  * prints operations per second (EClock-timed).
  */
 #include <exec/types.h>
+#include <exec/memory.h>
 #include <devices/timer.h>
 #include <graphics/gfx.h>
 #include <graphics/displayinfo.h>
@@ -615,6 +616,72 @@ int main(void)
                         k2++;
                     }
                     printf("  masked cases check (%ld cases): %ld wrong of %ld\n", (long)k2, (long)bad, (long)n);
+
+                    /* the other way: the screen into a planar bitmap (Workbench
+                     * does it while it opens a drawer), at odd offsets and
+                     * widths, all planes and then only planes 0-3 */
+                    {
+                        struct BitMap *pb = AllocBitMap(96, 24, 8, BMF_CLEAR, NULL);
+                        LONG pbad = 0, pn = 0, t;
+                        if (pb) {
+                            InitRastPort(&srp);
+                            srp.BitMap = pb;
+                            for (y = 0; y < 24; y++)
+                                for (x = 0; x < 90; x++) {
+                                    SetAPen(rp, (x * 5 + y * 23 + 1) & 255);
+                                    WritePixel(rp, 421 + x, 340 + y);
+                                }
+                            for (t = 0; t < 4; t++) {
+                                LONG sx0 = t, dx0 = 3 + t * 5, ww = 61 + t * 7;
+                                UBYTE pm = t == 3 ? 0x0f : 0xff;
+                                SetRast(&srp, 0x5a);
+                                ClipBlit(rp, 421 + sx0, 340, &srp, dx0, 1, ww, 22, 0xc0);
+                                if (pm != 0xff) {
+                                    /* planes 0-3 only: BltBitMap with a plane mask */
+                                    SetRast(&srp, 0x5a);
+                                    BltBitMap(rp->BitMap, w->LeftEdge + 421 + sx0, w->TopEdge + 340, pb,
+                                              dx0, 1, ww, 22, 0xc0, pm, NULL);
+                                }
+                                WaitBlit();
+                                for (y = 0; y < 24; y++)
+                                    for (x = 0; x < 96; x++) {
+                                        LONG want = 0x5a, got = ReadPixel(&srp, x, y);
+                                        if (x >= dx0 && x < dx0 + ww && y >= 1 && y < 23) {
+                                            LONG s2 = ((x - dx0 + sx0) * 5 + (y - 1) * 23 + 1) & 255;
+                                            want = (0x5a & ~pm) | (s2 & pm);
+                                        }
+                                        pn++;
+                                        if (got != want && pbad++ < 40)
+                                            printf("  to-planar WRONG at %ld,%ld (case %ld): %ld, want %ld\n",
+                                                   (long)x, (long)y, (long)t, (long)got, (long)want);
+                                    }
+                            }
+                            /* and back: the planar bitmap's RastPort into the window */
+                            for (y = 0; y < 24; y++)
+                                for (x = 0; x < 96; x++) {
+                                    SetAPen(&srp, (x * 9 + y * 13 + 2) & 255);
+                                    WritePixel(&srp, x, y);
+                                }
+                            for (t = 0; t < 2; t++) {
+                                LONG sx0 = 1 + t * 3, dx0 = 423 + t * 5, ww = 70 - t * 9;
+                                SetAPen(rp, 0x33);
+                                RectFill(rp, 421, 340, 520, 365);
+                                ClipBlit(&srp, sx0, 2, rp, dx0, 341, ww, 20, 0xc0);
+                                WaitBlit();
+                                for (y = 340; y < 366; y++)
+                                    for (x = 421; x < 521; x++) {
+                                        LONG want = 0x33;
+                                        if (x >= dx0 && x < dx0 + ww && y >= 341 && y < 361)
+                                            want = ((x - dx0 + sx0) * 9 + (y - 341 + 2) * 13 + 2) & 255;
+                                        pn++;
+                                        if (ReadPixel(rp, x, y) != want && pbad++ < 40)
+                                            printf("  from-planar WRONG at %ld,%ld (case %ld)\n", (long)x, (long)y, (long)t);
+                                    }
+                            }
+                            printf("  to-planar check: %ld wrong of %ld\n", (long)pbad, (long)pn);
+                            FreeBitMap(pb);
+                        }
+                    }
                     if (m40) FreeRaster(m40, mb40 * 8, 20);
                     if (odd) FreeBitMap(odd);
                     if (fast) FreeBitMap(fast);
@@ -745,6 +812,58 @@ int main(void)
             }
             FreeBitMap(lb);
         }
+    }
+    {
+        /* planar bitmaps in fast RAM, which the blitter cannot reach and
+         * Prism copies itself, against the same blits on chip RAM copies done
+         * by the blitter: the planes must come out byte for byte the same */
+        static const WORD ops[][9] = {   /* sx sy dx dy w h minterm mask same */
+            { 0, 0, 0, 0, 160, 40, 0xc0, 0xff, 0 }, { 3, 2, 11, 5, 97, 30, 0xc0, 0xff, 0 },
+            { 13, 1, 2, 3, 61, 20, 0x60, 0xff, 0 }, { 7, 4, 9, 4, 120, 25, 0x30, 0xff, 0 },
+            { 5, 5, 6, 1, 33, 17, 0x80, 0x0f, 0 }, { 1, 1, 30, 2, 100, 30, 0xe0, 0xf0, 0 },
+            { 2, 3, 4, 5, 40, 10, 0x00, 0xff, 0 }, { 9, 9, 3, 3, 21, 7, 0xf0, 0xff, 0 },
+            { 10, 5, 17, 8, 80, 20, 0xc0, 0xff, 1 }, { 17, 8, 9, 3, 90, 25, 0xc0, 0xff, 1 },
+            { 0, 0, 1, 0, 150, 40, 0xc0, 0xff, 1 } };
+        struct BitMap bs[2], bd[2];
+        PLANEPTR mem[2][2][8];
+        LONG side, pl, i2, xb, diff = 0, total = 0, okm = 1;
+        ULONG seed = 12345;
+        for (side = 0; side < 2; side++)
+            for (i2 = 0; i2 < 2; i2++) {
+                struct BitMap *b = i2 ? &bd[side] : &bs[side];
+                InitBitMap(b, 8, 160, 40);
+                for (pl = 0; pl < 8; pl++) {
+                    mem[side][i2][pl] = AllocVec(RASSIZE(160, 40), (side ? MEMF_FAST : MEMF_CHIP) | MEMF_CLEAR);
+                    if (!mem[side][i2][pl]) okm = 0;
+                    b->Planes[pl] = mem[side][i2][pl];
+                }
+            }
+        if (okm) {
+            for (i2 = 0; i2 < 2; i2++)
+                for (pl = 0; pl < 8; pl++)
+                    for (xb = 0; xb < RASSIZE(160, 40); xb++) {
+                        seed = seed * 1103515245UL + 12345;
+                        mem[0][i2][pl][xb] = mem[1][i2][pl][xb] = (UBYTE)(seed >> 16);
+                    }
+            for (i2 = 0; i2 < (LONG)(sizeof(ops) / sizeof(ops[0])); i2++)
+                for (side = 0; side < 2; side++) {
+                    const WORD *o = ops[i2];
+                    struct BitMap *src = o[8] ? &bd[side] : &bs[side];
+                    BltBitMap(src, o[0], o[1], &bd[side], o[2], o[3], o[4], o[5], (UBYTE)o[6], (UBYTE)o[7], NULL);
+                    WaitBlit();
+                }
+            for (pl = 0; pl < 8; pl++)
+                for (xb = 0; xb < RASSIZE(160, 40); xb++, total++)
+                    if (mem[0][1][pl][xb] != mem[1][1][pl][xb] && diff++ < 3)
+                        printf("  fast-RAM planar WRONG: plane %ld byte %ld: %02x, blitter %02x\n", (long)pl,
+                               (long)xb, mem[1][1][pl][xb], mem[0][1][pl][xb]);
+            printf("  fast-RAM planar check (%ld blits): %ld wrong of %ld bytes\n",
+                   (long)(sizeof(ops) / sizeof(ops[0])), (long)diff, (long)total);
+        }
+        for (side = 0; side < 2; side++)
+            for (i2 = 0; i2 < 2; i2++)
+                for (pl = 0; pl < 8; pl++)
+                    if (mem[side][i2][pl]) FreeVec(mem[side][i2][pl]);
     }
     if (maskPl) FreeRaster(maskPl, 64, 32);
     if (planarBM) FreeBitMap(planarBM);
