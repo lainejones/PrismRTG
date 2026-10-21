@@ -631,11 +631,13 @@ int main(void)
                                     SetAPen(rp, (x * 5 + y * 23 + 1) & 255);
                                     WritePixel(rp, 421 + x, 340 + y);
                                 }
-                            for (t = 0; t < 4; t++) {
-                                LONG sx0 = t, dx0 = 3 + t * 5, ww = 61 + t * 7;
-                                UBYTE pm = t == 3 ? 0x0f : 0xff;
+                            for (t = 0; t < 6; t++) {
+                                /* cases 4 and 5: minterms other than a copy - XOR (0x60)
+                                 * and the destination inverted (0x50) */
+                                LONG sx0 = t & 3, dx0 = 3 + (t & 3) * 5, ww = 61 + (t & 3) * 7;
+                                UBYTE pm = t == 3 ? 0x0f : 0xff, mt = t == 4 ? 0x60 : t == 5 ? 0x50 : 0xc0;
                                 SetRast(&srp, 0x5a);
-                                ClipBlit(rp, 421 + sx0, 340, &srp, dx0, 1, ww, 22, 0xc0);
+                                ClipBlit(rp, 421 + sx0, 340, &srp, dx0, 1, ww, 22, mt);
                                 if (pm != 0xff) {
                                     /* planes 0-3 only: BltBitMap with a plane mask */
                                     SetRast(&srp, 0x5a);
@@ -648,7 +650,8 @@ int main(void)
                                         LONG want = 0x5a, got = ReadPixel(&srp, x, y);
                                         if (x >= dx0 && x < dx0 + ww && y >= 1 && y < 23) {
                                             LONG s2 = ((x - dx0 + sx0) * 5 + (y - 1) * 23 + 1) & 255;
-                                            want = (0x5a & ~pm) | (s2 & pm);
+                                            LONG o = mt == 0x60 ? (s2 ^ 0x5a) : mt == 0x50 ? (~0x5a & 255) : s2;
+                                            want = (0x5a & ~pm) | (o & pm);
                                         }
                                         pn++;
                                         if (got != want && pbad++ < 40)
@@ -859,7 +862,8 @@ int main(void)
                                (long)xb, mem[1][1][pl][xb], mem[0][1][pl][xb]);
             printf("  fast-RAM planar check (%ld blits): %ld wrong of %ld bytes\n",
                    (long)(sizeof(ops) / sizeof(ops[0])), (long)diff, (long)total);
-        }
+        } else
+            printf("  fast-RAM planar check: skipped (no fast RAM for the test bitmaps)\n");
         for (side = 0; side < 2; side++)
             for (i2 = 0; i2 < 2; i2++)
                 for (pl = 0; pl < 8; pl++)

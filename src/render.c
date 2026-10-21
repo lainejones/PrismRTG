@@ -73,29 +73,18 @@ UBYTE dbgOn;
  * answer is kept - conversions ask for the same colour many times. */
 volatile ULONG paletteGen;
 
-/* A colour's answer is kept in a small cache (1024 entries by colour,
- * each valid for its table and palette generation): reading a 16-bit screen
- * back as pens (Workbench does it while it draws a drawer) asked for the
- * same few colours over and over, and the search was 47% of opening a
- * drawer on the A2000 (2026-10-20). */
-#define PENCACHE 1024
-/* each entry knows its table and palette generation: callers alternate
- * between tables (the screen's and a bitmap's), and emptying the whole
- * cache at every switch left it useless */
-struct PenCache { const void *tab; ULONG gen, key; UBYTE pen; };
-static struct PenCache pc[PENCACHE];
-
 UBYTE pen_nearest(const ULONG *tab, ULONG c)
 {
-    UWORD i, best = 0, h;
+    static const ULONG *lastTab;
+    static ULONG lastC, lastGen;
+    static UBYTE lastPen;
+    UWORD i, best = 0;
     LONG bd = 0x7fffffff;
     if (!tab)
         return 0;
     c &= 0xffffff;
-    h = (c ^ (c >> 10) ^ (c >> 20)) & (PENCACHE - 1);
-    if (pc[h].key == c + 1 && pc[h].tab == tab && pc[h].gen == paletteGen) {
-        return pc[h].pen;
-    }
+    if (tab == lastTab && c == lastC && lastGen == paletteGen)
+        return lastPen;
     for (i = 0; i < 256; i++) {
         LONG dr = (LONG)((tab[i] >> 16) & 255) - ((c >> 16) & 255);
         LONG dg = (LONG)((tab[i] >> 8) & 255) - ((c >> 8) & 255);
@@ -107,11 +96,7 @@ UBYTE pen_nearest(const ULONG *tab, ULONG c)
                 break;
         }
     }
-    pc[h].key = 0;                          /* the answer first, then its key */
-    pc[h].pen = best;
-    pc[h].tab = tab;
-    pc[h].gen = paletteGen;
-    pc[h].key = c + 1;
+    lastTab = tab; lastC = c; lastPen = best; lastGen = paletteGen;
     return best;
 }
 
@@ -166,31 +151,15 @@ static void surf_of(struct BitMap *bm, struct Surf *s)
     surf_from(bm, pbm_get(bm), s);
 }
 
-/* 16-bit pixel back to a pen: exact match in the table (the first one),
- * else pen 0. Cached like pen_nearest (by pixel value). */
-static struct PenCache p16[PENCACHE];
-
+/* 16-bit pixel back to a pen: exact match in the table, else pen 0. */
 static UBYTE pen_of(const UWORD *tab, UWORD v)
 {
-    UWORD i, h;
-    UBYTE pen = 0;
-    if (!tab)
-        return 0;
-    h = (v ^ (v >> 10)) & (PENCACHE - 1);
-    if (p16[h].key == (ULONG)v + 1 && p16[h].tab == tab && p16[h].gen == paletteGen) {
-        return p16[h].pen;
-    }
-    for (i = 0; i < 256; i++)
-        if (tab[i] == v) {
-            pen = i;
-            break;
-        }
-    p16[h].key = 0;
-    p16[h].pen = pen;
-    p16[h].tab = tab;
-    p16[h].gen = paletteGen;
-    p16[h].key = (ULONG)v + 1;
-    return pen;
+    UWORD i;
+    if (tab)
+        for (i = 0; i < 256; i++)
+            if (tab[i] == v)
+                return i;
+    return 0;
 }
 
 /* 24/32-bit: a pen's colour, and a colour back to a pen (exact match,
@@ -754,18 +723,27 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
                     pf_put(d->fmt, rgbRow[x], dp);
                 CopyMem(rowW, d->pix + (ULONG)(dy + y) * d->bpr + (ULONG)dx * d->bpp,
                         (ULONG)w * d->bpp);
-            } else if (d->rgbTab) {
-                for (x = 0; x < w; x++)
-                    rowA[x] = pen_nearest(d->rgbTab, rgbRow[x]);
-                surf_write(d, dx, dy + y, w, rowA, mask);
             } else {
-                /* into a plain planar bitmap, which has no colours of its own:
-                 * the source's pens (its own palette, read back exactly). The
-                 * nearest pen in a missing table was pen 0 for every pixel -
-                 * a 16-bit screen copied into an off-screen planar buffer came
-                 * out black. */
-                surf_read(s, sx, sy + y, w, rowA);
-                surf_write(d, dx, dy + y, w, rowA, mask);
+                if (d->rgbTab) {
+                    for (x = 0; x < w; x++)
+                        rowA[x] = pen_nearest(d->rgbTab, rgbRow[x]);
+                } else {
+                    /* into a plain planar bitmap, which has no colours of its
+                     * own: the source's pens (its own palette, read back
+                     * exactly). The nearest pen in a missing table was pen 0
+                     * for every pixel - a 16-bit screen copied into an
+                     * off-screen planar buffer came out black. */
+                    surf_read(s, sx, sy + y, w, rowA);
+                }
+                if (!copy) {
+                    /* other minterms work on pens (XOR, the destination
+                     * inverted...): they were applied as a copy */
+                    surf_read(d, dx, dy + y, w, rowB);
+                    combine2(rowA, rowB, rowC, w, mt);
+                    surf_write(d, dx, dy + y, w, rowC, mask);
+                } else {
+                    surf_write(d, dx, dy + y, w, rowA, mask);
+                }
             }
         }
         return;
