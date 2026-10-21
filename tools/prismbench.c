@@ -869,6 +869,60 @@ int main(void)
                 for (pl = 0; pl < 8; pl++)
                     if (mem[side][i2][pl]) FreeVec(mem[side][i2][pl]);
     }
+    {
+        /* ClipBlit from a planar RastPort in fast RAM into one in chip RAM
+         * (neither Prism's: the ROM's ClipBlit would have the blitter read
+         * fast RAM), against the same ClipBlit from a chip RAM copy */
+        static const WORD ops[][7] = {   /* sx sy dx dy w h minterm */
+            { 0, 0, 0, 0, 160, 40, 0xc0 }, { 3, 2, 11, 5, 97, 30, 0xc0 },
+            { 13, 1, 2, 3, 61, 20, 0x60 }, { 7, 4, 9, 4, 120, 25, 0x30 },
+            { 1, 1, 30, 2, 100, 30, 0xe0 } };
+        struct BitMap bsrc[2], bdst[2];
+        struct RastPort rs[2], rd[2];
+        PLANEPTR mem[2][2][8];
+        LONG side, pl, i2, xb, diff = 0, total = 0, okm = 1;
+        ULONG seed = 54321;
+        for (side = 0; side < 2; side++) {
+            InitBitMap(&bsrc[side], 8, 160, 40);
+            InitBitMap(&bdst[side], 8, 160, 40);
+            for (pl = 0; pl < 8; pl++) {
+                /* side 1's source is the fast RAM one; both destinations chip */
+                mem[side][0][pl] = AllocVec(RASSIZE(160, 40), (side ? MEMF_FAST : MEMF_CHIP) | MEMF_CLEAR);
+                mem[side][1][pl] = AllocVec(RASSIZE(160, 40), MEMF_CHIP | MEMF_CLEAR);
+                if (!mem[side][0][pl] || !mem[side][1][pl]) okm = 0;
+                bsrc[side].Planes[pl] = mem[side][0][pl];
+                bdst[side].Planes[pl] = mem[side][1][pl];
+            }
+            InitRastPort(&rs[side]); rs[side].BitMap = &bsrc[side];
+            InitRastPort(&rd[side]); rd[side].BitMap = &bdst[side];
+        }
+        if (okm) {
+            for (i2 = 0; i2 < 2; i2++)
+                for (pl = 0; pl < 8; pl++)
+                    for (xb = 0; xb < RASSIZE(160, 40); xb++) {
+                        seed = seed * 1103515245UL + 12345;
+                        mem[0][i2][pl][xb] = mem[1][i2][pl][xb] = (UBYTE)(seed >> 16);
+                    }
+            for (i2 = 0; i2 < (LONG)(sizeof(ops) / sizeof(ops[0])); i2++)
+                for (side = 0; side < 2; side++) {
+                    const WORD *o = ops[i2];
+                    ClipBlit(&rs[side], o[0], o[1], &rd[side], o[2], o[3], o[4], o[5], (UBYTE)o[6]);
+                    WaitBlit();
+                }
+            for (pl = 0; pl < 8; pl++)
+                for (xb = 0; xb < RASSIZE(160, 40); xb++, total++)
+                    if (mem[0][1][pl][xb] != mem[1][1][pl][xb] && diff++ < 3)
+                        printf("  fast-RAM ClipBlit WRONG: plane %ld byte %ld: %02x, from chip %02x\n", (long)pl,
+                               (long)xb, mem[1][1][pl][xb], mem[0][1][pl][xb]);
+            printf("  fast-RAM ClipBlit check (%ld blits): %ld wrong of %ld bytes\n",
+                   (long)(sizeof(ops) / sizeof(ops[0])), (long)diff, (long)total);
+        } else
+            printf("  fast-RAM ClipBlit check: skipped (no fast RAM for the test bitmaps)\n");
+        for (side = 0; side < 2; side++)
+            for (i2 = 0; i2 < 2; i2++)
+                for (pl = 0; pl < 8; pl++)
+                    if (mem[side][i2][pl]) FreeVec(mem[side][i2][pl]);
+    }
     if (maskPl) FreeRaster(maskPl, 64, 32);
     if (planarBM) FreeBitMap(planarBM);
     if (friendBM) FreeBitMap(friendBM);
