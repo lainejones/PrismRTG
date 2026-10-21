@@ -5,9 +5,8 @@
 # Stage the release drawer out/pkg/PrismRTG (+ PrismRTG.info) from out/ and
 # dist/. ./build.sh runs it last, after every program is built.
 #
-# The icons are finished .info files in dist/. They were drawn with
-# tools/mkicons.py (the prism and PrismPrefs icons) and the author's icon
-# writer; to change one, regenerate it there and commit the new .info.
+# The icons are the committed .info files in dist/, copied as they are; to
+# change one, edit the .info itself and commit it.
 set -e
 P=out/pkg/PrismRTG
 rm -rf out/pkg

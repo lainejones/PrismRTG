@@ -13,8 +13,8 @@ file names its authors in its header, and `git log` shows who wrote what.
 | `LICENSE` | Free Software Foundation | verbatim copying permitted | The GPL text. |
 
 Nothing else in the repository's code, and nothing in the release
-archives, comes from another project. The icons are drawn by
-`tools/mkicons.py`. The pictures in `docs/` are screenshots of
+archives, comes from another project. The icons are the project's own
+`.info` files in `dist/`. The pictures in `docs/` are screenshots of
 PrismRTG running other people's programs (AmigaOS Workbench, Directory
 Opus, IBrowse, NetSurf, MysticView, Personal Paint, Doom, OpenDune and
 others), shown to document what works; those programs belong to their
