@@ -19,9 +19,10 @@ parks Picasso96's monitors as usual and writes `P96CARD=` and
 Prism tries this adapter last, after its own drivers and UAE's card, and
 only when `P96CARD` is set.
 
-This has been tested with UAE's card. A PiStorm's VideoCore driver, a
-Vampire's SAGA driver and other cards found this way have not been tried
-yet - reports are welcome. Holding the left mouse button while booting
+The adapter itself has been tested with UAE's card and reported working
+on an Apollo Vampire (`vampiregfx.card`). The installer's detection has
+been tested with UAE's card only; a PiStorm's VideoCore driver and other
+cards found this way have not been tried yet - reports are welcome. Holding the left mouse button while booting
 always starts the Amiga without Prism.
 
 To configure it by hand instead: install Prism normally, choosing
