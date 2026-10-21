@@ -86,7 +86,10 @@ extern UBYTE dbgOn;                     /* prefs.log: the hot paths test this be
  * RastPort's bitmap (TRACE=... build only: it is a lot of output) */
 #ifdef PRISM_TRACE
 void memchk(const char *where);
-#define TRACE(n) do { memchk(n); dbg("> " n " a0=%lx a1=%lx\n", (ULONG)r->a[0], (ULONG)r->a[1]); } while (0)
+/* d0-d6 too: for the blits they are the positions, the size and the minterm */
+#define TRACE(n) do { memchk(n); dbg("> " n " a0=%lx a1=%lx d0-6 %ld %ld %ld %ld %ld %ld %lx\n", \
+    (ULONG)r->a[0], (ULONG)r->a[1], (LONG)(WORD)r->d[0], (LONG)(WORD)r->d[1], (LONG)(WORD)r->d[2], \
+    (LONG)(WORD)r->d[3], (LONG)(WORD)r->d[4], (LONG)(WORD)r->d[5], (ULONG)r->d[6]); } while (0)
 #else
 #define TRACE(n)
 #endif
