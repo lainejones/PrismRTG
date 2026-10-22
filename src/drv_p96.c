@@ -313,8 +313,9 @@ static const struct Timing timings[] = {
     /* the other sizes PrismPrefs offers (issue #1: 960x540 and more 16:9;
      * Jusii #14: the larger firmware sizes). Without a row here a card
      * driven through its P96 driver (a Vampire, a PiStorm's VideoCore)
-     * could never show them. 960x540 = 1080p60 halved both ways (the
-     * quarter pixel clock; a scaler takes it as 1080p's own frame rate);
+     * could never show them. 960x540 = 1080p60 halved both ways (a quarter
+     * of its pixel clock: a 540-line mode at 33.75 kHz / 59.95 Hz, not a
+     * standard one, so whether a monitor or scaler takes it is up to it);
      * 1366x768, 1600x900, 1600x1200 = VESA DMT; 1280x800, 1680x1050,
      * 1920x1200, 2560x1440 = CVT reduced blanking. A card that can't make
      * a clock within 5 % or is too small refuses it below, as before. */
