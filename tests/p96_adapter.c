@@ -47,7 +47,7 @@ static LONG mock_clock(struct BoardInfo *bi __asm("a0"), struct ModeInfo *mi __a
                         ULONG clock __asm("d0"), RGBFTYPE f __asm("d7"))
 {
     assert(bi == &p.bi && f == RGBFB_CLUT);
-    if (clock == 25175000)
+    if (clock == 25175000 && mi->Height == 480)      /* 640x400 shares the clock */
         assert(mi->HorSyncStart == 16 && mi->VerSyncStart == 10);
     mi->PixelClock = clock;
     return 0;
@@ -311,6 +311,34 @@ static void test_planar_probe(void)
     assert(!rtg_probe_planar(&p.bi,PF_BIT(PF_BGRA32)));
 }
 
+/* Every size PrismPrefs offers (except the 320-wide game modes, which have
+ * no standard timing) must reach a card driven through its P96 driver by
+ * timings: issue #1 (a Vampire) asked for 960x540, 1440x900 and more 16:9,
+ * and before these rows such a card could never show them. */
+static void test_prefs_sizes(void)
+{
+    static const UWORD sizes[][2] = {
+        {640,400},{640,480},{800,600},{1024,768},{1280,720},{1280,1024},
+        {960,540},{1920,1080},{1440,900},
+        {1280,800},{1600,1200},{1920,1200},{1680,1050},{1600,900},{1366,768},{2560,1440},
+    };
+    ULONG flags = p.bi.Flags, mem = p.bi.MemorySize, i;
+    UWORD maxw = p.bi.MaxBMWidth, maxh = p.bi.MaxBMHeight;
+    p.bi.Flags &= ~BIF_INTERNALMODESONLY;
+    p.bi.MemorySize = 16 * 1024 * 1024;
+    p.bi.MaxBMWidth = 4096; p.bi.MaxBMHeight = 4096;
+    for (i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++) {
+        struct PrismMode m = { sizes[i][0], sizes[i][1], PF_CLUT8, 0, 0 };
+        if (!b.checkMode(&b, &m)) {
+            printf("no P96 timing for %ux%u\n", sizes[i][0], sizes[i][1]);
+            assert(0);
+        }
+        assert(m.refresh == 60 || m.refresh == 70);
+    }
+    p.bi.Flags = flags; p.bi.MemorySize = mem;
+    p.bi.MaxBMWidth = maxw; p.bi.MaxBMHeight = maxh;
+}
+
 int main(void)
 {
     setup();
@@ -318,6 +346,7 @@ int main(void)
     test_overlap();
     test_template();
     test_modes();
+    test_prefs_sizes();
     test_aperture();
     test_pool();
     test_banks_and_allocator();
