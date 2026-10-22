@@ -43,6 +43,14 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.2 beta 4
+  More screen sizes on cards driven through their own Picasso96 driver
+  (BOARD=P96: a Vampire, a PiStorm's VideoCore): 960x540, which was in the
+  list but could never be shown there, and the larger sizes 1280x800,
+  1366x768, 1600x900, 1680x1050, 1600x1200, 1920x1200 and 2560x1440 (switch
+  those on in PrismPrefs). A card that can't show one leaves it out, as
+  before.
+
 New in 1.2 beta 3
   A fix for the update check (PrismUpdate, and Check in PrismPrefs): with
   AmiSSL 5 it could crash the Amiga (gurus of every kind, mostly on the
