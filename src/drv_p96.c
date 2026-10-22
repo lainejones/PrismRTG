@@ -309,7 +309,23 @@ static const struct Timing timings[] = {
     /* CEA-861 1080p60 */
     {1920,1080,60,148500000,2008,2052,2200,1084,1089,1125,GMF_HPOLARITY|GMF_VPOLARITY},
     /* VESA DMT 1440x900 60 Hz (-H +V) */
-    {1440,900,60,106500000,1520,1672,1904,903,909,934,GMF_VPOLARITY}
+    {1440,900,60,106500000,1520,1672,1904,903,909,934,GMF_VPOLARITY},
+    /* the other sizes PrismPrefs offers (issue #1: 960x540 and more 16:9;
+     * Jusii #14: the larger firmware sizes). Without a row here a card
+     * driven through its P96 driver (a Vampire, a PiStorm's VideoCore)
+     * could never show them. 960x540 = 1080p60 halved both ways (the
+     * quarter pixel clock; a scaler takes it as 1080p's own frame rate);
+     * 1366x768, 1600x900, 1600x1200 = VESA DMT; 1280x800, 1680x1050,
+     * 1920x1200, 2560x1440 = CVT reduced blanking. A card that can't make
+     * a clock within 5 % or is too small refuses it below, as before. */
+    {960,540,60,37125000,1004,1026,1100,542,545,563,GMF_HPOLARITY|GMF_VPOLARITY},
+    {1366,768,60,85500000,1436,1579,1792,771,774,798,GMF_HPOLARITY|GMF_VPOLARITY},
+    {1600,900,60,108000000,1624,1704,1800,901,904,1000,GMF_HPOLARITY|GMF_VPOLARITY},
+    {1280,800,60,71000000,1328,1360,1440,803,809,823,GMF_HPOLARITY},
+    {1680,1050,60,119000000,1728,1760,1840,1053,1059,1080,GMF_HPOLARITY},
+    {1920,1200,60,154000000,1968,2000,2080,1203,1209,1235,GMF_HPOLARITY},
+    {1600,1200,60,162000000,1664,1856,2160,1201,1204,1250,GMF_HPOLARITY|GMF_VPOLARITY},
+    {2560,1440,60,241500000,2608,2640,2720,1443,1448,1481,GMF_HPOLARITY}
 };
 
 static UBYTE mode_type(UBYTE bpp)
