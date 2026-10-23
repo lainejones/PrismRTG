@@ -8,6 +8,10 @@
  * Odd offsets and an odd width on purpose: the drivers blit in bytes. Minterms
  * 0x00 and 0xF0 are left out (PrismRTG fills those with pens, not bits).
  * Prints the time of each blit too: the card is far quicker than the CPU path.
+ * The two bitmaps go to VRAM only if it has room beside every open screen
+ * (off-screen bitmaps never evict): on a 2 MB card at 800x600 16-bit with a
+ * 16-bit Workbench there is none, and the blits are done by the CPU - right,
+ * but slow. A smaller MODEID (640x480) leaves room.
  * Returns 0 when every pixel of every minterm is right, 10 otherwise. */
 #include <exec/types.h>
 #include <exec/memory.h>
