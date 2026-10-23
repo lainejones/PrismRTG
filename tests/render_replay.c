@@ -15,6 +15,8 @@ enum PrismResult pbm_hw_fill(struct PBitMap *p,UBYTE b,UWORD x,UWORD y,UWORD w,U
 { (void)b;(void)w;(void)h;(void)c;p->pix[y*p->bpr+x*p->bpp]=0xee;hw_calls++;return outcome; }
 enum PrismResult pbm_hw_copy(struct PBitMap *s,struct PBitMap *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h)
 { (void)s;(void)sx;(void)sy;(void)w;(void)h;d->pix[dy*d->bpr+dx*d->bpp]=0xee;hw_calls++;return outcome; }
+enum PrismResult pbm_hw_rop(struct PBitMap *s,struct PBitMap *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h,UBYTE mt)
+{ (void)s;(void)d;(void)sx;(void)sy;(void)dx;(void)dy;(void)w;(void)h;(void)mt;return PR_DECLINED; } /* the CPU path is what this test replays */
 enum PrismResult pbm_hw_line(struct PBitMap *p,WORD x,WORD y,WORD dx,WORD dy,ULONG c)
 { (void)dx;(void)dy;(void)c;p->pix[y*p->bpr+x*p->bpp]=0xee;hw_calls++;return outcome; }
 enum PrismResult pbm_hw_expand(struct PBitMap *p,UWORD x,UWORD y,UWORD w,UWORD h,const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr)

@@ -339,6 +339,48 @@ static void test_prefs_sizes(void)
     p.bi.MaxBMWidth = maxw; p.bi.MaxBMHeight = maxh;
 }
 
+/* rop: a minterm blit between two VRAM surfaces goes to the card's
+ * BlitRectNoMaskComplete with the minterm's upper four bits as opcode
+ * (Picasso96's convention: 0x6A, layers' XOR swap, is 6); a driver whose
+ * BlitRectNoMaskComplete is only the default is declined. */
+static struct { int calls; UBYTE op; WORD sx, sy, dx, dy, w, h; APTR src, dst; RGBFTYPE f; } rop;
+static void mock_rop(struct BoardInfo *bi __asm("a0"), struct RenderInfo *s __asm("a1"),
+                     struct RenderInfo *d __asm("a2"), WORD sx __asm("d0"), WORD sy __asm("d1"),
+                     WORD dx __asm("d2"), WORD dy __asm("d3"), WORD w __asm("d4"), WORD h __asm("d5"),
+                     UBYTE op __asm("d6"), RGBFTYPE f __asm("d7"))
+{
+    assert(bi == &p.bi);
+    rop.calls++; rop.op = op; rop.sx = sx; rop.sy = sy; rop.dx = dx; rop.dy = dy;
+    rop.w = w; rop.h = h; rop.src = s->Memory; rop.dst = d->Memory; rop.f = f;
+}
+
+static void test_rop(void)
+{
+    struct PrismSurface s = { pixels, 0, 1024, 64, 32, 16, PF_CLUT8, 1, 0 };
+    struct PrismSurface d = { pixels, 2048, 1024, 64, 32, 16, PF_CLUT8, 1, 0 };
+    UWORD flags = b.flags;
+    assert(offsetof(struct PrismOps, rop) < b.opsSize || !b.opsSize);
+    assert(b.ops && b.ops == &p96_alloc_ops && b.ops->rop == rtg_rop);
+    b.flags |= PBF_BANKED;                    /* a banked aperture: the card can't see both */
+    p.bi.BlitRectNoMaskComplete = mock_rop; p.bi.BlitRectNoMaskCompleteDefault = NULL;
+    assert(rtg_rop(&b, &s, &d, 1, 2, 3, 4, 20, 10, 0x6a) == PR_DECLINED);
+    b.flags &= ~(PBF_SHADOW | PBF_BANKED);    /* rtg_rop itself, not the shadow logic */
+    memset(&rop, 0, sizeof(rop));
+    p.bi.BlitRectNoMaskComplete = p.bi.BlitRectNoMaskCompleteDefault = mock_rop;
+    assert(rtg_rop(&b, &s, &d, 1, 2, 3, 4, 20, 10, 0x6a) == PR_DECLINED && !rop.calls);
+    p.bi.BlitRectNoMaskCompleteDefault = NULL;
+    assert(rtg_rop(&b, &s, &d, 1, 2, 3, 4, 20, 10, 0x6a) == PR_DONE && rop.calls == 1);
+    assert(rop.op == 6 && rop.sx == 1 && rop.sy == 2 && rop.dx == 3 && rop.dy == 4);
+    assert(rop.w == 20 && rop.h == 10 && rop.f == RGBFB_CLUT);
+    /* both through the card's CalculateMemory (this mock may displace them): 2048 apart */
+    assert((UBYTE *)rop.dst == (UBYTE *)rop.src + 2048);
+    assert(rtg_rop(&b, &s, &d, 0, 0, 0, 0, 8, 8, 0x30) == PR_DONE && rop.op == 3);
+    d.format = PF_RGB565BE; d.bpp = 2;        /* formats differ: declined */
+    assert(rtg_rop(&b, &s, &d, 0, 0, 0, 0, 8, 8, 0x6a) == PR_DECLINED && rop.calls == 2);
+    p.bi.BlitRectNoMaskComplete = NULL;
+    b.flags = flags;
+}
+
 int main(void)
 {
     setup();
@@ -351,6 +393,7 @@ int main(void)
     test_pool();
     test_banks_and_allocator();
     test_planar_probe();
+    test_rop();
     assert(waits != 0);
     puts("P96 adapter: ABI, formats, drawing fallbacks and mode setup passed");
     return 0;
