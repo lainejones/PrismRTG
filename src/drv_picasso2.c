@@ -785,10 +785,20 @@ static void p2_CopyBetweenRop(struct PrismBoard *b, ULONG src, ULONG spitch, ULO
     blt_run(b, p);
 }
 
+/* the plain copy kept as its own function, as before the rop: it is on the
+ * friend-blit path the speed gate measures */
 static void p2_CopyBetween(struct PrismBoard *b, ULONG src, ULONG spitch, ULONG dst,
                            ULONG dpitch, UWORD wbytes, UWORD h)
 {
-    p2_CopyBetweenRop(b, src, spitch, dst, dpitch, wbytes, h, ROP_SRC);
+    struct P2Priv *p = b->priv;
+    if (!wbytes || !h)
+        return;
+    blt_dst(b, p, wbytes, h, dpitch, dst);
+    blt_srcaddr(b, p, src);
+    blt_srcpitch(b, p, spitch);
+    gw(b, p, 0x30, 0);
+    gw(b, p, 0x32, ROP_SRC);
+    blt_run(b, p);
 }
 
 /* BltBitMap's minterm (its upper four bits, B = source, C = destination:

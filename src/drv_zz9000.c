@@ -244,7 +244,20 @@ static void zz_CopyBetweenOp(struct PrismBoard *b, ULONG src, ULONG spitch, ULON
 static void zz_CopyBetween(struct PrismBoard *b, ULONG src, ULONG spitch, ULONG dst,
                            ULONG dpitch, UWORD wbytes, UWORD h)
 {
-    zz_CopyBetweenOp(b, src, spitch, dst, dpitch, wbytes, h, MINTERM_SRC);
+    struct ZZPriv *p = b->priv;
+    /* the plain copy as before the rop (the friend-blit path the speed gate times) */
+    Forbid();
+    GD32(p, GD_OFFSET1, src & ~3UL);
+    GD32(p, GD_PITCH0, PAIR(dpitch >> 2, spitch >> 2));
+    GD16(p, GD_X2, src & 3);
+    GD16(p, GD_Y2, 0);
+    GD32(p, GD_OFFSET0, dst & ~3UL);
+    GD32(p, GD_X0, PAIR(dst & 3, wbytes));
+    GD32(p, GD_Y0, PAIR(0, h));
+    GD8(p, GD_MINTERM, MINTERM_SRC);
+    GD8(p, GD_U8USER0, CM_8BIT);
+    W16(b, REG_DMA_OP, OP_COPY_NOMASK);
+    Permit();
 }
 
 static BOOL zz_ExpandRectMode(struct PrismBoard *b, ULONG dst, ULONG pitch, UBYTE bpp,
