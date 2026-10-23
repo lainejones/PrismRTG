@@ -221,12 +221,31 @@ static void zz_CopyRect(struct PrismBoard *b, ULONG base, ULONG pitch, UBYTE bpp
     Permit();
 }
 
-static void zz_CopyBetween(struct PrismBoard *b, ULONG src, ULONG spitch, ULONG dst,
-                           ULONG dpitch, UWORD wbytes, UWORD h)
+static void zz_CopyBetweenOp(struct PrismBoard *b, ULONG src, ULONG spitch, ULONG dst,
+                             ULONG dpitch, UWORD wbytes, UWORD h, UBYTE minterm)
 {
     struct ZZPriv *p = b->priv;
     /* byte geometry: an 8-bit copy whose rows start at src and dst. The
      * firmware wants row starts on 32-bit words; the odd bytes become x. */
+    Forbid();
+    GD32(p, GD_OFFSET1, src & ~3UL);
+    GD32(p, GD_PITCH0, PAIR(dpitch >> 2, spitch >> 2));
+    GD16(p, GD_X2, src & 3);
+    GD16(p, GD_Y2, 0);
+    GD32(p, GD_OFFSET0, dst & ~3UL);
+    GD32(p, GD_X0, PAIR(dst & 3, wbytes));
+    GD32(p, GD_Y0, PAIR(0, h));
+    GD8(p, GD_MINTERM, minterm);
+    GD8(p, GD_U8USER0, CM_8BIT);
+    W16(b, REG_DMA_OP, OP_COPY_NOMASK);
+    Permit();
+}
+
+static void zz_CopyBetween(struct PrismBoard *b, ULONG src, ULONG spitch, ULONG dst,
+                           ULONG dpitch, UWORD wbytes, UWORD h)
+{
+    struct ZZPriv *p = b->priv;
+    /* the plain copy as before the rop (the friend-blit path the speed gate times) */
     Forbid();
     GD32(p, GD_OFFSET1, src & ~3UL);
     GD32(p, GD_PITCH0, PAIR(dpitch >> 2, spitch >> 2));
@@ -375,8 +394,33 @@ static enum PrismResult zz_line(struct PrismBoard *b,const struct PrismSurface *
     zz_DrawLineMode(b,d->offset,d->pitch,d->bpp,x,y,dx,dy,c,zz_surface_cm(d));
     zz_WaitBlit(b);return PR_DONE;
 }
+/* A minterm blit between two bitmaps (the core's rop): the firmware's
+ * copy_rect_nomask with the minterm as Picasso96 numbers it (opcode =
+ * BltBitMap minterm >> 4). As bytes, like zz_CopyBetween - every minterm is
+ * bitwise, so 16-bit pixels come out the same. Only the minterms firmware
+ * 2.8.1 computes as named: ONLYDST, INVERT, EOR, NEOR, checked with ropcheck
+ * on a real ZZ9000 (A4000, 2026-10-23). Its NOR, NOTSRC, NAND, NOTONLYSRC,
+ * NOTONLYDST and OR are wrong in gfx.h already, and ONLYSRC and AND, which
+ * read right there, came out wrong on nearly every byte on the card - so all
+ * of those stay on the CPU. EOR (6) is the one that matters: layers'
+ * window-drag swap. */
+static enum PrismResult zz_rop(struct PrismBoard *b,const struct PrismSurface *s,
+    const struct PrismSurface *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h,UBYTE mt)
+{
+    struct ZZPriv *p=b->priv;
+    UBYTE op=(UBYTE)((mt>>4)&15);
+    if(!(op==2 || op==5 || op==6 || op==9) || s->bpp!=d->bpp || d->bpp>2 ||
+        !zz_storage(b,s) || !zz_storage(b,d) || (ULONG)w*d->bpp>65535 ||
+        ((ULONG)sx+w)*s->bpp>65535 || ((ULONG)dx+w)*d->bpp>65535)
+        return PR_DECLINED;
+    zz_CopyBetweenOp(b,s->offset+(ULONG)sy*s->pitch+(ULONG)sx*s->bpp,s->pitch,
+        d->offset+(ULONG)dy*d->pitch+(ULONG)dx*d->bpp,d->pitch,(UWORD)(w*d->bpp),h,op);
+    zz_WaitBlit(b);
+    GD8(p, GD_MINTERM, MINTERM_SRC);   /* the field stays as written: plain copies after */
+    return PR_DONE;
+}
 static const struct PrismOps zz_ops={.fill=zz_fill,.copy=zz_copy,
-    .expand=zz_expand,.line=zz_line};
+    .expand=zz_expand,.line=zz_line,.rop=zz_rop};
 
 /* ---- hardware cursor (Zorro III) ------------------------------------
  * The firmware cursor is 32x48 true-colour pixels; the image Prism hands

@@ -771,6 +771,22 @@ static void p2_CopyRect(struct PrismBoard *b, ULONG base, ULONG pitch, UBYTE bpp
     blt_run(b, p);
 }
 
+static void p2_CopyBetweenRop(struct PrismBoard *b, ULONG src, ULONG spitch, ULONG dst,
+                              ULONG dpitch, UWORD wbytes, UWORD h, UBYTE rop)
+{
+    struct P2Priv *p = b->priv;
+    if (!wbytes || !h)
+        return;
+    blt_dst(b, p, wbytes, h, dpitch, dst);
+    blt_srcaddr(b, p, src);
+    blt_srcpitch(b, p, spitch);
+    gw(b, p, 0x30, 0);
+    gw(b, p, 0x32, rop);
+    blt_run(b, p);
+}
+
+/* the plain copy kept as its own function, as before the rop: it is on the
+ * friend-blit path the speed gate measures */
 static void p2_CopyBetween(struct PrismBoard *b, ULONG src, ULONG spitch, ULONG dst,
                            ULONG dpitch, UWORD wbytes, UWORD h)
 {
@@ -784,6 +800,16 @@ static void p2_CopyBetween(struct PrismBoard *b, ULONG src, ULONG spitch, ULONG 
     gw(b, p, 0x32, ROP_SRC);
     blt_run(b, p);
 }
+
+/* BltBitMap's minterm (its upper four bits, B = source, C = destination:
+ * bit 3 = S&D, 2 = S&~D, 1 = ~S&D, 0 = ~S&~D) as the GD542x raster op in
+ * GR32 (docs/cirrus-picasso2-hw.md section 5.3). */
+static const UBYTE p2_rop[16] = {
+    0x00, 0x90, 0x50, 0xd0,              /* 0, ~(S|D), ~S&D, ~S         */
+    0x09, 0x0b, 0x59, 0xda,              /* S&~D, ~D, S^D, ~(S&D)       */
+    0x05, 0x95, 0x06, 0xd6,              /* S&D, ~(S^D), D, ~S|D        */
+    0x0d, 0xad, 0x6d, 0x0e               /* S, S|~D, S|D, 1             */
+};
 
 /* ---- text: CPU-fed colour expansion --------------------------------- */
 
@@ -1398,8 +1424,23 @@ static enum PrismResult p2_expand_surface(struct PrismBoard *b,const struct Pris
      * Fills and VRAM copies still work; overwrite text can run on the CPU. */
     return p->failed ? PR_RETRY : done ? PR_DONE : PR_DECLINED;
 }
+/* A minterm blit between two surfaces (the core's rop) in one blitter run;
+ * the raster op works on bits, so the byte geometry suits 8 and 16 bit. The
+ * documented 24-bit limit (copies only) is the core's: it asks for <= 16. */
+static enum PrismResult p2_rop_surface(struct PrismBoard *b,const struct PrismSurface *s,
+    const struct PrismSurface *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h,UBYTE mt)
+{
+    struct P2Priv *p=b->priv;
+    if (s->bpp!=d->bpp || d->bpp>2 || !p2_surface_ok(b,s,w,h) || !p2_surface_ok(b,d,w,h))
+        return PR_DECLINED;
+    p->failed=FALSE;
+    p2_CopyBetweenRop(b,s->offset+(ULONG)sy*s->pitch+(ULONG)sx*s->bpp,s->pitch,
+        d->offset+(ULONG)dy*d->pitch+(ULONG)dx*d->bpp,d->pitch,(UWORD)(w*d->bpp),h,p2_rop[(mt>>4)&15]);
+    return p->failed ? PR_FAILED : PR_DONE;
+}
 static const struct PrismOps p2_ops = {
-    .fill=p2_fill_surface, .copy=p2_copy_surface, .expand=p2_expand_surface
+    .fill=p2_fill_surface, .copy=p2_copy_surface, .expand=p2_expand_surface,
+    .rop=p2_rop_surface
 };
 
 static void p2_ready(struct PrismBoard *b)
