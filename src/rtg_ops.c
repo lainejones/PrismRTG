@@ -195,16 +195,21 @@ enum PrismResult rtg_copy(struct PrismBoard *b,const struct PrismSurface *s,
 }
 /* A minterm blit between two surfaces with the card's BlitRectNoMaskComplete,
  * which takes BltBitMap's minterm as an opcode (its upper four bits, the way
- * Picasso96 passes it: 12 = copy, 6 = XOR). */
+ * Picasso96 passes it: 12 = copy, 6 = XOR). At 24/32 bit UAE's card gets
+ * opcodes 4, 5 and 13 (S&~D, ~D, S|~D) wrong on a quarter of the bytes
+ * (ropcheck, every UAE machine of the gate): those stay on the CPU there. */
 enum PrismResult rtg_rop(struct PrismBoard *b,const struct PrismSurface *s,
     const struct PrismSurface *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h,UBYTE mt)
 {
     struct BoardInfo *bi=b->priv;struct RenderInfo rs,rd;
+    UBYTE op=(UBYTE)((mt>>4)&15);
+    if(d->bpp>=3 && (op==4 || op==5 || op==13))
+        return PR_DECLINED;
     if((b->flags & PBF_BANKED) || (bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter ||
        !bi->BlitRectNoMaskComplete || bi->BlitRectNoMaskComplete==bi->BlitRectNoMaskCompleteDefault ||
        s->format!=d->format || !rtg_render(b,s,&rs) || !rtg_render(b,d,&rd))
         return PR_DECLINED;
-    bi->BlitRectNoMaskComplete(bi,&rs,&rd,sx,sy,dx,dy,w,h,(UBYTE)((mt>>4)&15),rd.RGBFormat);rtg_wait(bi);
+    bi->BlitRectNoMaskComplete(bi,&rs,&rd,sx,sy,dx,dy,w,h,op,rd.RGBFormat);rtg_wait(bi);
     return PR_DONE;
 }
 enum PrismResult rtg_expand(struct PrismBoard *b,const struct PrismSurface *d,
