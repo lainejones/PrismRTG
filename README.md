@@ -475,7 +475,11 @@ picks one for PrismRTG's tools alone. There are no translations yet:
   drawing on a dragged screen keeps most of its speed on a 68030. Off,
   they cost nothing. Few programs have used it yet.
 * Vertical dragging composes the front and next RTG screen; native-chipset
-  screens cannot be mixed into the split. No monitor detection (see above).
+  screens cannot be mixed into the split, and a screen of another size than
+  the front one stays black while it is behind (a cut-off picture looked
+  worse). A window as large as its screen cannot be dragged, as everywhere
+  on the Amiga: Intuition keeps windows inside the screen. No monitor
+  detection (see above).
 * **Monitor power saving** ("Sleep" in PrismPrefs, `POWERSAVE=`): the Picasso II
   family (but not the Picasso IV) and the ZZ9000 with firmware 2.7 or newer put the
   monitor to sleep; every other board only shows black, and the monitor stays on.
