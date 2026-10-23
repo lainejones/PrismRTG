@@ -633,6 +633,19 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
         return;
     }
 
+    /* Other minterms between two bitmaps in the board's VRAM: the board's
+     * rop. Layers swaps a dragged smart-refresh window with its backing
+     * store by three XOR blits of the whole window; on the CPU (both
+     * bitmaps read back from VRAM) that was 1.9 s per drag step for a
+     * 700x450 browser window on the P96 path, 0.12 s under Picasso96.
+     * 8 and 16 bit, where the CPU path below is bitwise on the pixel data
+     * too (16-bit ignores the plane mask there as well); 24/32-bit works on
+     * pens below, which a card's blit would not reproduce. */
+    if (!copy && s->pix && d->pix && s->p && d->p && s->bpp == d->bpp && s->fmt == d->fmt &&
+        d->bpp <= 2 && (mask == 0xff || d->bpp == 2) && w * h > 64 &&
+        pbm_hw_rop(s->p, d->p, sx, sy, dx, dy, w, h, mt) == PR_DONE)
+        return;
+
     if (!s->pix && d->p && (d->bpp!=2 || d->penTab)) {
         struct PrismPlanar source = { s->bm, s->rgbTab ? s->rgbTab : d->rgbTab, d->penTab };
         if (pbm_hw_planar(&source,d->p,sx,sy,dx,dy,w,h,mt,mask) != PR_DECLINED)

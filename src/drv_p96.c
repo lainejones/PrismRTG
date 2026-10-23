@@ -463,7 +463,7 @@ static void p96_release(struct PrismBoard *b,ULONG off)
     bi->FreeCardMem(bi,b->vram+off);
 }
 static const struct PrismOps p96_alloc_ops = {
-    .fill=rtg_fill,.copy=rtg_copy,.expand=rtg_expand,.planar=rtg_planar,
+    .fill=rtg_fill,.copy=rtg_copy,.rop=rtg_rop,.expand=rtg_expand,.planar=rtg_planar,
     .pitch=p96_surface_pitch,.read=rtg_read,.write=rtg_write,
     .allocate=p96_allocate,.release=p96_release
 };

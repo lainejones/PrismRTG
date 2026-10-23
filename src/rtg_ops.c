@@ -193,6 +193,20 @@ enum PrismResult rtg_copy(struct PrismBoard *b,const struct PrismSurface *s,
     bi->BlitRect(bi,&ri,sx,sy,dx,dy,w,h,255,ri.RGBFormat);rtg_wait(bi);
     return PR_DONE;
 }
+/* A minterm blit between two surfaces with the card's BlitRectNoMaskComplete,
+ * which takes BltBitMap's minterm as an opcode (its upper four bits, the way
+ * Picasso96 passes it: 12 = copy, 6 = XOR). */
+enum PrismResult rtg_rop(struct PrismBoard *b,const struct PrismSurface *s,
+    const struct PrismSurface *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h,UBYTE mt)
+{
+    struct BoardInfo *bi=b->priv;struct RenderInfo rs,rd;
+    if((b->flags & PBF_BANKED) || (bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter ||
+       !bi->BlitRectNoMaskComplete || bi->BlitRectNoMaskComplete==bi->BlitRectNoMaskCompleteDefault ||
+       s->format!=d->format || !rtg_render(b,s,&rs) || !rtg_render(b,d,&rd))
+        return PR_DECLINED;
+    bi->BlitRectNoMaskComplete(bi,&rs,&rd,sx,sy,dx,dy,w,h,(UBYTE)((mt>>4)&15),rd.RGBFormat);rtg_wait(bi);
+    return PR_DONE;
+}
 enum PrismResult rtg_expand(struct PrismBoard *b,const struct PrismSurface *d,
     UWORD x,UWORD y,UWORD w,UWORD h,const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr)
 {
@@ -273,5 +287,5 @@ BOOL rtg_read(struct PrismBoard *b,const struct PrismSurface *s,ULONG off,APTR m
 { return rtg_transfer(b,s,off,mem,size,FALSE); }
 BOOL rtg_write(struct PrismBoard *b,const struct PrismSurface *s,ULONG off,const void *mem,ULONG size)
 { return rtg_transfer(b,s,off,(UBYTE *)mem,size,TRUE); }
-const struct PrismOps rtg_ops={.fill=rtg_fill,.copy=rtg_copy,.expand=rtg_expand,
+const struct PrismOps rtg_ops={.fill=rtg_fill,.copy=rtg_copy,.rop=rtg_rop,.expand=rtg_expand,
     .planar=rtg_planar,.pitch=rtg_pitch,.read=rtg_read,.write=rtg_write};

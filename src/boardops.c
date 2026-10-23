@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Stefan Reinauer
  * Copyright (C) 2026 Laine Jones */
+#include <stddef.h>
 #include "boardops.h"
 
 UBYTE board_bpp(UBYTE f)
@@ -47,6 +48,15 @@ enum PrismResult board_copy(struct PrismBoard *b, const struct PrismSurface *s,
         !ready(b,s) || !ready(b,d) || s->format != d->format) return PR_DECLINED;
     if (!b->ops || !b->ops->copy) return PR_DECLINED;
     return finish(b,b->ops->copy(b,s,d,sx,sy,dx,dy,w,h));
+}
+enum PrismResult board_rop(struct PrismBoard *b, const struct PrismSurface *s,
+    const struct PrismSurface *d, UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h,UBYTE mt)
+{
+    if (!board_rect(s,sx,sy,w,h) || !board_rect(d,dx,dy,w,h) ||
+        !ready(b,s) || !ready(b,d) || s->format != d->format) return PR_DECLINED;
+    /* a driver built before the operation existed has a shorter table */
+    if (!b->ops || offsetof(struct PrismOps, rop) >= b->opsSize || !b->ops->rop) return PR_DECLINED;
+    return finish(b,b->ops->rop(b,s,d,sx,sy,dx,dy,w,h,mt));
 }
 enum PrismResult board_expand(struct PrismBoard *b,const struct PrismSurface *d,
     UWORD x,UWORD y,UWORD w,UWORD h,const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr)
