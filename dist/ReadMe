@@ -43,6 +43,15 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.2 beta 5
+  Dragging windows on cards driven through their Picasso96 driver
+  (BOARD=P96) and on UAE's card is as quick as under Picasso96 again: the
+  blits that swap a moving window with its hidden copy (XOR) now go to the
+  card instead of the CPU. A 700x450 browser window took 1.9 seconds per
+  drag step in WinUAE, now 0.13. Natively driven boards are unchanged.
+  Under WinUAE, Prism through UAE's Picasso96 driver (P96CARD=uaegfx.card)
+  no longer shows a garbled picture.
+
 New in 1.2 beta 4
   More screen sizes on cards driven through their own Picasso96 driver
   (BOARD=P96: a Vampire, a PiStorm's VideoCore): 960x540, which was in the
