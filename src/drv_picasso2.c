@@ -1425,13 +1425,12 @@ static enum PrismResult p2_expand_surface(struct PrismBoard *b,const struct Pris
     return p->failed ? PR_RETRY : done ? PR_DONE : PR_DECLINED;
 }
 /* A minterm blit between two surfaces (the core's rop) in one blitter run;
- * the raster op works on bits, so the byte geometry suits 8 and 16 bit. The
- * documented 24-bit limit (copies only) is the core's: it asks for <= 16. */
+ * the raster op works on bits, so the byte geometry suits every depth. */
 static enum PrismResult p2_rop_surface(struct PrismBoard *b,const struct PrismSurface *s,
     const struct PrismSurface *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h,UBYTE mt)
 {
     struct P2Priv *p=b->priv;
-    if (s->bpp!=d->bpp || d->bpp>2 || !p2_surface_ok(b,s,w,h) || !p2_surface_ok(b,d,w,h))
+    if (s->bpp!=d->bpp || !p2_surface_ok(b,s,w,h) || !p2_surface_ok(b,d,w,h))
         return PR_DECLINED;
     p->failed=FALSE;
     p2_CopyBetweenRop(b,s->offset+(ULONG)sy*s->pitch+(ULONG)sx*s->bpp,s->pitch,
