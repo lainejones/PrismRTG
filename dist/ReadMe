@@ -43,6 +43,16 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.2 beta 6
+  The quicker window dragging of beta 5 on PrismRTG's own drivers too: on
+  the Picasso II family (Picasso II and II+, GBAPII++, Piccolo, Piccolo
+  SD64, Spectrum, Picasso IV) and on the ZZ9000 in Zorro III mode, the
+  blits that swap a moving window with its hidden copy run on the card at
+  8 and 16 bit. On an A2000's GBAPII++ such a blit took 217 ms, now less
+  than a timer tick; on an A4000's ZZ9000 108 ms, now 1 ms. The ZZ9000
+  gets only the blit types its firmware computes correctly (testing on a
+  real card found two that come out wrong); the others stay on the CPU.
+
 New in 1.2 beta 5
   Dragging windows on cards driven through their Picasso96 driver
   (BOARD=P96) and on UAE's card is as quick as under Picasso96 again: the
