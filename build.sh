@@ -82,6 +82,7 @@ $CC $CFLAGS -s -o out/muitime tools/muitime.c -lm
 cp tools/arexxtest.rexx out/arexxtest.rexx
 $CC $CFLAGS -s -o out/trapwatch tools/trapwatch.c
 $CC $CFLAGS -s -o out/tmpltest tools/tmpltest.c
+$CC $CFLAGS -s -o out/ropcheck tools/ropcheck.c
 $CC $CFLAGS -s -o out/vlayertest tools/vlayertest.c tools/cgxvideo_stubs.S
 $CC $CFLAGS -s -o out/vrampeek tools/vrampeek.c
 $CC $CFLAGS -s -o out/bigpointer tools/bigpointer.c
