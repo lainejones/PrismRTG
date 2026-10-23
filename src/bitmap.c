@@ -563,6 +563,24 @@ enum PrismResult pbm_hw_copy(struct PBitMap *s,struct PBitMap *d,UWORD sx,UWORD 
     pbm_surface(s,&a); pbm_surface(d,&b);
     return pbm_result(d,board_copy(B,&a,&b,sx,sy,dx,dy,w,h),(ULONG)dx*d->bpp,dy,(ULONG)w*d->bpp,h);
 }
+/* A minterm blit (not a copy, not clear/set) between two of the board's
+ * VRAM bitmaps of one format, or two rectangles of one that don't overlap:
+ * the board's rop where the driver has one. Only the fast path - with the
+ * screen shadowed or the compositor on, the CPU path stays the safe one. */
+enum PrismResult pbm_hw_rop(struct PBitMap *s,struct PBitMap *d,UWORD sx,UWORD sy,
+    UWORD dx,UWORD dy,UWORD w,UWORD h,UBYTE mt)
+{
+    struct PrismBoard *B = s->bd;
+    struct PrismSurface a,b;
+    if (d->bd != B || !HW_FAST(s) || !d->inVram || s->fmt != d->fmt ||
+        !BOARD_CAN(B, rop) || !hw_rect(s,sx,sy,w,h) || !hw_rect(d,dx,dy,w,h))
+        return PR_DECLINED;
+    if (s == d && sx < dx + w && dx < sx + w && sy < dy + h && dy < sy + h)
+        return PR_DECLINED;                /* overlapping inside one bitmap */
+    hw_surface(s,&a);
+    if (s == d) b = a; else hw_surface(d,&b);
+    return hw_finish(B,B->ops->rop(B,&a,&b,sx,sy,dx,dy,w,h,mt));
+}
 enum PrismResult pbm_hw_expand(struct PBitMap *p,UWORD x,UWORD y,UWORD w,UWORD h,
     const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr)
 {

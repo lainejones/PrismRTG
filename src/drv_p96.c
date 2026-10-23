@@ -64,6 +64,12 @@ struct P96Priv {
     struct { ULONG offset, size; } allocations[256];
     UWORD nallocations;
     UWORD sprite[4 + CURSOR_SIZE * 4];    /* 32-pixel P96 sprite + controls */
+    /* What Picasso96's core hangs on BoardInfo->BitMapExtra for the shown
+     * bitmap. A card driver may read it instead of its arguments: WinUAE's
+     * uaegfx takes the display's virtual width and height from here in
+     * SetPanning (garbage sizes, a garbled picture without it). Kept in
+     * step with the shown mode. */
+    struct BitMapExtra bme;
     char name[96];
 };
 
@@ -457,7 +463,7 @@ static void p96_release(struct PrismBoard *b,ULONG off)
     bi->FreeCardMem(bi,b->vram+off);
 }
 static const struct PrismOps p96_alloc_ops = {
-    .fill=rtg_fill,.copy=rtg_copy,.expand=rtg_expand,.planar=rtg_planar,
+    .fill=rtg_fill,.copy=rtg_copy,.rop=rtg_rop,.expand=rtg_expand,.planar=rtg_planar,
     .pitch=p96_surface_pitch,.read=rtg_read,.write=rtg_write,
     .allocate=p96_allocate,.release=p96_release
 };
@@ -468,6 +474,13 @@ static void p96_pan(struct PrismBoard *b, ULONG offset)
     struct BoardInfo *bi = &p->bi;
     wait_blitter(bi);
     bi->XOffset = bi->YOffset = 0;
+    p->bme.BoardInfo = bi;
+    p->bme.Width = p->mode.Width;         /* no oversized screens here: pitch = width */
+    p->bme.Height = p->mode.Height;
+    p->bme.RenderInfo.Memory = b->vram + offset;
+    p->bme.RenderInfo.BytesPerRow = (WORD)(p->mode.Width * rgb_bpp(bi->RGBFormat));
+    p->bme.RenderInfo.RGBFormat = bi->RGBFormat;
+    bi->BitMapExtra = &p->bme;
     bi->SetPanning(bi, b->vram + offset, p->mode.Width, p->mode.Height,
                    0, 0, bi->RGBFormat);
 }

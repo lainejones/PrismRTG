@@ -26,6 +26,8 @@ enum PrismResult rtg_fill(struct PrismBoard *b,const struct PrismSurface *d,
     UWORD x,UWORD y,UWORD w,UWORD h,ULONG c);
 enum PrismResult rtg_copy(struct PrismBoard *b,const struct PrismSurface *s,
     const struct PrismSurface *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h);
+enum PrismResult rtg_rop(struct PrismBoard *b,const struct PrismSurface *s,
+    const struct PrismSurface *d,UWORD sx,UWORD sy,UWORD dx,UWORD dy,UWORD w,UWORD h,UBYTE mt);
 enum PrismResult rtg_expand(struct PrismBoard *b,const struct PrismSurface *d,
     UWORD x,UWORD y,UWORD w,UWORD h,const UBYTE *src,ULONG mod,ULONG fg,ULONG bg,BOOL tr);
 enum PrismResult rtg_planar(struct PrismBoard *b,const struct PrismPlanar *s,

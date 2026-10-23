@@ -191,6 +191,7 @@ BOOL pbm_prepare_mode(struct PrismCard *c);
 void pbm_flush_shown(void);
 enum PrismResult pbm_hw_fill(struct PBitMap *, UBYTE, UWORD, UWORD, UWORD, UWORD, ULONG);
 enum PrismResult pbm_hw_copy(struct PBitMap *, struct PBitMap *, UWORD, UWORD, UWORD, UWORD, UWORD, UWORD);
+enum PrismResult pbm_hw_rop(struct PBitMap *, struct PBitMap *, UWORD, UWORD, UWORD, UWORD, UWORD, UWORD, UBYTE);
 enum PrismResult pbm_hw_expand(struct PBitMap *, UWORD, UWORD, UWORD, UWORD, const UBYTE *, ULONG, ULONG, ULONG, BOOL);
 enum PrismResult pbm_hw_line(struct PBitMap *, WORD, WORD, WORD, WORD, ULONG);
 enum PrismResult pbm_hw_planar(const struct PrismPlanar *, struct PBitMap *, UWORD, UWORD, UWORD, UWORD, UWORD, UWORD, UBYTE, UBYTE);

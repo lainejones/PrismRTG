@@ -44,6 +44,16 @@ struct PrismOps {
     void (*release)(struct PrismBoard *, ULONG);
     BOOL (*read)(struct PrismBoard *, const struct PrismSurface *, ULONG, APTR, ULONG);
     BOOL (*write)(struct PrismBoard *, const struct PrismSurface *, ULONG, const void *, ULONG);
+    /* Added in 1.2 (append-only; BOARD_CAN tells whether a driver has it):
+     * a rectangle from one surface combined into another with a BltBitMap
+     * minterm (its upper four bits; bitwise on the pixel data, as the
+     * Amiga blitter and Picasso96's BlitRectNoMaskComplete do). Layers
+     * swaps a moving smart-refresh window with its backing store by three
+     * XOR blits (0x6A) - on the CPU that meant reading both from VRAM.
+     * Source and destination never overlap: two of our bitmaps, or two
+     * rectangles of one that the caller checked. */
+    enum PrismResult (*rop)(struct PrismBoard *, const struct PrismSurface *,
+        const struct PrismSurface *, UWORD, UWORD, UWORD, UWORD, UWORD, UWORD, UBYTE);
 #ifdef PRISM_ABI_PROBE
     BOOL (*future)(struct PrismBoard *);     /* test only: an operation added later */
 #endif
@@ -59,6 +69,8 @@ enum PrismResult board_fill(struct PrismBoard *, const struct PrismSurface *,
     UWORD, UWORD, UWORD, UWORD, ULONG);
 enum PrismResult board_copy(struct PrismBoard *, const struct PrismSurface *,
     const struct PrismSurface *, UWORD, UWORD, UWORD, UWORD, UWORD, UWORD);
+enum PrismResult board_rop(struct PrismBoard *, const struct PrismSurface *,
+    const struct PrismSurface *, UWORD, UWORD, UWORD, UWORD, UWORD, UWORD, UBYTE);
 enum PrismResult board_expand(struct PrismBoard *, const struct PrismSurface *,
     UWORD, UWORD, UWORD, UWORD, const UBYTE *, ULONG, ULONG, ULONG, BOOL);
 enum PrismResult board_line(struct PrismBoard *, const struct PrismSurface *,
