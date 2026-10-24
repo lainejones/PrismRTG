@@ -43,6 +43,14 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.2.1
+  FS-UAE showed no screen larger than 640x480: its older UAE core answers
+  the question "how large a screen can the card show?" with the core's
+  built-in default (640x480), where WinUAE and Amiberry answer with the
+  largest size the host display can do. PrismRTG no longer takes that
+  default for a limit; the card's memory decides. FS-UAE 3.1.66 now offers
+  every size (33 modes instead of 12).
+
 New in 1.2 (everything since 1.1.1, in short; the betas follow below)
   Faster: icons and other masked images 2-9x (only the pixels the mask
   lets through are drawn, images in the board's memory copied by the
