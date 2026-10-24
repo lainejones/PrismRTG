@@ -511,6 +511,17 @@ static void combine16(const UWORD *b, const UWORD *c, UWORD *out, WORD n, UBYTE 
     }
 }
 
+static void combine32(const ULONG *b, const ULONG *c, ULONG *out, WORD n, UBYTE mt)
+{
+    ULONG m80 = (mt & 0x80) ? ~0UL : 0, m40 = (mt & 0x40) ? ~0UL : 0;
+    ULONG m20 = (mt & 0x20) ? ~0UL : 0, m10 = (mt & 0x10) ? ~0UL : 0;
+    WORD i;
+    for (i = 0; i < n; i++) {
+        ULONG B = b[i], C = c[i];
+        out[i] = (B & C & m80) | (B & ~C & m40) | (~B & C & m20) | (~B & ~C & m10);
+    }
+}
+
 /* Clip a source/destination rectangle pair to both surfaces. */
 static BOOL clip2(struct Surf *s, WORD *sx, WORD *sy, struct Surf *d, WORD *dx, WORD *dy,
                   WORD *w, WORD *h)
@@ -638,11 +649,10 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
      * store by three XOR blits of the whole window; on the CPU (both
      * bitmaps read back from VRAM) that was 1.9 s per drag step for a
      * 700x450 browser window on the P96 path, 0.12 s under Picasso96.
-     * 8 and 16 bit, where the CPU path below is bitwise on the pixel data
-     * too (16-bit ignores the plane mask there as well); 24/32-bit works on
-     * pens below, which a card's blit would not reproduce. */
+     * Bitwise on the pixel data, as the CPU paths below are too (direct
+     * colour ignores the plane mask there as well). */
     if (!copy && s->pix && d->pix && s->p && d->p && s->bpp == d->bpp && s->fmt == d->fmt &&
-        d->bpp <= 2 && (mask == 0xff || d->bpp == 2) && w * h > 64 &&
+        (mask == 0xff || d->bpp >= 2) && w * h > 64 &&
         pbm_hw_rop(s->p, d->p, sx, sy, dx, dy, w, h, mt) == PR_DONE)
         return;
 
@@ -678,10 +688,29 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
     if (same && dy > sy) { y0 = h - 1; y1 = -1; step = -1; }
     else                 { y0 = 0;     y1 = h;  step = 1;  }
 
+    /* Other minterms between two 24/32-bit bitmaps of one format: bitwise on
+     * the pixel data, like the Amiga blitter, Picasso96 and 16-bit here (the
+     * plane mask ignored, as at 16 bit). Through pens (below) a 391x115 XOR
+     * took 2.3 s on the A4000 and kept only colours that are pens - layers
+     * swaps a dragged window with its backing store by such XORs. The
+     * source row is copied first: the two may overlap in one bitmap. */
+    if (!copy && s->pix && d->pix && s->bpp >= 3 && s->bpp == d->bpp && s->fmt == d->fmt) {
+        ULONG bytes = (ULONG)w * d->bpp;
+        for (y = y0; y != y1; y += step) {
+            UBYTE *dp = d->pix + (ULONG)(dy + y) * d->bpr + (ULONG)dx * d->bpp;
+            CopyMem(s->pix + (ULONG)(sy + y) * s->bpr + (ULONG)sx * s->bpp, rgbRow, bytes);
+            if (!((ULONG)dp & 3) && !(bytes & 3))
+                combine32(rgbRow, (ULONG *)dp, (ULONG *)dp, (WORD)(bytes >> 2), mt);
+            else
+                combine2((UBYTE *)rgbRow, dp, dp, (WORD)bytes, mt);
+        }
+        return;
+    }
+
     /* Copies between direct-colour formats that differ or involve 24/32-bit,
      * and direct colour into pens: convert through 0x00RRGGBB (pens via the
-     * palette, the nearest pen going back). Other minterms into 24/32-bit
-     * work on pens, below. */
+     * palette, the nearest pen going back). Other minterms from pens into
+     * 24/32-bit work on pens, below. */
     if (((d->bpp >= 3 || s->bpp >= 3) && copy) ||
         (s->bpp == 2 && d->bpp == 2 && s->fmt != d->fmt) || (s->bpp >= 2 && d->bpp <= 1)) {
         const ULONG *ptab = s->rgbTab ? s->rgbTab : d->rgbTab;
