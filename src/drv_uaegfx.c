@@ -84,8 +84,15 @@ static BOOL uae_check(struct PrismBoard *b, struct PrismMode *m)
     bpp = bytes(m->format);
     if (p->pf[bpp] != m->format) return FALSE;
     type = bpp == 1 ? CHUNKY : bpp == 2 ? HICOLOR : bpp == 3 ? TRUECOLOR : TRUEALPHA;
-    if (m->width > p->bi.MaxHorResolution[type] ||
-        m->height > p->bi.MaxVerResolution[type]) return FALSE;
+    /* The card's largest size per format - unless it is the old UAE core's
+     * built-in default (640x480 for every chunky format, 320x240 planar),
+     * which FS-UAE 3.1 still answers with: there every size above 640x480
+     * vanished (issue #21), while the same card shows them all. Such an
+     * answer says nothing; the memory and the 8192 cap decide instead. */
+    if (p->bi.MaxHorResolution[type] > 640 || p->bi.MaxVerResolution[type] > 480) {
+        if (m->width > p->bi.MaxHorResolution[type] ||
+            m->height > p->bi.MaxVerResolution[type]) return FALSE;
+    }
     m->bytesPerRow = uae_pitch(b, m->width, m->height, bpp);
     if (!m->bytesPerRow || m->bytesPerRow * m->height > b->vramSize) return FALSE;
     m->refresh = 60;
@@ -370,6 +377,10 @@ BOOL UAEGFX_Probe(struct PrismBoard *b)
     b->priv = p; b->name = "UAE (native)";
     b->vram = bi->MemoryBase; b->vramSize = bi->MemorySize;
     b->maxWidth = b->maxHeight = 8192;
+    printf("PrismD: UAE card says at most %ux%u (16-bit)%s\n", bi->MaxHorResolution[HICOLOR],
+           bi->MaxVerResolution[HICOLOR],
+           bi->MaxHorResolution[HICOLOR] > 640 || bi->MaxVerResolution[HICOLOR] > 480 ? "" :
+           " - the old UAE default, not used as a limit");
     b->checkMode = uae_check; b->setMode = uae_mode;
     b->bytesPerRow = uae_pitch; b->setDisplayStart = uae_pan;
     b->setPalette = uae_palette; b->setSwitch = uae_switch;
