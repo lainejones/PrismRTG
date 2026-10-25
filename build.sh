@@ -88,6 +88,7 @@ $CC $CFLAGS -s -o out/vrampeek tools/vrampeek.c
 $CC $CFLAGS -s -o out/bigpointer tools/bigpointer.c
 $CC $CFLAGS -s -o out/movebench tools/movebench.c
 $CC $CFLAGS -s -o out/dragcheck tools/dragcheck.c
+$CC $CFLAGS -s -o out/dopusscreen tools/dopusscreen.c
 $CC $CFLAGS -DSCRMOVE -s -o out/scrmove tools/dragcheck.c
 $CC $CFLAGS -s -o out/busydraw tools/busydraw.c
 $CC $CFLAGS -s -o out/stftest tools/stftest.c
