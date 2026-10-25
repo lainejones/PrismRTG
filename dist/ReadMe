@@ -43,6 +43,14 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.2.2
+  ZZ9000 (firmware 2.8 and newer): a video layer the card shows itself (a
+  player's YUV frames in the card's memory on a 16- or 32-bit screen) came
+  out as a black window on a real card: the firmware takes the layer but
+  shows it only once its overlay feature is switched on, which PrismRTG
+  never did. It does now, the way ZZ9000.card does; the emulator used for
+  testing didn't have that switch, and has it now.
+
 New in 1.2.1
   FS-UAE showed no screen larger than 640x480: its older UAE core answers
   the question "how large a screen can the card show?" with the core's
