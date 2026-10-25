@@ -41,6 +41,8 @@ extern struct ExpansionBase *ExpansionBase;
 #define REG_DMA_OP      0x5a
 #define REG_SET_FEATURE 0x60
 #define FEATURE_DPMS    4             /* BlitterStudio firmware 2.7+         */
+#define FEATURE_VIDEO_OVERLAY 3       /* firmware 2.8+: the overlay's master gate
+                                       * (zz_regs.h CARD_FEATURE_VIDEO_OVERLAY) */
 #define REG_FW_VERSION  0xc0
 #define REG_FW_CAPS     0xe6
 #define REG_CFG_KEY     0xe8          /* ZZ9000.CFG query (firmware 2.3+)    */
@@ -483,6 +485,13 @@ static BOOL zz_OverlaySet(struct PrismBoard *b, const struct PrismOverlay *o)
     if (o->screenBpp != 2 && o->screenBpp != 4)
         return FALSE;
     Forbid();
+    /* The firmware's master gate for the overlay: the set below answers 0
+     * without it, but the layer is never shown (overlay_presentable), and
+     * with the board "showing" it Prism stops composing it - a black
+     * window on a real card. ZZ9000.card switches it on the same way; a
+     * firmware without the feature ignores the write. */
+    W16(b, REG_USER1, FEATURE_VIDEO_OVERLAY);
+    W16(b, REG_SET_FEATURE, 1);
     GD32(p, GD_OFFSET1, o->srcOff);
     GD16(p, GD_PITCH1, o->srcPitch);
     GD16(p, GD_X2V, o->srcW);
@@ -530,6 +539,8 @@ static void zz_OverlayOff(struct PrismBoard *b)
     GD32(p, GD_U32_0, 0xFFFFFFFFUL);
     z3_kick(b, OP_VIDEO_OVERLAY);
     (void)R16(b, REG_DMA_OP);
+    W16(b, REG_USER1, FEATURE_VIDEO_OVERLAY);     /* the gate closed again */
+    W16(b, REG_SET_FEATURE, 0);
     Permit();
 }
 
