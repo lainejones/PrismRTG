@@ -50,6 +50,12 @@ New in 1.2.2
   shows it only once its overlay feature is switched on, which PrismRTG
   never did. It does now, the way ZZ9000.card does; the emulator used for
   testing didn't have that switch, and has it now.
+  Workbench 3.2 froze the machine when a dragged icon was dropped where it
+  can't go (the screen's title bar). Workbench drags icons as Bobs, and on
+  a refused drop it calls RemIBob, which PrismRTG left to the ROM: the
+  ROM's version walks lists that only its own drawing keeps, and on a
+  PrismRTG screen it walked them for ever. RemIBob is now handled like
+  DrawGList (the Bob is taken off and the backgrounds put back).
 
 New in 1.2.1
   FS-UAE showed no screen larger than 640x480: its older UAE core answers
