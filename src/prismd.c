@@ -2298,7 +2298,7 @@ TRAMP(GetBitMapAttr) TRAMP(WriteChunkyPixels) TRAMP(WritePixelArray8)
 TRAMP(ReadPixelArray8) TRAMP(WritePixelLine8) TRAMP(ReadPixelLine8)
 TRAMP(SetRGB32CM) TRAMP(ObtainPen) TRAMP(ObtainBestPenA)
 TRAMP(MoveSprite) TRAMP(ChangeSprite) TRAMP(ChangeExtSpriteA) TRAMP(ChangeVPBitMap)
-TRAMP(CoerceMode) TRAMP(BitMapScale) TRAMP(DrawGList)
+TRAMP(CoerceMode) TRAMP(BitMapScale) TRAMP(DrawGList) TRAMP(RemIBob)
 #define GFX_T(n, lvo) { (struct Library **)&GfxBase, -(lvo), (APTR)stub_##n, &o_##n }
 
 LONG call_regs(APTR fn, struct Regs *r);
@@ -2736,6 +2736,7 @@ static struct Patch patches[] = {
     GFX_T(ScrollRasterBF,        0x3ea),
     GFX_T(EraseRect,             0x32a),
     GFX_T(DrawGList,             0x072),
+    GFX_T(RemIBob,               0x084),
     GFX_T(AllocBitMap,           0x396),
     GFX_T(FreeBitMap,            0x39c),
     GFX_T(GetBitMapAttr,         0x3c0),

@@ -135,19 +135,12 @@ static inline void bob_draw(struct RastPort *rp, WORD x, WORD y, WORD w, WORD h,
     }
 }
 
-/* DrawGList(rp a1, vp a0) */
-LONG h_DrawGList(struct Regs *r)
+/* The DrawGList pass for rp: every Bob off (backgrounds back, last drawn
+ * first), then the Bobs on the list drawn again. Under gelLock. */
+static void gels_draw(struct RastPort *rp, struct GelsInfo *gi)
 {
-    struct RastPort *rp = (struct RastPort *)r->a[1];
-    struct GelsInfo *gi;
     struct VSprite *vs, *next;
     WORD i;
-
-    if (!rp || !rp->BitMap || !pbm_get(rp->BitMap) || !gelReady)
-        return 0;                    /* not ours: the ROM's GELs        */
-    if (!(gi = rp->GelsInfo) || !gi->gelHead)
-        return 1;
-    ObtainSemaphore(&gelLock);
 
     /* Take the Bobs off: backgrounds back, last drawn first. */
     for (i = savedN - 1; i >= 0; i--)
@@ -194,6 +187,56 @@ LONG h_DrawGList(struct Regs *r)
         vs->OldY = vs->Y;
         b->Flags |= BDRAWN;
     }
+}
+
+/* DrawGList(rp a1, vp a0) */
+LONG h_DrawGList(struct Regs *r)
+{
+    struct RastPort *rp = (struct RastPort *)r->a[1];
+    struct GelsInfo *gi;
+
+    if (!rp || !rp->BitMap || !pbm_get(rp->BitMap) || !gelReady)
+        return 0;                    /* not ours: the ROM's GELs        */
+    if (!(gi = rp->GelsInfo) || !gi->gelHead)
+        return 1;
+    ObtainSemaphore(&gelLock);
+    gels_draw(rp, gi);
     ReleaseSemaphore(&gelLock);
     return 1;
+}
+
+/* RemIBob(bob a0, rp a1, vp a2): the Bob off the screen and off the list
+ * at once. The ROM's RemIBob walks the gels' ClearPath/DrawPath chains,
+ * which its own DrawGList keeps and ours never touches, and restores the
+ * Bob's SaveBuffer with the blitter - on one of our bitmaps that walked
+ * garbage for ever (issue #22: Workbench calls it when a dragged icon is
+ * dropped where it can't go, the screen's title bar). Here: the Bob is
+ * unlinked, and the DrawGList pass puts every background back and draws
+ * the Bobs that remain, which is what the ROM's does. */
+/* Unlinks the Bob under gelLock, out of line: h_RemIBob keeps nothing
+ * across it and ends in a tail call, so the deepest blit chain (right at
+ * the stack budget, tests/stack_audit.sh) is h_DrawGList's, not deeper. */
+static void __attribute__((noinline)) bob_unlink(struct Bob *b)
+{
+    struct VSprite *vs = b->BobVSprite;
+    ObtainSemaphore(&gelLock);
+    if (vs->PrevVSprite && vs->NextVSprite) {      /* on a gel list: off it */
+        vs->PrevVSprite->NextVSprite = vs->NextVSprite;
+        vs->NextVSprite->PrevVSprite = vs->PrevVSprite;
+    }
+    vs->NextVSprite = vs->PrevVSprite = NULL;
+    b->Flags = (b->Flags & ~(BOBSAWAY | BDRAWN)) | BOBNIX;
+    ReleaseSemaphore(&gelLock);
+}
+
+LONG h_RemIBob(struct Regs *r)
+{
+    struct Bob *b = (struct Bob *)r->a[0];
+    struct RastPort *rp = (struct RastPort *)r->a[1];
+
+    if (!rp || !rp->BitMap || !pbm_get(rp->BitMap) || !gelReady)
+        return 0;
+    if (b && b->BobVSprite)
+        bob_unlink(b);
+    return h_DrawGList(r);           /* the pass: backgrounds back, the rest redrawn */
 }
