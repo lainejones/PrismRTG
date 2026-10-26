@@ -36,6 +36,8 @@
  *   UPDATES=OFF|GITHUB|MIRROR|BOTH  (where PrismUpdate looks for a newer release)
  *   SECONDMONITOR=SCREEN|MIRROR|SPAN|OFF  (what a second board shows with no
  *                                screen of its own; docs/multi-board.md)
+ *   SECONDSIDE=RIGHT|LEFT       (where the second monitor stands: the pointer
+ *                                pushed off that edge goes over to it)
  *   MIRROR=https://...          (a mirror's directory: latest.txt and the archive)
  *
  * Promotion: a screen a program opens on a PAL, NTSC or other native
@@ -122,6 +124,9 @@ struct PrismPrefs {
     UBYTE powerSave;                 /* POWERSAVE= minutes idle before the monitors
                                         go dark, 0 = never (1-240)              */
     UBYTE secondMon;                 /* SM_*: SECONDMONITOR=                   */
+    UBYTE secondLeft;                /* SECONDSIDE=LEFT: the second monitor stands
+                                        left of the first (the pointer crosses
+                                        over at the left edge)                 */
     char mirror[PREFS_MIRROR + 1];   /* MIRROR=: an HTTPS directory            */
     char p96card[256];
     char p96monitor[256];

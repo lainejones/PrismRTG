@@ -852,6 +852,17 @@ static void palette_update(struct ViewPort *vp)
 }
 
 static struct PrismCard *ptrOn;            /* the card the pointer was put on */
+
+/* Edge switching (two boards): the pointer pushed off the edge of one
+ * monitor towards the other (SECONDSIDE=) brings the other board's front
+ * screen forward, the pointer on its near edge at the same height. The
+ * input handler (idle_handler) asks, the main loop does it (edge_tick).
+ * update_display keeps what the handler reads: it never walks the screens. */
+static volatile BYTE edgeFront = -1;      /* the card of the screen in front, -1: none of ours */
+static volatile UWORD edgeW, edgeH;       /* that screen's size */
+static volatile BOOL edgeHas[MAX_CARDS];  /* card k has a screen to go to */
+static volatile BYTE edgeGo;              /* asked for: the card to go to + 1 */
+static volatile UWORD edgeYFrac;          /* the pointer's height there, 0..65535 */
 /* What card k shows: the first screen, from the front, that is either on
  * that card or native - a native screen in front of a board's screens
  * means the Amiga's video on that monitor, as with one board. Lock held. */
@@ -1249,6 +1260,24 @@ static void update_display(void)
     } else {
         pointer_off();
         ptrOn = NULL;
+    }
+    /* what the edge switch reads (idle_handler) */
+    {
+        struct Screen *q;
+        BOOL has[MAX_CARDS] = { FALSE };
+        for (q = IntuitionBase->FirstScreen; q; q = q->NextScreen) {
+            struct PScreen *qs = ps_by_screen(q);
+            if (qs)
+                has[qs->mode->card->index] = TRUE;
+        }
+        for (k = 0; k < MAX_CARDS; k++)
+            edgeHas[k] = has[k];
+        if (ps && s) {
+            edgeW = s->Width;
+            edgeH = s->Height;
+            edgeFront = ps->mode->card->index;
+        } else
+            edgeFront = -1;
     }
     ReleaseSemaphore(&lock);
 }
@@ -3289,17 +3318,81 @@ static struct PowerState {
 } pw[MAX_CARDS];
 static void power_wake(void);
 
+#define EDGE_PUSH 24                    /* mouse counts past the edge before it switches */
+static WORD edgePush;
+
 static struct InputEvent *idle_handler(struct InputEvent *ev __asm("a0"), APTR data __asm("a1"))
 {
     struct InputEvent *e;
+    BOOL seen = FALSE;
     (void)data;
-    for (e = ev; e; e = e->ie_NextEvent)
+    for (e = ev; e; e = e->ie_NextEvent) {
         if (e->ie_Class == IECLASS_RAWKEY || e->ie_Class == IECLASS_RAWMOUSE ||
-            e->ie_Class == IECLASS_POINTERPOS || e->ie_Class == IECLASS_NEWPOINTERPOS) {
-            inputSeen++;
+            e->ie_Class == IECLASS_POINTERPOS || e->ie_Class == IECLASS_NEWPOINTERPOS)
+            seen = TRUE;
+        /* edge switching: a push off the edge facing the other monitor, no
+         * button held (a window or icon being dragged stays where it is) */
+        if (e->ie_Class == IECLASS_RAWMOUSE && ncards == 2 && edgeFront >= 0 && !edgeGo &&
+            !(e->ie_Qualifier & (IEQUALIFIER_LEFTBUTTON | IEQUALIFIER_RBUTTON | IEQUALIFIER_MIDBUTTON))) {
+            BYTE other = 1 - edgeFront;
+            BOOL right = (edgeFront == 0) != (prefs.secondLeft != 0);   /* the other monitor is right of this one */
+            WORD dx = e->ie_X;
+            BOOL edge = right ? IntuitionBase->MouseX >= (WORD)edgeW - 1 : IntuitionBase->MouseX <= 0;
+            if (edge && edgeHas[other] && (right ? dx > 0 : dx < 0)) {
+                edgePush += dx > 0 ? dx : -dx;
+                if (edgePush >= EDGE_PUSH) {
+                    WORD y = IntuitionBase->MouseY;
+                    edgeYFrac = edgeH > 1 && y > 0 ? (UWORD)((ULONG)(y < (WORD)edgeH ? y : edgeH - 1) * 65535UL / (edgeH - 1)) : 0;
+                    edgeGo = other + 1;
+                    edgePush = 0;
+                }
+            } else if (dx)
+                edgePush = 0;
+        }
+    }
+    if (seen)
+        inputSeen++;
+    return ev;
+}
+
+/* the main loop, every tick: a switch the handler asked for */
+static void edge_tick(void)
+{
+    BYTE t = edgeGo;
+    struct Screen *s, *target = NULL;
+    if (!t)
+        return;
+    t--;
+    LOCK_QUIET();
+    for (s = IntuitionBase->FirstScreen; s; s = s->NextScreen) {
+        struct PScreen *ps = ps_by_screen(s);
+        if (ps && ps->mode->card->index == t) {
+            target = s;
             break;
         }
-    return ev;
+    }
+    ReleaseSemaphore(&lock);
+    if (target && idleReq) {
+        /* arriving from the left: on its left edge, else its right */
+        BOOL atLeft = (t == 1) != (prefs.secondLeft != 0);
+        struct IEPointerPixel pp;
+        struct InputEvent ie;
+        ScreenToFront(target);
+        memset(&ie, 0, sizeof(ie));
+        pp.iepp_Screen = target;
+        pp.iepp_Position.X = atLeft ? 0 : target->Width - 1;
+        pp.iepp_Position.Y = (WORD)((ULONG)edgeYFrac * (target->Height - 1) / 65535UL);
+        ie.ie_Class = IECLASS_NEWPOINTERPOS;
+        ie.ie_SubClass = IESUBCLASS_PIXEL;
+        ie.ie_EventAddress = (APTR)&pp;
+        idleReq->io_Command = IND_WRITEEVENT;
+        idleReq->io_Data = &ie;
+        idleReq->io_Length = sizeof(ie);
+        DoIO((struct IORequest *)idleReq);
+        dbg("edge: to card %ld, screen %lx at %ld,%ld\n", (LONG)t, (ULONG)target,
+            (LONG)pp.iepp_Position.X, (LONG)pp.iepp_Position.Y);
+    }
+    edgeGo = 0;
 }
 
 static int pw_card(struct PrismBoard *b)
@@ -3783,6 +3876,7 @@ int main(void)
             mirror_tick();                /* MIRRORCHIPSET */
             second_tick();                /* SECONDMONITOR=SCREEN */
             mon2_tick();                  /* SECONDMONITOR=MIRROR */
+            edge_tick();                  /* the pointer pushed over to the other monitor */
             arexx_tick();                 /* the PRISM port */
             if (prefs.log || ++tick % 25 == 0)
                 dbg_flush();

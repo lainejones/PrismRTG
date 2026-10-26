@@ -235,6 +235,8 @@ BOOL prefs_load(struct PrismPrefs *p, const char *path)
         } else if (same(line, "SECONDMONITOR")) {
             p->secondMon = same(v, "MIRROR") ? SM_MIRROR : same(v, "SPAN") ? SM_SPAN :
                            same(v, "OFF") ? SM_OFF : SM_SCREEN;
+        } else if (same(line, "SECONDSIDE")) {
+            p->secondLeft = same(v, "LEFT");
         } else if (same(line, "MIRRORCHIPSET")) {
             p->mirrorChip = onoff(v);
         } else if (same(line, "POWERSAVE")) {
@@ -273,6 +275,7 @@ BOOL prefs_save(const struct PrismPrefs *p, const char *path)
     fprintf(f, "PRIMARY=%s\n", p->swapBoards ? "SECOND" : "FIRST");
     fprintf(f, "SECONDMONITOR=%s\n", p->secondMon == SM_MIRROR ? "MIRROR" : p->secondMon == SM_SPAN ? "SPAN" :
                                      p->secondMon == SM_OFF ? "OFF" : "SCREEN");
+    fprintf(f, "SECONDSIDE=%s\n", p->secondLeft ? "LEFT" : "RIGHT");
     fprintf(f, "BLITTER=%s\n", p->blitter ? "ON" : "OFF");
     fprintf(f, "LOG=%s\n", p->log == 2 ? "SYNC" : p->log ? "ON" : "OFF");
     if (p->clutBGR)
