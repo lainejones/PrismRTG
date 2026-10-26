@@ -47,6 +47,7 @@ void prefs_default(struct PrismPrefs *p)
     p->board = PB_AUTO;
     p->blitter = 1;
     p->second = 1;
+    p->secondMon = SM_SCREEN;
     p->log = 0;
     p->gamma = 10;
     p->hwOverlay = 1;
@@ -231,6 +232,9 @@ BOOL prefs_load(struct PrismPrefs *p, const char *path)
             unsigned g = got == 2 ? a * 10 + (b % 10) : a >= 5 ? a : a * 10;
             if (g >= 5 && g <= 25)
                 p->gamma = g;
+        } else if (same(line, "SECONDMONITOR")) {
+            p->secondMon = same(v, "MIRROR") ? SM_MIRROR : same(v, "SPAN") ? SM_SPAN :
+                           same(v, "OFF") ? SM_OFF : SM_SCREEN;
         } else if (same(line, "MIRRORCHIPSET")) {
             p->mirrorChip = onoff(v);
         } else if (same(line, "POWERSAVE")) {
@@ -267,6 +271,8 @@ BOOL prefs_save(const struct PrismPrefs *p, const char *path)
     fprintf(f, "DRAGGING=%s\n", p->dragging ? "ON" : "OFF");
     fprintf(f, "SECONDBOARD=%s\n", p->second ? "ON" : "OFF");
     fprintf(f, "PRIMARY=%s\n", p->swapBoards ? "SECOND" : "FIRST");
+    fprintf(f, "SECONDMONITOR=%s\n", p->secondMon == SM_MIRROR ? "MIRROR" : p->secondMon == SM_SPAN ? "SPAN" :
+                                     p->secondMon == SM_OFF ? "OFF" : "SCREEN");
     fprintf(f, "BLITTER=%s\n", p->blitter ? "ON" : "OFF");
     fprintf(f, "LOG=%s\n", p->log == 2 ? "SYNC" : p->log ? "ON" : "OFF");
     if (p->clutBGR)

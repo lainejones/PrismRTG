@@ -3018,6 +3018,68 @@ static BOOL init_card(UBYTE k)
     return TRUE;
 }
 
+/* ---- the second monitor (SECONDMONITOR=, docs/multi-board.md) --------
+ *
+ * SCREEN: a public screen of PrismD's own, PRISM2, on the second board and
+ * behind every other screen. A board shows its own front-most screen, so
+ * the second monitor shows it - instead of the Amiga's video, which with
+ * Workbench on the primary is an empty, black picture - and windows and
+ * programs can be put there. Opened once a screen is up in front (so it
+ * never comes up ahead of Workbench), in the second board's 256-colour mode
+ * of the primary's size where it has one; closed when PrismD quits. */
+static struct Screen *secScreen;
+static ULONG secTried;                    /* VBCounter of the last attempt */
+static BOOL secStop;                      /* quitting: not opened again    */
+static const UWORD secPens[] = { (UWORD)~0 };
+
+static ULONG second_mode(void)
+{
+    const struct CardState *a = &cst[0], *b = &cst[1];
+    ULONG i, first = 0;
+    for (i = 0; i < b->nmodes; i++) {
+        const struct ModeRec *mr = &b->modes[i];
+        if (mr->bpp != 1)
+            continue;
+        if (!first)
+            first = mr->id;
+        if (a->curMode && mr->m.width == a->curMode->m.width && mr->m.height == a->curMode->m.height)
+            return mr->id;
+    }
+    return first ? first : b->nmodes ? b->modes[0].id : 0;
+}
+
+static void second_tick(void)
+{
+    ULONG id;
+    if (ncards < 2 || prefs.secondMon != SM_SCREEN || secScreen || secStop || !IntuitionBase->FirstScreen)
+        return;
+    if (secTried && GfxBase->VBCounter - secTried < 250)
+        return;                           /* a failed attempt: again in ~5 s */
+    secTried = GfxBase->VBCounter | 1;
+    if (!(id = second_mode()))
+        return;
+    secScreen = OpenScreenTags(NULL, SA_DisplayID, id, SA_Depth, 8, SA_Behind, TRUE,
+                               SA_Title, (ULONG)"PRISM2 - second monitor", SA_PubName, (ULONG)"PRISM2",
+                               SA_Pens, (ULONG)secPens, SA_SharePens, TRUE, SA_SysFont, 1, TAG_DONE);
+    dbg("second monitor: PRISM2 on $%08lx %s\n", id, secScreen ? "open" : "FAILED");
+    if (secScreen)
+        PubScreenStatus(secScreen, 0);
+}
+
+/* quitting: PRISM2 closed; FALSE while windows are still on it */
+static BOOL second_close(void)
+{
+    secStop = TRUE;
+    if (!secScreen)
+        return TRUE;
+    if (!(PubScreenStatus(secScreen, PSNF_PRIVATE) & PSNF_PRIVATE) || !CloseScreen(secScreen)) {
+        PubScreenStatus(secScreen, 0);
+        return FALSE;
+    }
+    secScreen = NULL;
+    return TRUE;
+}
+
 /* ---- main ----------------------------------------------------------- */
 
 #define TEMPLATE "BOARD/K,PREFS/K,LOG/S,P96CARD/K,P96MONITOR/K"
@@ -3492,6 +3554,7 @@ int main(void)
         ULONG tick = 0;
         static ULONG vb0;
         static BOOL settled;
+        secStop = FALSE;                      /* a quit that didn't happen: PRISM2 again */
         if (!vb0)
             vb0 = GfxBase->VBCounter | 1;
         dbgMain = FindTask(NULL);
@@ -3541,6 +3604,7 @@ int main(void)
             p96_pip_hw_tick();            /* layers on a board's overlay follow their windows */
             power_tick();                 /* POWERSAVE */
             mirror_tick();                /* MIRRORCHIPSET */
+            second_tick();                /* SECONDMONITOR=SCREEN */
             arexx_tick();                 /* the PRISM port */
             if (prefs.log || ++tick % 25 == 0)
                 dbg_flush();
@@ -3550,6 +3614,10 @@ int main(void)
 #ifdef PRISM_MISSLOG
         miss_print();
 #endif
+        if (!second_close()) {
+            printf("PrismD: windows are still open on PRISM2 - close them first\n");
+            continue;
+        }
         if (pscreens) {
             printf("PrismD: Prism screens are still open - close them first\n");
             continue;

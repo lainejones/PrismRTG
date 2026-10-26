@@ -34,6 +34,8 @@
  *   POWERSAVE=10                (minutes without a key or mouse event before the
  *                                boards' monitors go dark; 0 or OFF = never)
  *   UPDATES=OFF|GITHUB|MIRROR|BOTH  (where PrismUpdate looks for a newer release)
+ *   SECONDMONITOR=SCREEN|MIRROR|SPAN|OFF  (what a second board shows with no
+ *                                screen of its own; docs/multi-board.md)
  *   MIRROR=https://...          (a mirror's directory: latest.txt and the archive)
  *
  * Promotion: a screen a program opens on a PAL, NTSC or other native
@@ -84,6 +86,8 @@ enum { PB_AUTO, PB_PICASSO2, PB_ZZ9000, PB_P96, PB_UAEGFX, PB_OTHER, PB_COUNT };
 #define PREFS_MIRROR    127
 /* UPDATES=: off, GitHub's releases, a mirror, GitHub then the mirror */
 enum { UPD_OFF, UPD_GITHUB, UPD_MIRROR, UPD_BOTH, UPD_COUNT };
+/* SECONDMONITOR=: the second board's monitor while nothing is opened on it */
+enum { SM_OFF, SM_SCREEN, SM_MIRROR, SM_SPAN, SM_COUNT };
 
 struct PrefsProg {
     char  name[PREFS_PROGNAME + 1];
@@ -117,6 +121,7 @@ struct PrismPrefs {
                                         to the primary board's monitor          */
     UBYTE powerSave;                 /* POWERSAVE= minutes idle before the monitors
                                         go dark, 0 = never (1-240)              */
+    UBYTE secondMon;                 /* SM_*: SECONDMONITOR=                   */
     char mirror[PREFS_MIRROR + 1];   /* MIRROR=: an HTTPS directory            */
     char p96card[256];
     char p96monitor[256];
