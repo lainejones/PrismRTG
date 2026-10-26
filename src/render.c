@@ -612,6 +612,18 @@ static void planar_blit(struct BitMap *sb, WORD sx, WORD sy, struct BitMap *db, 
     }
 }
 
+/* The planes a pen source has, as a pen mask: a planar bitmap's depth (the
+ * Amiga blits min(source, destination) planes, the destination's others
+ * stay: icon.library inverts a selected icon by a 2-plane NOT-source blit
+ * over its image, pens 0-3 to 3-0), a chunky one's. 0 for direct colour. */
+static UBYTE src_planes(const struct Surf *s)
+{
+    UBYTE depth = s->pix ? (s->p ? s->p->depth : 8) : s->bm->Depth;
+    if (s->bpp >= 2)
+        return 0;
+    return depth >= 8 ? 0xff : (1 << depth) - 1;
+}
+
 static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD dy,
                  WORD w, WORD h, UBYTE mt, UBYTE mask)
 {
@@ -624,6 +636,8 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
         planar_blit(s->bm, sx, sy, d->bm, dx, dy, w, h, mt, mask);
         return;
     }
+    if (!s->pix && d->bpp <= 1)           /* only the source's planes */
+        mask &= src_planes(s);
     same = (s->pix && s->pix == d->pix) || (!s->pix && s->bm == d->bm);
 
     /* the common case, as 1.0 did it: a copy inside one bitmap in VRAM
@@ -2942,15 +2956,24 @@ static __attribute__((noinline)) void blit_masked(struct BlitCtx *b, struct PBit
     struct Surf d = *dp;
     WORD y, x;
     ULONG mbpr;
+    BOOL direct;
+    UBYTE planes;
 
     /* Masked: the mask plane has one plane's worth of rows - the source's
      * plane stride if planar, the planar row size of its width if chunky.
      * Where the mask is set the minterm applies as in BltBitMap; elsewhere
      * the destination stays. The documented "copy through mask" minterm
-     * (ABC|ABNC|ANBC) = 0xE0 means copy. */
+     * (ABC|ABNC|ANBC) = 0xE0 means copy, and the documented "invert through
+     * mask" minterm ANBC = 0x20 writes the inverted source (icon.library's
+     * selected image without one of its own: as a minterm on the cleared
+     * area it would leave an empty box). Only the source's planes are
+     * written, as on a native screen (src_planes). */
+    direct = b->src.bpp >= 2;
+    planes = src_planes(&b->src);
     mbpr = b->src.pix ? (((ULONG)b->src.w + 15) >> 4) << 1 : b->src.bpr;
     if (w > MAXW) w = MAXW;
-    if ((b->mt == 0xe0 || (b->mt & 0xf0) == 0xc0) && (d.bpp >= 2 || b->mask == 0xff)) {
+    if ((b->mt == 0xe0 || (b->mt & 0xf0) == 0xc0) &&
+        (d.bpp >= 2 || (b->mask == 0xff && (direct || planes == 0xff)))) {
         /* A copy through the mask (icons): the mask in runs, the source read
          * over the span they cover, and only the runs written - the
          * destination is never read back from the board */
@@ -3030,6 +3053,7 @@ static __attribute__((noinline)) void blit_masked(struct BlitCtx *b, struct PBit
     for (y = 0; y < h; y++) {
         const UBYTE *mrow = b->amask + (ULONG)(sy + y) * mbpr;
         BOOL copy = (b->mt == 0xe0 || (b->mt & 0xf0) == 0xc0);
+        BOOL invert = (b->mt == 0x20);
         if (sy + y < 0 || sy + y >= b->src.h || by0 + y >= d.h)
             continue;
         for (x = 0; x < w; x++) {
@@ -3038,8 +3062,17 @@ static __attribute__((noinline)) void blit_masked(struct BlitCtx *b, struct PBit
         }
         if (d.bpp == 2) {
             UWORD *drow = (UWORD *)(d.pix + (ULONG)(by0 + y) * d.bpr) + bx0;
-            surf_read16(&b->src, sx, sy + y, w, wA, d.penTab, d.fmt);
-            if (!copy) {
+            if (invert && !direct) {
+                surf_read(&b->src, sx, sy + y, w, rowA);
+                for (x = 0; x < w; x++)
+                    wA[x] = d.penTab ? d.penTab[rowA[x] ^ planes] : rowA[x] ^ planes;
+            } else
+                surf_read16(&b->src, sx, sy + y, w, wA, d.penTab, d.fmt);
+            if (invert) {
+                if (direct)
+                    for (x = 0; x < w; x++)
+                        wA[x] = ~wA[x];
+            } else if (!copy) {
                 CopyMem(drow, wB, w * 2);
                 combine16(wA, wB, wA, w, b->mt);
             }
@@ -3047,21 +3080,34 @@ static __attribute__((noinline)) void blit_masked(struct BlitCtx *b, struct PBit
                 if (rowC[x])
                     drow[x] = wA[x];
         } else if (d.bpp >= 3) {
-            /* true colour: masked copy (other minterms act as copy) */
+            /* true colour: masked copy or invert (other minterms act as copy) */
             UBYTE *dp = d.pix + (ULONG)(by0 + y) * d.bpr + (ULONG)bx0 * d.bpp;
-            surf_rgb(&b->src, sx, sy + y, w, rgbRow, b->src.rgbTab ? b->src.rgbTab : d.rgbTab);
+            const ULONG *ptab = b->src.rgbTab ? b->src.rgbTab : d.rgbTab;
+            ULONG inv = invert && direct ? 0xffffff : 0;
+            if (invert && !direct) {
+                surf_read(&b->src, sx, sy + y, w, rowA);
+                for (x = 0; x < w; x++)
+                    rgbRow[x] = pen_rgb(ptab, rowA[x] ^ planes);
+            } else
+                surf_rgb(&b->src, sx, sy + y, w, rgbRow, ptab);
             for (x = 0; x < w; x++, dp += d.bpp)
                 if (rowC[x])
-                    pf_put(d.fmt, rgbRow[x], dp);
+                    pf_put(d.fmt, rgbRow[x] ^ inv, dp);
         } else {
             surf_read(&b->src, sx, sy + y, w, rowA);
             surf_read(&d, bx0, by0 + y, w, rowB);
-            if (!copy)
+            /* only the source's planes are written, the others stay (a
+             * direct colour source read as pens: all of them) */
+            UBYTE wmask = b->mask & (direct ? 0xff : planes);
+            if (invert) {
+                for (x = 0; x < w; x++)
+                    rowA[x] ^= direct ? 0xff : planes;
+            } else if (!copy)
                 combine2(rowA, rowB, rowA, w, b->mt);
             for (x = 0; x < w; x++)
                 if (!rowC[x])
                     rowA[x] = rowB[x];
-            surf_write(&d, bx0, by0 + y, w, rowA, b->mask);
+            surf_write(&d, bx0, by0 + y, w, rowA, wmask);
         }
     }
 }
