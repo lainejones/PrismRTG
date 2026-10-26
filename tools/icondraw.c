@@ -51,7 +51,7 @@ int main(int argc, char **argv)
         else if (!stricmp(argv[i], "WAIT"))
             wait = TRUE;
     if (to && !(fh = Open(to, MODE_NEWFILE)))
-        Printf("icondraw: can't write %s\n", to);
+        Printf("icondraw: can't write %s\n", (ULONG)to);
     for (i = 1; i < argc; i++) {
         if (!stricmp(argv[i], "TO")) {
             i++;
@@ -62,7 +62,7 @@ int main(int argc, char **argv)
         if (n < MAXICONS && (dob[n] = GetDiskObjectNew(argv[i])))
             n++;
         else
-            FPrintf(fh ? fh : Output(), "no icon %s\n", argv[i]);
+            FPrintf(fh ? fh : Output(), "no icon %s\n", (ULONG)argv[i]);
     }
     if (!n)
         goto out;
@@ -95,7 +95,7 @@ int main(int argc, char **argv)
             DrawIconState(win->RPort, dob[i], NULL, l, t, st ? IDS_SELECTED : IDS_NORMAL,
                           ICONDRAWA_Borderless, TRUE, ICONDRAWA_EraseBackground, TRUE, TAG_DONE);
             FPrintf(fh ? fh : Output(), "icon %ld %s %ldx%ld\n", (LONG)i,
-                    st ? "selected" : "normal", (LONG)w, (LONG)h);
+                    (ULONG)(st ? "selected" : "normal"), (LONG)w, (LONG)h);
             if (fh)
                 for (y = 0; y < h; y++) {
                     for (x = 0; x < w; x++)
