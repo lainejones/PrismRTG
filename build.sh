@@ -94,6 +94,8 @@ $CC $CFLAGS -s -o out/busydraw tools/busydraw.c
 $CC $CFLAGS -s -o out/stftest tools/stftest.c
 $CC $CFLAGS -s -o out/vramcheck tools/vramcheck.c
 $CC $CFLAGS -s -o out/prismstate tools/prismstate.c
+$CC $CFLAGS -s -o out/pencheck tools/pencheck.c
+$CC $CFLAGS -s -o out/icondraw tools/icondraw.c
 
 sh tools/mkpkg.sh
 sh tools/mkcheck.sh
