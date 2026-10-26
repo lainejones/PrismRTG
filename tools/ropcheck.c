@@ -97,7 +97,7 @@ static ULONG ms(void)
 
 int main(void)
 {
-    LONG args[5] = { 0 };
+    LONG args[6] = { 0 };
     struct RDArgs *rda;
     struct Screen *s;
     struct BitMap *a, *b;
@@ -111,11 +111,18 @@ int main(void)
     unsigned long onlyl;
     char *logname = NULL;
 
-    if (!(rda = ReadArgs((STRPTR)"MODEID/K,W/K/N,H/K/N,LOG/K,MINTERM/K", args, NULL))) { PrintFault(IoErr(), NULL); return 20; }
+    if (!(rda = ReadArgs((STRPTR)"MODEID/K,W/K/N,H/K/N,LOG/K,MINTERM/K,LOW/S", args, NULL))) { PrintFault(IoErr(), NULL); return 20; }
     /* LOG=<file>: a line appended and the file closed before and after every
      * blit, so after a machine freeze the file says which minterm it was in
      * (issue #23). MINTERM=$xx: that one minterm only. */
     logname = (char *)args[3];
+    /* LOW: this task named "ropcheck" at priority -1, so a blit that spins
+     * for ever leaves the TCP/IP stack, the harness and pcsample running */
+    if (args[5]) {
+        struct Task *me = FindTask(NULL);
+        me->tc_Node.ln_Name = (char *)"ropcheck";
+        SetTaskPri(me, -1);
+    }
     if (args[4] && sscanf((char *)args[4], "$%lx", &onlyl) == 1) only = (int)(onlyl & 0xf0);
     if (!args[0] || sscanf((char *)args[0], "$%lx", &idl) != 1) { puts("ropcheck: MODEID=$7A000102"); return 20; }
     id = idl;
@@ -150,6 +157,7 @@ int main(void)
         t1 = ms();
         logline(logname, "done  minterm $%02x: %lu ms", mt | 0x0a, (unsigned long)(t1 - t0));
         grab(b, W, H, got, &bpp);
+        logline(logname, "read  minterm $%02x", mt | 0x0a);
         for (y = 0; y < H; y++)
             for (x = 0; x < (ULONG)W * bpp; x++) {
                 ULONG k = y * W * bpp + x, px = x / bpp;
@@ -163,11 +171,14 @@ int main(void)
     }
     printf("ropcheck: %s (%lu minterms)\n", bad ? "FAILED" : "all right", (unsigned long)total);
     rc = bad ? 10 : 0;
+    logline(logname, "all minterms done, freeing");
 out:
     if (a) FreeBitMap(a);
     if (b) FreeBitMap(b);
+    logline(logname, "bitmaps freed, closing the screen");
     FreeVec(sa); FreeVec(sb); FreeVec(got);
     CloseScreen(s);
+    logline(logname, "screen closed");
     CloseDevice((struct IORequest *)&tr);
     CloseLibrary(CyberGfxBase);
     FreeArgs(rda);
