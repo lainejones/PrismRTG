@@ -954,12 +954,14 @@ static void p2_CalibrateExpand(struct PrismBoard *b)
 
     /* 1. do 16-bit index+data writes arrive? (GR0 = BLT background) */
     p->wordio = FALSE;
+#ifndef P2_NOWORDIO                       /* a test build: byte writes only (issue #23) */
     wgrc(b, 0x00, 0x11);
     *(volatile UWORD *)(b->regs + GRC_I) = 0x00a5;
     if (rgrc(b, 0x00) == 0xa5) {
         *(volatile UWORD *)(b->regs + GRC_I) = 0x005a;
         p->wordio = (rgrc(b, 0x00) == 0x5a);
     }
+#endif
     wgrc(b, 0x00, 0x00);
 
     /* 2. do GR1/GR11 (BLT foreground = VGA enable set/reset) left set
