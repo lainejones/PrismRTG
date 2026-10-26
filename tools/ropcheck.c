@@ -27,10 +27,25 @@
 #include <proto/intuition.h>
 #include <proto/timer.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 
 struct Library *CyberGfxBase;
 struct Device *TimerBase;
+
+/* one line to the log file, opened, written and closed at once */
+static void logline(const char *name, const char *fmt, ...)
+{
+    char buf[96]; va_list ap; BPTR f;
+    if (!name) return;
+    va_start(ap, fmt); vsprintf(buf, fmt, ap); va_end(ap);
+    strcat(buf, "\n");
+    if ((f = Open((STRPTR)name, MODE_READWRITE))) {
+        Seek(f, 0, OFFSET_END);
+        Write(f, buf, strlen(buf));
+        Close(f);
+    }
+}
 
 static ULONG seed = 0x12345678;
 static UBYTE rnd(void) { seed = seed * 1103515245 + 12345; return (UBYTE)(seed >> 16); }
@@ -82,7 +97,7 @@ static ULONG ms(void)
 
 int main(void)
 {
-    LONG args[3] = { 0 };
+    LONG args[5] = { 0 };
     struct RDArgs *rda;
     struct Screen *s;
     struct BitMap *a, *b;
@@ -92,9 +107,16 @@ int main(void)
     UWORD W = 400, H = 120, w, h;
     const WORD sx = 3, sy = 2, dx = 5, dy = 1;
     UBYTE *sa, *sb, *got;
-    int mt, rc = 0;
+    int mt, rc = 0, only = -1;
+    unsigned long onlyl;
+    char *logname = NULL;
 
-    if (!(rda = ReadArgs((STRPTR)"MODEID/K,W/K/N,H/K/N", args, NULL))) { PrintFault(IoErr(), NULL); return 20; }
+    if (!(rda = ReadArgs((STRPTR)"MODEID/K,W/K/N,H/K/N,LOG/K,MINTERM/K", args, NULL))) { PrintFault(IoErr(), NULL); return 20; }
+    /* LOG=<file>: a line appended and the file closed before and after every
+     * blit, so after a machine freeze the file says which minterm it was in
+     * (issue #23). MINTERM=$xx: that one minterm only. */
+    logname = (char *)args[3];
+    if (args[4] && sscanf((char *)args[4], "$%lx", &onlyl) == 1) only = (int)(onlyl & 0xf0);
     if (!args[0] || sscanf((char *)args[0], "$%lx", &idl) != 1) { puts("ropcheck: MODEID=$7A000102"); return 20; }
     id = idl;
     if (args[1]) W = *(LONG *)args[1];
@@ -117,6 +139,8 @@ int main(void)
     printf("ropcheck $%08lx: %lu bytes per pixel, %ux%u blits\n", (unsigned long)id, (unsigned long)bpp, w, h);
     for (mt = 0x10; mt <= 0xe0; mt += 0x10) {
         ULONG t0, t1, wrong = 0, x, y;
+        if (only >= 0 && mt != only) continue;
+        logline(logname, "start minterm $%02x", mt | 0x0a);
         fill(a, W, H, 1);
         fill(b, W, H, 2);
         grab(b, W, H, sb, &bpp);
@@ -124,6 +148,7 @@ int main(void)
         BltBitMap(a, sx, sy, b, dx, dy, w, h, (UBYTE)(mt | 0x0a), 0xff, NULL);
         WaitBlit();
         t1 = ms();
+        logline(logname, "done  minterm $%02x: %lu ms", mt | 0x0a, (unsigned long)(t1 - t0));
         grab(b, W, H, got, &bpp);
         for (y = 0; y < H; y++)
             for (x = 0; x < (ULONG)W * bpp; x++) {
