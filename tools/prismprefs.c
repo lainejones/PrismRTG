@@ -39,7 +39,21 @@ static const char version[] __attribute__((used)) = "$VER: PrismPrefs " PRISM_RE
 enum { GAD_LIST = 1, GAD_ON, GAD_HZ, GAD_BOARD, GAD_BLIT, GAD_LOG,
        GAD_SAVE, GAD_USE, GAD_DEFAULTS, GAD_CANCEL, GAD_STATUS, GAD_TEST, GAD_BGR,
        GAD_DRAG, GAD_SOFTPTR, GAD_HWOVL, GAD_PROMOTE, GAD_PLIST, GAD_PROG, GAD_PADD, GAD_PKEEP, GAD_PDEL,
-       GAD_UPDATES, GAD_CHECK, GAD_W, GAD_H, GAD_SETSIZE, GAD_GAMMA, GAD_POWER, GAD_MIRROR };
+       GAD_UPDATES, GAD_CHECK, GAD_W, GAD_H, GAD_SETSIZE, GAD_GAMMA, GAD_POWER, GAD_MIRROR, GAD_SECMON };
+
+/* the 2nd monitor cycle (SECONDMONITOR=): what a second board shows while
+ * no screen is opened on it; its entries in the order of secValues */
+static STRPTR secLabels[] = { "Own screen", "Mirror", "Off", NULL };
+static const UBYTE secValues[] = { SM_SCREEN, SM_MIRROR, SM_OFF };
+
+static UWORD sec_index(UBYTE v)
+{
+    UWORD i;
+    for (i = 0; i < sizeof(secValues); i++)
+        if (secValues[i] == v)
+            return i;
+    return 0;
+}
 
 static STRPTR hzLabels[] = { "Default", "60 Hz", "70 Hz", "72 Hz", "75 Hz", NULL };
 /* the Board cycle: Auto three ways - every board PrismD finds (two at
@@ -74,6 +88,7 @@ struct Gui {
     struct Window *win;
     struct Gadget *glist, *gList, *gOn, *gHz, *gBoard, *gBlit, *gLog, *gBgr, *gDrag, *gSoft, *gHwOvl, *gStatus;
     struct Gadget *gPromote, *gPList, *gProg, *gUpdates, *gW, *gH, *gSet, *gGamma, *gPower, *gMirror;
+    struct Gadget *gSecMon;
     struct List modes;
     struct Node node[PREFS_NMODES];
     char text[PREFS_NMODES][48];
@@ -124,6 +139,9 @@ static void init_texts(void)
     gammaLabels[4] = (STRPTR)S(ID_1_8, "1.8");
     gammaLabels[5] = (STRPTR)S(ID_2_0, "2.0");
     gammaLabels[6] = (STRPTR)S(ID_0_8, "0.8");
+    secLabels[0] = (STRPTR)S(ID_OWN_SCREEN, "Own screen");
+    secLabels[1] = (STRPTR)S(ID_MIRROR_FIRST, "Mirror");
+    secLabels[2] = (STRPTR)S(ID_OFF, "Off");
 }
 
 
@@ -274,6 +292,7 @@ static void show_settings(struct Gui *g)
     GT_SetGadgetAttrs(g->gOn, g->win, NULL, GTCB_Checked, (ULONG)p->on[g->sel], TAG_END);
     GT_SetGadgetAttrs(g->gHz, g->win, NULL, GTCY_Active, (ULONG)rate_index(p->hz[g->sel]), TAG_END);
     GT_SetGadgetAttrs(g->gBoard, g->win, NULL, GTCY_Active, (ULONG)board_entry(p), TAG_END);
+    GT_SetGadgetAttrs(g->gSecMon, g->win, NULL, GTCY_Active, (ULONG)sec_index(p->secondMon), TAG_END);
     GT_SetGadgetAttrs(g->gBlit, g->win, NULL, GTCB_Checked, (ULONG)p->blitter, TAG_END);
     GT_SetGadgetAttrs(g->gLog, g->win, NULL, GTCY_Active, (ULONG)(p->log <= 2 ? p->log : 1), TAG_END);
     GT_SetGadgetAttrs(g->gBgr, g->win, NULL, GTCB_Checked, (ULONG)p->clutBGR, TAG_END);
@@ -522,7 +541,7 @@ static BOOL make_gadgets(struct Gui *g, WORD *innerW, WORD *innerH)
     ng.ng_VisualInfo = g->vi;
 
     /* right column: label width + gadgets */
-    rx = cl + listW + 16 + 8 * fw;
+    rx = cl + listW + 16 + 12 * fw;     /* room for "2nd monitor" */
     rw = 15 * fw + 30;                  /* "Promote screens" beside its box */
 
     y = ct + fh + 2;
@@ -543,6 +562,13 @@ static BOOL make_gadgets(struct Gui *g, WORD *innerW, WORD *innerH)
     ng.ng_GadgetText = (STRPTR)S(ID_BOARD, "Board"); ng.ng_GadgetID = GAD_BOARD;
     gad = g->gBoard = CreateGadget(CYCLE_KIND, gad, &ng, GTCY_Labels, (ULONG)boardLabels,
                                    GTCY_Active, (ULONG)board_entry(&g->prefs), TAG_END);
+
+    /* SECONDMONITOR=: the second board's monitor with nothing of its own on it */
+    y += row;
+    ng.ng_TopEdge = y;
+    ng.ng_GadgetText = (STRPTR)S(ID_2ND_MONITOR, "2nd monitor"); ng.ng_GadgetID = GAD_SECMON;
+    gad = g->gSecMon = CreateGadget(CYCLE_KIND, gad, &ng, GTCY_Labels, (ULONG)secLabels,
+                                    GTCY_Active, (ULONG)sec_index(g->prefs.secondMon), TAG_END);
 
     y += row;
     ng.ng_TopEdge = y; ng.ng_Width = 26; ng.ng_Height = fh + 3;
@@ -852,6 +878,12 @@ static void event_loop(struct Gui *g)
                     break;
                 case GAD_CHECK:
                     check_update(g);
+                    break;
+                case GAD_SECMON:
+                    g->prefs.secondMon = code < sizeof(secValues) ? secValues[code] : SM_SCREEN;
+                    set_status(g, g->prefs.secondMon == SM_SCREEN ? S(ID_SECOND_BOARD_SHOWS_A_SCREEN_OF_ITS_OWN, "Second board: a screen of its own, PRISM2 (restart PrismD)")
+                                  : g->prefs.secondMon == SM_MIRROR ? S(ID_SECOND_BOARD_SHOWS_A_COPY_OF_THE_FIRST, "Second board: a copy of the first one's picture (restart PrismD)")
+                                  : S(ID_SECOND_BOARD_SHOWS_THE_AMIGA_S_VIDEO, "Second board: the Amiga's own video while nothing is on it (restart PrismD)"));
                     break;
                 case GAD_GAMMA:
                     g->prefs.gamma = code < sizeof(gammaValues) ? gammaValues[code] : 10;

@@ -420,3 +420,21 @@ Chipset screens shown on the board as a copy (restart PrismD)
 ID_MIRROR_CHIPSET (134//)
 Mirror chipset
 ;
+ID_2ND_MONITOR (135//)
+2nd monitor
+;
+ID_MIRROR_FIRST (136//)
+Mirror
+;
+ID_OWN_SCREEN (137//)
+Own screen
+;
+ID_SECOND_BOARD_SHOWS_A_COPY_OF_THE_FIRST (138//)
+Second board: a copy of the first one's picture (restart PrismD)
+;
+ID_SECOND_BOARD_SHOWS_A_SCREEN_OF_ITS_OWN (139//)
+Second board: a screen of its own, PRISM2 (restart PrismD)
+;
+ID_SECOND_BOARD_SHOWS_THE_AMIGA_S_VIDEO (140//)
+Second board: the Amiga's own video while nothing is on it (restart PrismD)
+;
