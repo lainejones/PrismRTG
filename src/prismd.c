@@ -1132,6 +1132,9 @@ static void mirror_tick(void)
     ReleaseSemaphore(&lock);
 }
 
+static BOOL mon2_show(void);              /* SECONDMONITOR=MIRROR, further down */
+static void mon2_stop(void);
+
 /* Make card k show its front screen. TRUE if it now shows another screen
  * than before (the pointer has to be set up again). Lock held. */
 static BOOL show_card(UBYTE k)
@@ -1148,6 +1151,8 @@ static BOOL show_card(UBYTE k)
         struct PBitMap *dp = ps->front ? ps->front : ps->pbm;
         if (k == 0)
             mirror_stop();
+        else
+            mon2_stop();                  /* a screen of its own: no copy of board 0 */
         UWORD pitch = ps->autoscroll ? dp->bpr / dp->bpp : 0;
         BOOL changed = FALSE;
         if (cs->curMode != ps->mode || cs->curPitch != pitch) {
@@ -1187,6 +1192,11 @@ static BOOL show_card(UBYTE k)
         return changed;
     }
     present_stop(c);
+    /* SECONDMONITOR=MIRROR: nothing of its own on board 1, so a copy of board 0 */
+    if (k == 1 && prefs.secondMon == SM_MIRROR && mon2_show())
+        return FALSE;
+    if (k == 1)
+        mon2_stop();
     /* MIRRORCHIPSET=ON: a chipset screen in front is shown on board 0 as a copy */
     if (k == 0 && prefs.mirrorChip && IntuitionBase->FirstScreen && mirror_show(IntuitionBase->FirstScreen))
         return mir.started;
@@ -3080,6 +3090,173 @@ static BOOL second_close(void)
     return TRUE;
 }
 
+/* MIRROR: the second board shows a copy of what the first one shows, in its
+ * mode of the same size and depth (no such mode: nothing is mirrored). The
+ * first board's picture is never read back to find what changed: drawing
+ * into the bitmap on display marks a rectangle (SW_CLEAR, LOCK_FOR in
+ * prismint.h), and every tick copies up to MON2_BUDGET bytes of it across,
+ * converting the pixels where the two boards store them differently. A
+ * 256-colour copy gets the first board's palette. Not copied yet: the
+ * pointer, and what the compositor puts together (screen dragging, PIPs). */
+#define MON2_BUDGET 65536UL
+struct PBitMap *mirSrc;
+static struct PBitMap *mon2Dst;
+static WORD dX0 = 1, dY0, dX1, dY1;      /* the marked rectangle; dX0 > dX1: none */
+static ULONG mon2Gen;                    /* the paletteGen its palette is from */
+
+void mon2_mark(WORD x0, WORD y0, WORD x1, WORD y1)
+{
+    if (dX0 > dX1) {
+        dX0 = x0; dY0 = y0; dX1 = x1; dY1 = y1;
+        return;
+    }
+    if (x0 < dX0) dX0 = x0;
+    if (y0 < dY0) dY0 = y0;
+    if (x1 > dX1) dX1 = x1;
+    if (y1 > dY1) dY1 = y1;
+}
+
+/* lock held */
+static void mon2_stop(void)
+{
+    struct CardState *cs = &cst[1];
+    if (!mon2Dst)
+        return;
+    dbg("second monitor: mirror stops\n");
+    mirSrc = NULL;
+    mon2Dst->locks--;
+    if (cs->shownPbm == mon2Dst)
+        cs->shownPbm = NULL;
+    pbm_free(mon2Dst);
+    mon2Dst = NULL;
+    cs->curMode = NULL;
+}
+
+/* start mirroring board 0's picture on board 1, or go on with it; TRUE while
+ * it is mirrored (lock held) */
+static BOOL mon2_show(void)
+{
+    struct CardState *a = &cst[0], *cs = &cst[1];
+    struct PrismBoard *B = cards[1].b;
+    struct PBitMap *src = a->shownPbm, *p;
+    struct ModeRec *best = NULL;
+    struct PrismMode m;
+    ULONG i;
+
+    if (!src || !a->curMode || cs->testPbm || (B->flags & (PBF_SHADOW | PBF_PRESENT))) {
+        mon2_stop();
+        return FALSE;
+    }
+    if (mon2Dst && mirSrc == src && cs->curMode && cs->curMode->m.width == a->curMode->m.width &&
+        cs->curMode->m.height == a->curMode->m.height)
+        return TRUE;
+    mon2_stop();
+    for (i = 0; i < cs->nmodes; i++) {
+        struct ModeRec *mr = &cs->modes[i];
+        if (mr->m.width == a->curMode->m.width && mr->m.height == a->curMode->m.height && mr->bpp == src->bpp) {
+            best = mr;
+            break;
+        }
+    }
+    if (!best) {
+        dbg("second monitor: no %ux%u mode at %u bytes a pixel to mirror into\n",
+            a->curMode->m.width, a->curMode->m.height, src->bpp);
+        return FALSE;
+    }
+    present_stop(&cards[1]);
+    m = best->m;
+    m.pitchPixels = 0;
+    if (!pbm_prepare_mode(&cards[1]) || !B->setMode(B, &m))
+        return FALSE;
+    cs->curMode = best;
+    cs->curPitch = 0;
+    cs->shown = NULL;
+    cs->shownVP = NULL;
+    p = pbm_new(&cards[1], best->m.width, best->m.height, 8, best->m.format, NULL, TRUE, TRUE);
+    if (!p || !p->inVram || !show_pbm(p)) {
+        if (p)
+            pbm_free(p);
+        cs->curMode = NULL;
+        return FALSE;
+    }
+    p->locks++;                           /* VRAM paging leaves it where it is */
+    mon2Dst = p;
+    mirSrc = src;
+    mon2_mark(0, 0, 32767, 32767);
+    mon2Gen = paletteGen - 1;             /* the palette at the next tick */
+    if (!cs->rtgOn) {
+        B->setSwitch(B, TRUE);
+        cs->rtgOn = TRUE;
+    }
+    dbg("second monitor: mirror %ux%u, %u bytes a pixel, formats %u -> %u\n",
+        p->w, p->h, p->bpp, src->fmt, p->fmt);
+    return TRUE;
+}
+
+/* the main loop, every tick: copy what was drawn (lock taken here) */
+static void mon2_tick(void)
+{
+    struct PBitMap *s, *d;
+    UWORD x0, x1, y, y1, w, h;
+    ULONG budget = MON2_BUDGET, rowBytes;
+
+    if (!mon2Dst)
+        return;
+    LOCK_QUIET();
+    if (mirSrc != cst[0].shownPbm) {      /* another bitmap on board 0 (double buffering) */
+        ReleaseSemaphore(&lock);
+        update_display();
+        return;
+    }
+    s = mirSrc;
+    d = mon2Dst;
+    if (d->fmt == PF_CLUT8 && mon2Gen != paletteGen) {
+        UBYTE rgb[256 * 3];
+        for (y = 0; y < 256; y++) {
+            ULONG c = s->rgbTab ? s->rgbTab[y] : y * 0x010101UL;
+            rgb[y * 3] = c >> 16; rgb[y * 3 + 1] = c >> 8; rgb[y * 3 + 2] = c;
+        }
+        board_palette(&cards[1], 0, 256, rgb);
+        mon2Gen = paletteGen;
+    }
+    if (dX0 > dX1) {
+        ReleaseSemaphore(&lock);
+        return;
+    }
+    w = s->w < d->w ? s->w : d->w;
+    h = s->h < d->h ? s->h : d->h;
+    x0 = dX0 < 0 ? 0 : dX0;
+    x1 = dX1 >= w ? w - 1 : dX1;
+    y = dY0 < 0 ? 0 : dY0;
+    y1 = dY1 >= h ? h - 1 : dY1;
+    if (x0 > x1 || y > y1) {
+        dX0 = 1; dX1 = 0;
+        ReleaseSemaphore(&lock);
+        return;
+    }
+    if (cards[0].b->waitBlit) cards[0].b->waitBlit(cards[0].b);
+    if (cards[1].b->waitBlit) cards[1].b->waitBlit(cards[1].b);
+    rowBytes = (ULONG)(x1 - x0 + 1) * s->bpp;
+    for (; y <= y1 && budget; y++) {
+        const UBYTE *sp = s->pix + (ULONG)y * s->bpr + (ULONG)x0 * s->bpp;
+        UBYTE *dp = d->pix + (ULONG)y * d->bpr + (ULONG)x0 * d->bpp;
+        if (s->fmt == d->fmt) {
+            CopyMem((APTR)sp, dp, rowBytes);
+        } else {
+            UWORD x;
+            for (x = x0; x <= x1; x++, sp += s->bpp, dp += d->bpp)
+                pf_put(d->fmt, pf_get(s->fmt, sp), dp);
+        }
+        budget = budget > rowBytes ? budget - rowBytes : 0;
+    }
+    if (y > y1) {
+        dX0 = 1; dX1 = 0;                 /* all copied */
+    } else {
+        dY0 = y;                          /* the rest at the next tick */
+    }
+    ReleaseSemaphore(&lock);
+}
+
 /* ---- main ----------------------------------------------------------- */
 
 #define TEMPLATE "BOARD/K,PREFS/K,LOG/S,P96CARD/K,P96MONITOR/K"
@@ -3605,6 +3782,7 @@ int main(void)
             power_tick();                 /* POWERSAVE */
             mirror_tick();                /* MIRRORCHIPSET */
             second_tick();                /* SECONDMONITOR=SCREEN */
+            mon2_tick();                  /* SECONDMONITOR=MIRROR */
             arexx_tick();                 /* the PRISM port */
             if (prefs.log || ++tick % 25 == 0)
                 dbg_flush();
@@ -3639,6 +3817,9 @@ int main(void)
          * FreeBitMap later, with every plane aliasing one chip plane */
         render_quit();
         gels_quit();                  /* its saved backgrounds are Prism bitmaps */
+        ObtainSemaphore(&lock);
+        mon2_stop();                  /* the mirror's copy is one of ours too */
+        ReleaseSemaphore(&lock);
         if (pbm_count()) {
             printf("PrismD: programs still hold %lu Prism bitmaps - close them first\n",
                    (unsigned long)pbm_count());

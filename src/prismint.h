@@ -56,6 +56,7 @@ void sw_clear(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1);
  * the bitmap it is drawn into (a game locking its back buffer every frame
  * must not keep it away). */
 #define LOCK_FOR(p) do { ObtainSemaphore(&lock); \
+                         if (mirSrc && (p) == mirSrc) mon2_mark(0, 0, 32767, 32767); \
                          if (swOn && (p) == swOn) { prismActivity++; sw_hide(); } } while (0)
 extern volatile ULONG paletteGen;
 void render_quit(void);
@@ -72,7 +73,16 @@ extern WORD swX, swY, swW, swH;        /* where it is drawn (pointer.c) */
  * "whatever is being drawn": always. The test is inline so the hot paths
  * (WritePixel, every clipped rectangle) make no call while the pointer
  * is elsewhere. */
+/* SECONDMONITOR=MIRROR (prismd.c): the bitmap the second board copies, and
+ * the rectangle drawn into it since the last copy. Every drawing path into
+ * a Prism bitmap passes SW_CLEAR, and a program's own access LOCK_FOR, so
+ * the copy needs no read-back of the first board's picture to find what
+ * changed. */
+extern struct PBitMap *mirSrc;
+void mon2_mark(WORD x0, WORD y0, WORD x1, WORD y1);
 #define SW_CLEAR(p, x0, y0, x1, y1) do { \
+        if (mirSrc && (!(p) || (p) == mirSrc)) \
+            mon2_mark((p) ? (x0) : 0, (p) ? (y0) : 0, (p) ? (x1) : 32767, (p) ? (y1) : 32767); \
         if (swOn && (!(p) || ((p) == swOn && (x1) >= swX && (x0) < swX + swW && \
                                  (y1) >= swY && (y0) < swY + swH))) \
             sw_clear((p), (x0), (y0), (x1), (y1)); } while (0)      /* bumped when a palette changes in place */
