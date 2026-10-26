@@ -566,6 +566,13 @@ noted in every commit. With thanks to:
   Vampire, with PrismCheck reports and the findings behind beta 5's
   Workbench drag images, planar-blit check, 16:9 sizes and PrismPrefs
   switches (#1).
+* **fboldog** - selected icons without an image of their own: the "invert
+  through mask" minterm, and blits that change only the source's planes,
+  with the `icondraw` and `pencheck` tools to compare them with a native
+  screen (#24) - found while adding Picasso II emulation to his
+  [rp2350-amiga](https://github.com/fboldog/rp2350-amiga).
+* **kadibamler** - found FS-UAE's 640x480 limit (#21) and the Workbench 3.2
+  freeze on an icon dropped on the title bar (#22).
 * **Individual Computers**, **Alexander Kneer**, **Tobias Abt** and **Thomas
   Richter** - the P96 driver development headers in `src/p96sdk` (CC-BY),
   which the P96 card-driver adapter is built with.
