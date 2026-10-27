@@ -43,6 +43,14 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.2.3
+  Workbench icons without a selected image of their own (ShowConfig and
+  PrepCard in Tools, simple two-colour icons) came out as an empty box or
+  in the wrong colours when selected on a 256-colour PrismRTG screen. The
+  "invert through mask" blit now inverts, and a blit from a planar image
+  changes only as many planes as the image has, as on the Amiga's own
+  chips. Found and fixed by Ferenc Boldog (fboldog).
+
 New in 1.2.2
   ZZ9000 (firmware 2.8 and newer): a video layer the card shows itself (a
   player's YUV frames in the card's memory on a 16- or 32-bit screen) came
