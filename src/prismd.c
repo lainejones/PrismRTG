@@ -302,6 +302,8 @@ struct ModeRec {
                                  bits per pixel, as programs expect of an RTG
                                  mode (reqtools' mode requester filters on it) */
     UBYTE bpp;                   /* bytes per pixel: 1, 2, 3 or 4 */
+    UWORD spanHalf;              /* SECONDMONITOR=SPAN: the width each board shows
+                                    of this mode's twice as wide screen (0: none) */
     char  name[DISPLAYNAMELEN];
     /* A DisplayInfoHandle normally points at a graphics.library record;
      * keep some zeroes around ours in case anything peeks inside. */
@@ -312,7 +314,9 @@ typedef char modeRecIdAt16[offsetof(struct ModeRec, id) == 16 ? 1 : -1];
 
 static const char version[] __attribute__((used)) = "$VER: PrismD " PRISM_RELEASE " (" PRISM_RELDATE ")";
 
-#define MAX_MODES PREFS_NMODES        /* every size at every depth */
+/* every size at every depth, and on board 0 a span mode per size at 8 and 16 bit */
+#define MAX_MODES (PREFS_NMODES + 2 * PREFS_NSIZES)
+#define SPAN_ID   0x80                /* in a mode ID's low byte: a span mode */
 
 struct Blk { ULONG off, size; };
 #define MAX_BLKS 256
@@ -447,6 +451,43 @@ static void build_modes(struct PrismCard *c)
     }
 }
 
+/* SECONDMONITOR=SPAN (docs/multi-board.md): one screen across both
+ * monitors. For each size the two boards both have at 8 or 16 bit, board 0
+ * gets a mode twice as wide. Its bitmap lives on board 0, which shows its
+ * half through the oversized-screen path (a row as long as the whole
+ * screen); board 1 shows a copy of the other half (mon2_tick). 24 and 32
+ * bit are left out: a Picasso II row is under 4096 bytes. */
+static void build_span_modes(void)
+{
+    struct CardState *a = &cst[0], *b = &cst[1];
+    ULONG i, j, n = a->nmodes;
+
+    for (i = 0; i < n && a->nmodes < MAX_MODES; i++) {
+        struct ModeRec *m0 = &a->modes[i], *r = &a->modes[a->nmodes];
+        struct PrismMode t;
+        if (m0->bpp > 2 || (m0->id & 0xff) >= SPAN_ID)
+            continue;
+        for (j = 0; j < b->nmodes; j++)
+            if (b->modes[j].m.width == m0->m.width && b->modes[j].m.height == m0->m.height &&
+                b->modes[j].bpp == m0->bpp)
+                break;
+        if (j == b->nmodes)
+            continue;
+        t = m0->m;
+        t.pitchPixels = 2 * m0->m.width;      /* board 0 shows half of a double row */
+        if (!cards[0].b->checkMode(cards[0].b, &t))
+            continue;
+        *r = *m0;
+        r->m.width = 2 * m0->m.width;
+        r->m.bytesPerRow = t.bytesPerRow;
+        r->m.pitchPixels = 0;
+        r->spanHalf = m0->m.width;
+        r->id = m0->id | SPAN_ID;
+        sprintf(r->name, "PRISM:%ux%u %ubit span", r->m.width, r->m.height, r->bpp == 2 ? 16 : 8);
+        a->nmodes++;
+    }
+}
+
 /* ---- VRAM allocator: first fit over a sorted list of used blocks --- */
 
 
@@ -578,6 +619,46 @@ UBYTE prism_ncards(void)
     return ncards;
 }
 
+/* A span screen (build_span_modes): board 0 shows one half of it, the one
+ * on its own monitor's side - through the oversized-screen path, scrolled
+ * to that half once and never again. */
+static void span_place(struct PScreen *ps)
+{
+    if (!ps->mode->spanHalf)
+        return;
+    ps->autoscroll = TRUE;
+    ps->rx = prefs.secondLeft ? ps->mode->spanHalf : 0;   /* the second monitor on the left: board 0 shows the right half */
+    ps->ry = 0;
+}
+
+/* A span screen in front: the board the pointer at screen x is on, and
+ * where that board's half starts on the screen (*ox). NULL: no span
+ * screen in front. Lock held. */
+struct PrismCard *prism_span_card(WORD x, WORD *ox)
+{
+    struct PScreen *ps = cst[0].shown;
+    WORD half;
+    if (ncards < 2 || !ps || !ps->mode->spanHalf || !IntuitionBase->FirstScreen ||
+        ps->screen != IntuitionBase->FirstScreen)
+        return NULL;
+    half = ps->mode->spanHalf;
+    if (x >= ps->rx && x < ps->rx + half) {
+        *ox = ps->rx;
+        return &cards[0];
+    }
+    *ox = ps->rx ? 0 : half;              /* board 1: the other half */
+    return &cards[1];
+}
+
+WORD prism_span_origin(const struct PrismCard *c)
+{
+    WORD ox;
+    struct PScreen *ps = cst[0].shown;
+    if (!prism_span_card(0, &ox))
+        return -1;
+    return c == &cards[0] ? ps->rx : ps->rx ? 0 : ps->mode->spanHalf;
+}
+
 /* where the display starts in a bitmap: an oversized screen's scroll */
 static ULONG scrolled_start(struct PBitMap *p)
 {
@@ -596,8 +677,8 @@ BOOL prism_autoscroll(struct PrismCard *c, WORD mx, WORD my)
     struct CardState *cs = &cst[c->index];
     struct PScreen *ps = cs->shown;
     LONG rx, ry, maxx, maxy, w, h;
-    if (!ps || !ps->autoscroll || !cs->shownPbm || !cs->curMode)
-        return FALSE;
+    if (!ps || !ps->autoscroll || !cs->shownPbm || !cs->curMode || ps->mode->spanHalf)
+        return FALSE;                     /* (a span screen's half stays put) */
     w = cs->curMode->m.width;
     h = cs->curMode->m.height;
     rx = ps->rx;
@@ -1215,6 +1296,8 @@ static BOOL show_card(UBYTE k)
             present_stop(c);
             struct PrismMode m = ps->mode->m;
             m.pitchPixels = pitch;
+            if (ps->mode->spanHalf)
+                m.width = ps->mode->spanHalf;     /* half of the span screen's row */
             /* Rebuilding the pool releases the old scanout allocation. */
             if ((B->flags & PBF_REINIT) && cs->rtgOn) {
                 B->setSwitch(B, FALSE);
@@ -1248,8 +1331,10 @@ static BOOL show_card(UBYTE k)
         return changed;
     }
     present_stop(c);
-    /* SECONDMONITOR=MIRROR: nothing of its own on board 1, so a copy of board 0 */
-    if (k == 1 && prefs.secondMon == SM_MIRROR && mon2_show())
+    /* SECONDMONITOR=MIRROR: nothing of its own on board 1, so a copy of board 0;
+     * SPAN: a copy of the half of board 0's span screen board 0 doesn't show */
+    if (k == 1 && (prefs.secondMon == SM_MIRROR ||
+                   (cst[0].shown && cst[0].shown->mode->spanHalf)) && mon2_show())
         return FALSE;
     if (k == 1)
         mon2_stop();
@@ -1317,12 +1402,12 @@ static void update_display(void)
         }
         for (k = 0; k < MAX_CARDS; k++)
             edgeHas[k] = has[k];
-        if (ps && s) {
+        if (ps && s && !ps->mode->spanHalf) {
             edgeW = s->Width;
             edgeH = s->Height;
             edgeFront = ps->mode->card->index;
         } else
-            edgeFront = -1;
+            edgeFront = -1;               /* (a span screen: the pointer just goes across) */
     }
     ReleaseSemaphore(&lock);
 }
@@ -1894,6 +1979,7 @@ struct PBitMap *screen_bitmap_hook(ULONG w, ULONG h, ULONG depth, ULONG flags)
     ps->mode = mr;
     ps->depth = depth;
     ps->intuitionOwns = TRUE;
+    span_place(ps);
     LOCK();
     ps->next = pscreens;
     pscreens = ps;
@@ -2021,6 +2107,7 @@ static struct Screen *open_prism_screen(struct ModeRec *mr, struct NewScreen *ns
     ps->mode = mr;
     ps->depth = depth;
     ps->autoscroll = big;
+    span_place(ps);
 
     /* the screen's chunky bitmap, cleared, in VRAM if it fits (else fast
      * RAM until it is shown); its row size must be the mode's (modes are
@@ -3175,19 +3262,58 @@ static BOOL second_close(void)
 #define MON2_BUDGET 65536UL
 struct PBitMap *mirSrc;
 static struct PBitMap *mon2Dst;
-static WORD dX0 = 1, dY0, dX1, dY1;      /* the marked rectangle; dX0 > dX1: none */
+static UWORD mon2X;                      /* SPAN: where in the source board 1's half starts */
 static ULONG mon2Gen;                    /* the paletteGen its palette is from */
 
+/* the marked rectangles. Not one rectangle around everything:
+ * a window frame dragged in outline is eight thin lines a move (the old
+ * frame off, the new one on), and the box around them is the whole window */
+#define MON2_RECTS 16
+static struct DRect { WORD x0, y0, x1, y1; } dr[MON2_RECTS];
+static UWORD ndr;
+
+static LONG dr_area(WORD x0, WORD y0, WORD x1, WORD y1)
+{
+    return (LONG)(x1 - x0 + 1) * (y1 - y0 + 1);
+}
+
+/* lock held or Forbid: kept short */
 void mon2_mark(WORD x0, WORD y0, WORD x1, WORD y1)
 {
-    if (dX0 > dX1) {
-        dX0 = x0; dY0 = y0; dX1 = x1; dY1 = y1;
+    LONG a = dr_area(x0, y0, x1, y1), bestWaste = 0x7fffffffL;
+    UWORD i, best = 0;
+
+    for (i = 0; i < ndr; ) {
+        struct DRect *r = &dr[i];
+        WORD ux0, uy0, ux1, uy1;
+        LONG waste;
+        if (x0 >= r->x0 && y0 >= r->y0 && x1 <= r->x1 && y1 <= r->y1)
+            return;                       /* already marked */
+        if (x0 <= r->x0 && y0 <= r->y0 && x1 >= r->x1 && y1 >= r->y1) {
+            dr[i] = dr[--ndr];            /* the new one covers it */
+            continue;
+        }
+        ux0 = x0 < r->x0 ? x0 : r->x0; uy0 = y0 < r->y0 ? y0 : r->y0;
+        ux1 = x1 > r->x1 ? x1 : r->x1; uy1 = y1 > r->y1 ? y1 : r->y1;
+        waste = dr_area(ux0, uy0, ux1, uy1) - dr_area(r->x0, r->y0, r->x1, r->y1) - a;
+        if (waste < bestWaste) {
+            bestWaste = waste;
+            best = i;
+        }
+        i++;
+    }
+    /* joined to another when that copies little more (pieces of one text
+     * line, a box and its border), or when there is no room left */
+    if (ndr && (bestWaste <= 1024 || ndr == MON2_RECTS)) {
+        struct DRect *r = &dr[best];
+        if (x0 < r->x0) r->x0 = x0;
+        if (y0 < r->y0) r->y0 = y0;
+        if (x1 > r->x1) r->x1 = x1;
+        if (y1 > r->y1) r->y1 = y1;
         return;
     }
-    if (x0 < dX0) dX0 = x0;
-    if (y0 < dY0) dY0 = y0;
-    if (x1 > dX1) dX1 = x1;
-    if (y1 > dY1) dY1 = y1;
+    dr[ndr].x0 = x0; dr[ndr].y0 = y0; dr[ndr].x1 = x1; dr[ndr].y1 = y1;
+    ndr++;
 }
 
 /* lock held */
@@ -3216,25 +3342,31 @@ static BOOL mon2_show(void)
     struct ModeRec *best = NULL;
     struct PrismMode m;
     ULONG i;
+    UWORD w, x;
 
     if (!src || !a->curMode || cs->testPbm || (B->flags & (PBF_SHADOW | PBF_PRESENT))) {
         mon2_stop();
         return FALSE;
     }
-    if (mon2Dst && mirSrc == src && cs->curMode && cs->curMode->m.width == a->curMode->m.width &&
+    /* a span screen: board 1 shows the half board 0 doesn't, in its mode
+     * of half the width */
+    w = a->curMode->spanHalf ? a->curMode->spanHalf : a->curMode->m.width;
+    x = a->curMode->spanHalf && !prefs.secondLeft ? a->curMode->spanHalf : 0;
+    if (mon2Dst && mirSrc == src && mon2X == x && cs->curMode && cs->curMode->m.width == w &&
         cs->curMode->m.height == a->curMode->m.height)
         return TRUE;
     mon2_stop();
+    mon2X = x;
     for (i = 0; i < cs->nmodes; i++) {
         struct ModeRec *mr = &cs->modes[i];
-        if (mr->m.width == a->curMode->m.width && mr->m.height == a->curMode->m.height && mr->bpp == src->bpp) {
+        if (mr->m.width == w && mr->m.height == a->curMode->m.height && mr->bpp == src->bpp) {
             best = mr;
             break;
         }
     }
     if (!best) {
         dbg("second monitor: no %ux%u mode at %u bytes a pixel to mirror into\n",
-            a->curMode->m.width, a->curMode->m.height, src->bpp);
+            w, a->curMode->m.height, src->bpp);
         return FALSE;
     }
     present_stop(&cards[1]);
@@ -3267,12 +3399,51 @@ static BOOL mon2_show(void)
     return TRUE;
 }
 
+/* copy rows y..y1, x0..x1 of board 1's half while the budget lasts; the
+ * first row not copied */
+static UWORD mon2_rows(struct PBitMap *s, struct PBitMap *d, UWORD x0, UWORD x1, UWORD y, UWORD y1,
+                       BOOL swap16, ULONG *budget)
+{
+    ULONG rowBytes = (ULONG)(x1 - x0 + 1) * s->bpp;
+
+    for (; y <= y1 && *budget; y++) {
+        const UBYTE *sp = s->pix + (ULONG)y * s->bpr + (ULONG)(x0 + mon2X) * s->bpp;
+        UBYTE *dp = d->pix + (ULONG)y * d->bpr + (ULONG)x0 * d->bpp;
+        if (s->fmt == d->fmt) {
+            CopyMem((APTR)sp, dp, rowBytes);
+        } else if (swap16) {
+            UWORD n = x1 - x0 + 1;
+            if (!((ULONG)sp & 2) && !((ULONG)dp & 2)) {       /* two pixels a longword */
+                const ULONG *sl = (const ULONG *)sp;
+                ULONG *dl = (ULONG *)dp;
+                for (; n >= 2; n -= 2) {
+                    ULONG v = *sl++;
+                    *dl++ = ((v >> 8) & 0x00ff00ffUL) | ((v << 8) & 0xff00ff00UL);
+                }
+                sp = (const UBYTE *)sl;
+                dp = (UBYTE *)dl;
+            }
+            for (; n; n--, sp += 2, dp += 2) {
+                UWORD v = *(const UWORD *)sp;
+                *(UWORD *)dp = (UWORD)((v >> 8) | (v << 8));
+            }
+        } else {
+            UWORD x;
+            for (x = x0; x <= x1; x++, sp += s->bpp, dp += d->bpp)
+                pf_put(d->fmt, pf_get(s->fmt, sp), dp);
+        }
+        *budget = *budget > rowBytes ? *budget - rowBytes : 0;
+    }
+    return y;
+}
+
 /* the main loop, every tick: copy what was drawn (lock taken here) */
 static void mon2_tick(void)
 {
     struct PBitMap *s, *d;
     UWORD x0, x1, y, y1, w, h;
-    ULONG budget = MON2_BUDGET, rowBytes;
+    ULONG budget = MON2_BUDGET;
+    BOOL swap16;
 
     if (!mon2Dst)
         return;
@@ -3293,40 +3464,36 @@ static void mon2_tick(void)
         board_palette(&cards[1], 0, 256, rgb);
         mon2Gen = paletteGen;
     }
-    if (dX0 > dX1) {
-        ReleaseSemaphore(&lock);
-        return;
-    }
-    w = s->w < d->w ? s->w : d->w;
-    h = s->h < d->h ? s->h : d->h;
-    x0 = dX0 < 0 ? 0 : dX0;
-    x1 = dX1 >= w ? w - 1 : dX1;
-    y = dY0 < 0 ? 0 : dY0;
-    y1 = dY1 >= h ? h - 1 : dY1;
-    if (x0 > x1 || y > y1) {
-        dX0 = 1; dX1 = 0;
+    if (!ndr) {
         ReleaseSemaphore(&lock);
         return;
     }
     if (cards[0].b->waitBlit) cards[0].b->waitBlit(cards[0].b);
     if (cards[1].b->waitBlit) cards[1].b->waitBlit(cards[1].b);
-    rowBytes = (ULONG)(x1 - x0 + 1) * s->bpp;
-    for (; y <= y1 && budget; y++) {
-        const UBYTE *sp = s->pix + (ULONG)y * s->bpr + (ULONG)x0 * s->bpp;
-        UBYTE *dp = d->pix + (ULONG)y * d->bpr + (ULONG)x0 * d->bpp;
-        if (s->fmt == d->fmt) {
-            CopyMem((APTR)sp, dp, rowBytes);
-        } else {
-            UWORD x;
-            for (x = x0; x <= x1; x++, sp += s->bpp, dp += d->bpp)
-                pf_put(d->fmt, pf_get(s->fmt, sp), dp);
-        }
-        budget = budget > rowBytes ? budget - rowBytes : 0;
-    }
-    if (y > y1) {
-        dX0 = 1; dX1 = 0;                 /* all copied */
-    } else {
-        dY0 = y;                          /* the rest at the next tick */
+    /* the same pixels with their two bytes exchanged (a ZZ9000's 565 big-
+     * endian and a Cirrus's 565 little-endian): pf_get/pf_put per pixel
+     * took about a second for a whole 800x600 half */
+    swap16 = s->bpp == 2 && d->bpp == 2 &&
+        ((s->fmt == PF_RGB565BE && d->fmt == PF_RGB565LE) || (s->fmt == PF_RGB565LE && d->fmt == PF_RGB565BE) ||
+         (s->fmt == PF_RGB555BE && d->fmt == PF_RGB555LE) || (s->fmt == PF_RGB555LE && d->fmt == PF_RGB555BE));
+    /* the marked rectangles are in the source's coordinates; board 1's half
+     * starts mon2X into it (0 but for a span screen) */
+    w = s->w - mon2X < d->w ? s->w - mon2X : d->w;
+    h = s->h < d->h ? s->h : d->h;
+    while (ndr && budget) {
+        struct DRect *r = &dr[0];
+        if (r->x1 >= (WORD)mon2X && r->x0 - (WORD)mon2X < (WORD)w && r->y1 >= 0 && r->y0 < (WORD)h) {
+            x0 = r->x0 - (WORD)mon2X < 0 ? 0 : r->x0 - mon2X;
+            x1 = r->x1 - (WORD)mon2X >= (WORD)w ? w - 1 : r->x1 - mon2X;
+            y = r->y0 < 0 ? 0 : r->y0;
+            y1 = r->y1 >= (WORD)h ? h - 1 : r->y1;
+            y = mon2_rows(s, d, x0, x1, y, y1, swap16, &budget);
+            if (y <= y1) {
+                r->y0 = y;                /* the rest at the next tick */
+                break;
+            }
+        }                                 /* else all of it on board 0's half */
+        dr[0] = dr[--ndr];
     }
     ReleaseSemaphore(&lock);
 }
@@ -3781,6 +3948,8 @@ int main(void)
         printf("PrismD: only %s is used\n", board.name);
         drop_second();
     }
+    if (ncards > 1 && prefs.secondMon == SM_SPAN)
+        build_span_modes();
 
     STAGE("board found, modes built");
     for (k = 0; k < ncards; k++) {

@@ -359,6 +359,11 @@ BOOL prism_any_shadow(void);           /* a board with PBF_SHADOW is driven */
 BOOL prism_display_scroll(struct PrismCard *c, WORD *rx, WORD *ry);
 /* scroll it so the pointer (screen coordinates) stays in view; lock held */
 BOOL prism_autoscroll(struct PrismCard *c, WORD mx, WORD my);
+/* a span screen in front (SECONDMONITOR=SPAN): the board screen x is on and
+ * where its half starts (*ox); NULL otherwise. Lock held. */
+struct PrismCard *prism_span_card(WORD x, WORD *ox);
+/* where board c's half of the span screen in front starts, or -1 */
+WORD prism_span_origin(const struct PrismCard *c);
 BOOL prism_software_pointer(void);
 void present_stop(struct PrismCard *c);
 void present_invalidate(struct PrismCard *c);   /* compose card c's frame afresh */

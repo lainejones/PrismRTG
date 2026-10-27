@@ -283,7 +283,13 @@ static void shown_origin(WORD *ox, WORD *oy)
 {
     struct PBitMap *f, *b; WORD top, bt; UWORD w, h;
     struct Screen *s;
+    WORD sx;
     *ox = *oy = 0;
+    /* a span screen: this board's half of it (board 1 shows a copy) */
+    if ((sx = prism_span_origin(ptrCard)) >= 0) {
+        *ox = sx;
+        return;
+    }
     if ((s = prism_display_layers(ptrCard, &f, &b, &top, &bt, &w, &h))) {
         WORD rx, ry;
         *ox = s->LeftEdge;
@@ -390,6 +396,13 @@ void pointer_tick(void)
     ObtainSemaphore(&lock);
     if (on && prism_autoscroll(ptrCard, posX, posY))   /* an oversized screen follows the pointer */
         dirtyPos = TRUE;
+    if (on) {
+        /* a span screen: the pointer goes over to the board whose half it is on */
+        WORD ox;
+        struct PrismCard *sc = prism_span_card(posX, &ox);
+        if (sc && sc != ptrCard)
+            pointer_on(vpOn, sc);
+    }
     if ((on && (dirtyPos || dirtyImage || pointer_software())) || swOn) {
         if (on && haveImage) {
             apply();
