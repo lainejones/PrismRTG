@@ -42,15 +42,19 @@ enum { GAD_LIST = 1, GAD_ON, GAD_HZ, GAD_BOARD, GAD_BLIT, GAD_LOG,
        GAD_UPDATES, GAD_CHECK, GAD_W, GAD_H, GAD_SETSIZE, GAD_GAMMA, GAD_POWER, GAD_MIRROR, GAD_SECMON };
 
 /* the 2nd monitor cycle (SECONDMONITOR=): what a second board shows while
- * no screen is opened on it; its entries in the order of secValues */
-static STRPTR secLabels[] = { "Own screen", "Mirror", "Off", NULL };
-static const UBYTE secValues[] = { SM_SCREEN, SM_MIRROR, SM_OFF };
+ * no screen is opened on it; its entries in the order of secValues. Span
+ * twice, for the side the second monitor stands on (SECONDSIDE=) */
+static STRPTR secLabels[] = { "Own screen", "Mirror", "Span right", "Span left", "Off", NULL };
+static const UBYTE secValues[] = { SM_SCREEN, SM_MIRROR, SM_SPAN, SM_SPAN, SM_OFF };
+#define SEC_SPAN_LEFT 3
 
-static UWORD sec_index(UBYTE v)
+static UWORD sec_index(const struct PrismPrefs *p)
 {
     UWORD i;
+    if (p->secondMon == SM_SPAN)
+        return p->secondLeft ? SEC_SPAN_LEFT : SEC_SPAN_LEFT - 1;
     for (i = 0; i < sizeof(secValues); i++)
-        if (secValues[i] == v)
+        if (secValues[i] == p->secondMon)
             return i;
     return 0;
 }
@@ -292,7 +296,7 @@ static void show_settings(struct Gui *g)
     GT_SetGadgetAttrs(g->gOn, g->win, NULL, GTCB_Checked, (ULONG)p->on[g->sel], TAG_END);
     GT_SetGadgetAttrs(g->gHz, g->win, NULL, GTCY_Active, (ULONG)rate_index(p->hz[g->sel]), TAG_END);
     GT_SetGadgetAttrs(g->gBoard, g->win, NULL, GTCY_Active, (ULONG)board_entry(p), TAG_END);
-    GT_SetGadgetAttrs(g->gSecMon, g->win, NULL, GTCY_Active, (ULONG)sec_index(p->secondMon), TAG_END);
+    GT_SetGadgetAttrs(g->gSecMon, g->win, NULL, GTCY_Active, (ULONG)sec_index(p), TAG_END);
     GT_SetGadgetAttrs(g->gBlit, g->win, NULL, GTCB_Checked, (ULONG)p->blitter, TAG_END);
     GT_SetGadgetAttrs(g->gLog, g->win, NULL, GTCY_Active, (ULONG)(p->log <= 2 ? p->log : 1), TAG_END);
     GT_SetGadgetAttrs(g->gBgr, g->win, NULL, GTCB_Checked, (ULONG)p->clutBGR, TAG_END);
@@ -568,7 +572,7 @@ static BOOL make_gadgets(struct Gui *g, WORD *innerW, WORD *innerH)
     ng.ng_TopEdge = y;
     ng.ng_GadgetText = (STRPTR)S(ID_2ND_MONITOR, "2nd monitor"); ng.ng_GadgetID = GAD_SECMON;
     gad = g->gSecMon = CreateGadget(CYCLE_KIND, gad, &ng, GTCY_Labels, (ULONG)secLabels,
-                                    GTCY_Active, (ULONG)sec_index(g->prefs.secondMon), TAG_END);
+                                    GTCY_Active, (ULONG)sec_index(&g->prefs), TAG_END);
 
     y += row;
     ng.ng_TopEdge = y; ng.ng_Width = 26; ng.ng_Height = fh + 3;
@@ -881,8 +885,11 @@ static void event_loop(struct Gui *g)
                     break;
                 case GAD_SECMON:
                     g->prefs.secondMon = code < sizeof(secValues) ? secValues[code] : SM_SCREEN;
+                    if (g->prefs.secondMon == SM_SPAN)
+                        g->prefs.secondLeft = code == SEC_SPAN_LEFT;
                     set_status(g, g->prefs.secondMon == SM_SCREEN ? S(ID_SECOND_BOARD_SHOWS_A_SCREEN_OF_ITS_OWN, "Second board: a screen of its own, PRISM2 (restart PrismD)")
                                   : g->prefs.secondMon == SM_MIRROR ? S(ID_SECOND_BOARD_SHOWS_A_COPY_OF_THE_FIRST, "Second board: a copy of the first one's picture (restart PrismD)")
+                                  : g->prefs.secondMon == SM_SPAN ? S(ID_SPAN_MODES_ONE_SCREEN_ACROSS_BOTH_MONITO, "Span modes: one screen across both monitors (restart PrismD, then pick one in ScreenMode)")
                                   : S(ID_SECOND_BOARD_SHOWS_THE_AMIGA_S_VIDEO, "Second board: the Amiga's own video while nothing is on it (restart PrismD)"));
                     break;
                 case GAD_GAMMA:

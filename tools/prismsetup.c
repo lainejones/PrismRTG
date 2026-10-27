@@ -44,7 +44,8 @@
  *       Write ENVARC:Sys/screenmode.prefs (used from the next boot) for the Prism mode
  *       with ModeID $7A00<id> (the low word: depth slot << 8 | size slot, e.g. $0102 =
  *       800x600 16-bit), 256 pens. Returns 0, or 10. The installer uses this: a ModeID
- *       never changes when sizes are added.
+ *       never changes when sizes are added. $80 on the size slot is the span mode
+ *       across both monitors (SECONDMONITOR=SPAN), e.g. $0182 = 1600x600 16-bit.
  *
  *       Where the system keeps a screen mode per machine (Caffeine OS:
  *       screenmode.prefs.UAE and .PI next to it, one picked at boot), those
@@ -716,7 +717,9 @@ static int set_p96(const char *card, const char *monitor)
 }
 
 /* IFF PREF with one SCRM chunk (prefs/screenmode.h), 62 bytes */
-static int write_wbmode(LONG slot)
+#define SPAN_ID 0x80                         /* in the size slot: a span mode (prismint.h) */
+
+static int write_wbmode(LONG slot, BOOL span)
 {
     /* ENVARC: only - it takes effect at the next boot. Writing ENV: as
      * well makes IPrefs try to reset the Workbench screen there and then
@@ -741,6 +744,10 @@ static int write_wbmode(LONG slot)
     if (!prefs_size(&prefs, slot, &w, &h)) {
         printf(S(ID_PRISMSETUP_SLOT_D_IS_A_CUSTOM_SIZE_THAT, "PrismSetup: slot %ld is a custom size that is not set\n"), (long)slot);
         return 10;
+    }
+    if (span) {
+        id |= SPAN_ID;
+        w *= 2;
     }
     memset(f, 0, sizeof(f));
     memcpy(f, "FORM", 4);          f[7] = 54;
@@ -803,14 +810,14 @@ int main(void)
         else if (a[0] == '0' && (a[1] == 'x' || a[1] == 'X')) a += 2;
         id = strtoul(a, NULL, 16) & 0xffff;
         depth = id >> 8;
-        size = id & 0xff;
-        if (depth >= PREFS_NDEPTHS || size >= PREFS_NSIZES) {
+        size = id & 0xff & ~SPAN_ID;
+        if (depth >= PREFS_NDEPTHS || size >= PREFS_NSIZES || ((id & SPAN_ID) && depth > 1)) {
             printf(S(ID_PRISMSETUP_WBID_IS_NOT_A_PRISMRTG_MODE, "PrismSetup: WBID %s is not a PrismRTG mode\n"), (const char *)args[4]);
             rc = 10;
         } else
-            rc = write_wbmode((LONG)(depth * PREFS_NSIZES + size));
+            rc = write_wbmode((LONG)(depth * PREFS_NSIZES + size), (id & SPAN_ID) != 0);
     } else if (args[1])
-        rc = write_wbmode(*(LONG *)args[1]);
+        rc = write_wbmode(*(LONG *)args[1], FALSE);
     else if (args[2])
         rc = p96_park();
     else if (args[3])
