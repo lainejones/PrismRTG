@@ -43,6 +43,24 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.3 beta 1 (please report how it goes)
+  Two boards, two monitors: the second monitor is never black any more.
+  PrismPrefs' new "2nd monitor" setting (SECONDMONITOR=) picks what it
+  shows while it has no screen of its own: "Own screen" (the default) opens
+  a public screen, PRISM2, on it for windows and programs; "Mirror" shows a
+  copy of the first monitor; "Off" leaves the Amiga's own video there, as
+  before. Push the pointer off the edge facing the other monitor and it
+  moves over, bringing that board's front screen forward (SECONDSIDE=LEFT
+  when the second monitor stands on the left).
+  Smooth screen dragging (issue #1): the Cirrus cards (GBAPII++, Picasso
+  II and IV) and the ZZ9000 now show a dragged screen and the one behind
+  it with the card's own split display, so a drag is a few register writes
+  per step instead of a copy of both screens; the card's pointer stays on,
+  and PrismD runs at 60 steps a second. On an A4000 the drag went from
+  about 5 steps a second to smooth on both cards. Dragging is still
+  switched on with "Drag screens" in PrismPrefs (DRAGGING=ON).
+  Everything in 1.2.3 is in here too.
+
 New in 1.2.3
   Workbench icons without a selected image of their own (ShowConfig and
   PrepCard in Tools, simple two-colour icons) came out as an empty box or
@@ -298,6 +316,14 @@ Two boards (new in 1.1 beta 6 - tested in an emulator so far)
   the card on the bigger monitor; the status line names the boards and their
   expansion addresses. "Auto, 1 board" (SECONDBOARD=OFF) keeps to one board;
   with two, the Test button asks which board shows the test picture.
+  "2nd monitor" (SECONDMONITOR=) is what the second monitor shows while no
+  screen of its own is on it: Own screen (PRISM2, a public screen for
+  windows and programs: PUBSCREEN=PRISM2, or a PRISM2: mode), Mirror (a
+  copy of the first board's picture, in its mode of the same size and
+  depth; the pointer is not copied yet) or Off (the Amiga's own video).
+  The pointer pushed past the edge facing the other monitor (no button
+  held) goes over to it; SECONDSIDE=LEFT if the second monitor stands left
+  of the first.
 
 Software pointer
   Boards without a working hardware pointer get a pointer drawn into the
@@ -390,6 +416,12 @@ Dragging and PIP windows
   dragged screen with the card's blitter; drawing on a dragged screen keeps
   most of its speed on a 68030. Switched off (dragging's default) they
   cost nothing. Few programs have used it yet - please report.
+  Where the card can split its display (the Cirrus cards and the ZZ9000;
+  from 1.3) a drag of two screens of the same depth needs no copying:
+  the card shows the top one down to the drag line and the other below.
+  On the Cirrus cards the lower screen must start at the beginning of the
+  card's memory, so the first step of a drag may swap two bitmaps there
+  (a moment's glimpse of another screen); later steps are instant.
 
 24-bit or 32-bit?
   Both are true colour. On the GBAPII++ the card's blitter can draw text

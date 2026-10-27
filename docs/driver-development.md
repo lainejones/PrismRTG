@@ -108,6 +108,7 @@ Who calls what:
 | `setPalette` | `SetRGB32`/`LoadRGB` callers, screen show | lock held |
 | `setSwitch` | screen show/hide, PrismD start and quit | lock held |
 | `waitVBlank` | `ChangeVPBitMap` (double buffering) | lock held |
+| `setSplit` | the compositor, each step of a screen drag | lock held; optional (from 1.3) |
 | `saveState`/`restoreState` | PrismTest only | before/after borrowing the board |
 | `fillRect` ... `drawLine`, `ops->*` | any drawing task | lock held (quick paths hold `Forbid` instead - the same exclusivity) |
 | `waitBlit` | any task about to touch VRAM with the CPU | lock held |
@@ -305,6 +306,19 @@ stand down and nothing a driver does changes.
   Picasso IV.
 * **Vertical blank:** `waitVBlank` returns when the next blank starts.
   Used for tear-free double-buffer swaps; NULL means swap at once.
+* **Split display:** `setSplit(b, top, bottom, line)` (optional, from
+  1.3; a member after `opsSize`, so older drivers leave it NULL) scans
+  lines 0..line-1 out from VRAM offset `top` and the lines from `line` on
+  from `bottom`; `line` 0 ends the split (PrismD sets the display start
+  again). Screen dragging uses it whenever both screens are in VRAM with
+  the same format and pitch: a drag step is then this one call instead of
+  composing a frame. Return FALSE for what the board can't do - PrismD
+  falls back to composing. A VGA-style line compare restarts at VRAM 0
+  (the Cirrus driver: CR18, CR07 bit 4, CR09 bit 6), so it refuses any
+  `bottom` but 0 and PrismD moves the screen behind there first. The
+  ZZ9000 driver uses the firmware's SetSplitPosition, which takes any
+  offset; it applies the line at the next blank but the offset at once,
+  so ending a split keeps the last `bottom` rather than writing 0.
 * **State:** `saveState`/`restoreState` snapshot whatever another RTG
   system left on the card, so `PrismTest` can borrow a board from a
   running Picasso96 and hand it back.

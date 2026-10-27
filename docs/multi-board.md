@@ -98,25 +98,36 @@ Either board can be the primary - the one with the `PRISM:` modes, so Workbench:
 records and driver slots; the drivers keep no pointer to those). `PrismSem.boardAddr[]` gives
 each board's expansion address, so two of one kind can be told apart.
 
-## The second monitor (SECONDMONITOR=, planned 2026-10-25)
+## The second monitor (SECONDMONITOR=, from 1.3 beta 1)
 
-Until now a second board with no screen of its own went back to the Amiga's video, and with
+Until 1.3 a second board with no screen of its own went back to the Amiga's video, and with
 Workbench on the primary that is an empty chipset display: a black monitor. Two monitors
-should both show something, so the second board gets a setting of its own (PrismPrefs, a
-cycle gadget beside "Second board"):
+should both show something, so the second board has a setting of its own (PrismPrefs' "2nd
+monitor" cycle, under Board):
 
-- `SCREEN` (the default): PrismD opens a public screen on the second board, `PRISM2`, in that
-  board's first mode, with a backdrop and a title, so the monitor is never black and windows
-  and programs can be put there (`PUBSCREEN=PRISM2`, or a program's own screen on a
-  `PRISM2:` mode, which then comes in front of it as usual).
-- `MIRROR`: the second board shows a copy of what the first one shows - the same mode where
-  it has it (else the smallest that holds it, at the top left), refreshed from the first
-  board's bitmap as rows change, the way the chipset mirror refreshes its copy.
-- `SPAN`: one Workbench across both monitors. The Workbench screen is opened as wide as the
-  two modes together; the primary shows its left part, the second board a copy of its right
-  part, and the pointer goes from one monitor to the other at the edge. Both modes must have
-  the same height and depth.
+- `SCREEN` (the default): PrismD opens a public screen, `PRISM2`, on the second board behind
+  every other screen, in its 256-colour mode of the primary's size where it has one, so the
+  monitor is never black and windows and programs can be put there (`PUBSCREEN=PRISM2`, or a
+  program's own screen on a `PRISM2:` mode, which then comes in front of it as usual). Closed
+  when PrismD quits, not while windows are on it.
+- `MIRROR`: the second board shows a copy of what the first one shows, in its mode of the
+  same size and depth (none: nothing is mirrored). The first board's picture is never read
+  back to find what changed: drawing into the bitmap on display marks rectangles through the
+  hooks every drawing path already passes (`SW_CLEAR`, `LOCK_FOR`), and every tick copies up
+  to 64 KB of them across, converting the pixels where the boards store them differently. A
+  256-colour copy gets the first board's palette. Not copied yet: the pointer, and the
+  compositor's frames (dragging, PIPs).
+- `SPAN` (not in 1.3 beta 1; branch `feature/span`): one Workbench across both monitors. A
+  span mode on the primary is twice the width of a mode both boards have; the primary shows
+  its half of the bitmap, the second board a copy of the other half (`SECONDSIDE` picks
+  which), and the pointer crosses to the board it is over. 8 and 16 bits only.
 - `OFF`: as before - the second monitor shows the Amiga's own video while nothing is on it.
+
+The pointer pushed past the edge facing the other monitor (24 mouse counts, no button held,
+so a dragged window or icon stays) brings the other board's front screen forward and puts the
+pointer on its near edge at the same height; back the same way. `SECONDSIDE=LEFT` when the
+second monitor stands left of the first. PrismD's input handler asks; the main loop does it
+(`ScreenToFront` and a `NEWPOINTERPOS` event).
 
 ## Not in this first version
 
