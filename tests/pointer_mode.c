@@ -15,6 +15,8 @@ void present_invalidate(struct PrismCard *c) { (void)c; }
 BOOL prism_dragging(void) { return FALSE; }
 BOOL prism_display_scroll(struct PrismCard *c, WORD *rx, WORD *ry) { *rx = *ry = 0; return FALSE; }
 BOOL prism_autoscroll(struct PrismCard *c, WORD mx, WORD my) { return FALSE; }
+WORD prism_span_origin(const struct PrismCard *c) { (void)c; return -1; }
+struct PrismCard *prism_span_card(WORD x, WORD *ox) { (void)x; *ox = 0; return NULL; }
 BOOL prism_software_pointer(void) { return FALSE; }
 /* No shown Prism bitmap: the software sprite has nowhere to draw. */
 struct PBitMap *prism_display_bitmap(struct PrismCard *c) { (void)c; return NULL; }

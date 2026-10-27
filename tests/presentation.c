@@ -20,7 +20,7 @@ static WORD screenTop,backTop;
 static BOOL nativeBehind;
 static ULONG display,writes,frees,allocations;
 static BOOL failAllocate,hwVisible;
-static WORD hardwareY;
+static WORD hardwareX,hardwareY;
 static BOOL overlay,backOverlay,failWrite;
 static BOOL dragEnabled=TRUE,forceSoftware;
 BOOL prism_dragging(void) { return dragEnabled; }
@@ -37,6 +37,11 @@ struct Screen *prism_display_layers(struct PrismCard *c,struct PBitMap **f,struc
 BOOL p96_pip_active(struct Screen *s) { (void)s;return overlay; }
 /* one card here: what a drag uncovers is simply the next screen */
 struct Screen *prism_back_screen(struct PrismCard *c,struct Screen *s) { (void)c;return s ? s->NextScreen : NULL; }
+/* a span screen: where this board's half starts (-1: none); one board here,
+ * so the pointer never changes board */
+static WORD spanOrigin=-1;
+WORD prism_span_origin(const struct PrismCard *c) { (void)c;return spanOrigin; }
+struct PrismCard *prism_span_card(WORD x,WORD *ox) { (void)x;*ox=spanOrigin;return spanOrigin>=0 ? &cards[0] : NULL; }
 /* the split: what the board was asked, and a board (a VGA line compare)
  * that only restarts the lower part at VRAM 0 */
 static ULONG splitTop,splitBottom,toVram0;
@@ -100,7 +105,7 @@ static BOOL write_pixels(struct PrismBoard *b,const struct PrismSurface *s,
 static void cursor_show(struct PrismBoard *b,BOOL visible)
 { (void)b;hwVisible=visible; }
 static void cursor_move(struct PrismBoard *b,WORD x,WORD y)
-{ (void)b;(void)x;hardwareY=y; }
+{ (void)b;hardwareX=x;hardwareY=y; }
 static void cursor_image(struct PrismBoard *b,const UBYTE *pixels,const UBYTE *rgb)
 { (void)b;(void)pixels;(void)rgb; }
 int main(void)
@@ -202,6 +207,10 @@ int main(void)
     /* the card's cursor stays on over the composed drag, at display rows */
     failWrite=FALSE;present_tick();pointer_tick();
     assert(present_ready(&cards[0]) && hwVisible && hardwareY==1);
+    /* on a span screen the card's cursor is placed in its own half */
+    spanOrigin=0;posX=1;dirtyPos=TRUE;pointer_tick();assert(hwVisible && hardwareX==1);
+    spanOrigin=1;dirtyPos=TRUE;pointer_tick();assert(hardwareX==0);
+    spanOrigin=-1;
     pointer_off();screenTop=0;on=TRUE;dragEnabled=FALSE;
     screenTop=1;present_tick();assert(!allocated && !pointer_software());
     forceSoftware=TRUE;assert(pointer_software());
@@ -222,6 +231,6 @@ int main(void)
     assert(present_split(&cards[0]) && toVram0==1 && front.vramOff==0 && splitBottom==0 && splitLine==1);
     screenTop=0;present_tick();
     assert(!present_split(&cards[0]) && display==0);
-    puts("presentation: cursor, split, damage and scanout lifetime passed");
+    puts("presentation: cursor, split, span cursor, damage and scanout lifetime passed");
     return 0;
 }

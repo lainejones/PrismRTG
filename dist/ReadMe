@@ -43,6 +43,16 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.3 beta 2 (please report how it goes)
+  Span: one screen across both monitors. "Span right" or "Span left" in
+  PrismPrefs' 2nd monitor setting gives every 8- and 16-bit mode both
+  boards have a span mode twice as wide; Workbench on one of those reaches
+  over both monitors, and the pointer and windows move across the middle.
+  The primary board shows its half itself; the second board's half is a
+  copy, converted where the two boards store pixels differently (a ZZ9000
+  and a GBAPII++ two pixels at a time). PrismSetup WBID=$0182 (for
+  example) sets a span mode for Workbench from a script.
+
 New in 1.3 beta 1 (please report how it goes)
   Two boards, two monitors: the second monitor is never black any more.
   PrismPrefs' new "2nd monitor" setting (SECONDMONITOR=) picks what it
@@ -324,6 +334,16 @@ Two boards (new in 1.1 beta 6 - tested in an emulator so far)
   The pointer pushed past the edge facing the other monitor (no button
   held) goes over to it; SECONDSIDE=LEFT if the second monitor stands left
   of the first.
+  Span right / Span left (SECONDMONITOR=SPAN, from 1.3 beta 2): one
+  screen across both monitors. Each 8- or 16-bit mode both boards have
+  gets a span mode twice as wide on the primary ("PRISM:1600x600 16bit
+  span" from two 800x600 modes); pick it in ScreenMode for Workbench, or in
+  a program's mode requester. The primary shows its half, the second board
+  a copy of the other half, and the pointer and windows move freely across
+  the middle. "Span right" when the second monitor stands right of the
+  first, "Span left" when it stands on the left. The copied half follows
+  what is drawn a moment later - on a Zorro II board a whole half takes
+  about a third of a second.
 
 Software pointer
   Boards without a working hardware pointer get a pointer drawn into the

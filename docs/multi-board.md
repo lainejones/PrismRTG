@@ -117,11 +117,32 @@ monitor" cycle, under Board):
   to 64 KB of them across, converting the pixels where the boards store them differently. A
   256-colour copy gets the first board's palette. Not copied yet: the pointer, and the
   compositor's frames (dragging, PIPs).
-- `SPAN` (not in 1.3 beta 1; branch `feature/span`): one Workbench across both monitors. A
-  span mode on the primary is twice the width of a mode both boards have; the primary shows
-  its half of the bitmap, the second board a copy of the other half (`SECONDSIDE` picks
-  which), and the pointer crosses to the board it is over. 8 and 16 bits only.
+- `SPAN` (from 1.3 beta 2; PrismPrefs "Span right"/"Span left"): one Workbench across both
+  monitors. A span mode on the primary is twice the width of a mode both boards have; the
+  primary shows its half of the bitmap, the second board a copy of the other half
+  (`SECONDSIDE` picks which), and the pointer crosses to the board it is over. 8 and 16 bits
+  only.
 - `OFF`: as before - the second monitor shows the Amiga's own video while nothing is on it.
+
+How `SPAN` is built (prismd.c, pointer.c):
+
+- Modes: after both boards are up, `build_span_modes()` adds, for every primary mode of 1 or 2
+  bytes a pixel that the second board also has, a mode of twice the width (`checkMode` with
+  that pitch) whose ModeID is the base one with `$80` in the size byte (`SPAN_ID`), so
+  `$7A000102` (800x600 16-bit) gives `$7A000182`. `ModeRec.spanHalf` is the half width.
+  PrismSetup `WBID=$0182` writes such a mode for Workbench.
+- The primary: the screen is shown like an oversized one (`span_place`: autoscroll on, the
+  display start `rx` = the half when the second monitor is on the left, else 0) in its mode
+  of the half width; `prism_autoscroll` leaves span screens alone, so the view never scrolls.
+- The second board: the mirror's copy with a source offset (`mon2X`). Drawing marks up to 16
+  rectangles (merged when that copies at most 1024 pixels more, or when all 16 are used): a
+  window frame dragged in outline is eight thin lines a move, and one rectangle around them
+  would be the whole window. Each tick copies up to 64 KB of them; where the boards differ
+  only in byte order (a ZZ9000's 565 big-endian, a Cirrus's 565 little-endian) two pixels a
+  longword are swapped, otherwise `pf_get`/`pf_put` per pixel.
+- The pointer: `prism_span_card(x)` names the board whose half `x` is in, `pointer_tick`
+  moves the pointer to it, and `prism_span_origin` places the card's cursor in that half.
+  Edge switching between the boards is off while a span screen is in front.
 
 The pointer pushed past the edge facing the other monitor (24 mouse counts, no button held,
 so a dragged window or icon stays) brings the other board's front screen forward and puts the
