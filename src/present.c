@@ -57,6 +57,9 @@ static struct Pres {
     const void *x_seenScreen, *x_seenFront, *x_seenBack;
     BOOL x_seenHwBand;
     UWORD x_idleTicks;
+    /* the drag shown by the card's split instead (split_try) */
+    struct PrismBoard *x_splitBd;
+    struct PBitMap *x_splitFailed;         /* this drag's front couldn't be laid out */
     /* the screen behind's pens in the frame's palette (8-bit), per card:
      * two boards would otherwise rebuild it for each other every tick */
     UBYTE backMap[256];
@@ -96,6 +99,7 @@ static struct PrismCard *PC = &cards[0];
 #define seenBack     (P->x_seenBack)
 #define seenHwBand   (P->x_seenHwBand)
 #define idleTicks    (P->x_idleTicks)
+#define splitBd      (P->x_splitBd)
 
 static void on_card(struct PrismCard *c)
 {
@@ -111,6 +115,22 @@ void present_invalidate(struct PrismCard *c)
 BOOL present_ready(struct PrismCard *c)
 {
     return pres[c->index].x_allocated && pres[c->index].x_valid;
+}
+
+/* something is shown composed or split on any card (PrismD ticks faster) */
+BOOL present_active(void)
+{
+    UBYTE k;
+    for (k = 0; k < MAX_CARDS; k++)
+        if (pres[k].x_allocated || pres[k].x_splitBd) return TRUE;
+    return FALSE;
+}
+
+/* the card shows a drag by its split: the front at its TopEdge, as in a
+ * composed frame (the pointer goes at display coordinates) */
+BOOL present_split(struct PrismCard *c)
+{
+    return pres[c->index].x_splitBd != NULL;
 }
 
 /* Caller holds the board lock. Switch away before releasing scanout VRAM. */
@@ -218,10 +238,63 @@ static void band_blit(const struct PBitMap *front,WORD y0,WORD y1,WORD top)
 
 static inline WORD clampw(LONG v,WORD lo,WORD hi) { return v<lo ? lo : v>hi ? hi : (WORD)v; }
 
+/* A drag shown by the card itself (PrismBoard.setSplit): the lines above
+ * the front screen scanned out of the screen behind's own bitmap, the
+ * rest out of the front's - nothing composed or copied, a step costs a
+ * few register writes. Only when both screens lie in VRAM the way one mode can
+ * show them, the screen behind at row 0, and nothing is drawn over them
+ * (a PIP, the software pointer); otherwise FALSE and the frame is composed.
+ * Leaving the split puts the display back on the front. Lock held. */
+static BOOL split_try(struct Screen *screen,struct PBitMap *front,struct PBitMap *back,
+                      WORD top,WORD backTop,UWORD width,UWORD height)
+{
+    struct PrismBoard *bd=front ? front->bd : NULL;
+    struct Screen *bs=screen ? prism_back_screen(PC,screen) : NULL;
+    WORD py0,py1;
+    /* everything but where the two bitmaps lie */
+    BOOL ok = screen && bd && bd->setSplit && top>0 && top<height &&
+        front->inVram && front->w>=width && front->h>=height && !(bd->flags & PBF_SHADOW) &&
+        back && back->bd==bd && back->fmt==front->fmt && back->bpr==front->bpr &&
+        backTop==0 && back->h>=top && bs &&
+        bs->Width==screen->Width && bs->Height==screen->Height &&
+        !p96_pip_active(screen) && !p96_pip_active(bs) &&
+        !pointer_compose_rows(PC,top,&py0,&py1);
+    if (top<=0) P->x_splitFailed=NULL;            /* a new drag tries again */
+    /* the screen behind into VRAM if it was paged out - once per drag: a
+     * refusal (a locked bitmap) leaves the drag to the compositor */
+    if (ok && !back->inVram && P->x_splitFailed!=front) {
+        if (allocated) present_stop(PC);
+        if (!pbm_to_vram(back)) P->x_splitFailed=front;
+    }
+    if (ok && back->inVram) {
+        if (allocated) present_stop(PC);          /* the split shows the screens' own pixels */
+        if (bd->setSplit(bd,back->vramOff,front->vramOff,(UWORD)top)) {
+            splitBd=bd; return TRUE;
+        }
+        /* a board that starts the lower part at VRAM 0 only (a VGA line
+         * compare): the front moves there on the drag's first step (a screen
+         * opened after Workbench lies further up), once per drag */
+        if (front->vramOff && P->x_splitFailed!=front) {
+            if (pbm_to_vram0(front) && (back->inVram || pbm_to_vram(back)) && back->vramOff &&
+                bd->setSplit(bd,back->vramOff,0,(UWORD)top)) {
+                splitBd=bd; return TRUE;
+            }
+            P->x_splitFailed=front;
+            if (!front->vramOff) bd->setDisplayStart(bd,0);   /* moved, but no split */
+        }
+    }
+    if (splitBd) {
+        splitBd->setSplit(splitBd,0,0,0);
+        if (front && front->inVram && front->bd==splitBd) splitBd->setDisplayStart(splitBd,front->vramOff);
+        splitBd=NULL;
+    }
+    return FALSE;
+}
+
 static void present_card(void)
 {
     struct PBitMap *front,*back;
-    struct Screen *screen;
+    struct Screen *screen,*bs=NULL;
     struct PrismSurface surface;
     UWORD width,height,y; WORD top,backTop;
     BOOL showBack,hwBand,full,moved,frontChanged,backChanged,ptrChanged;
@@ -239,9 +312,13 @@ static void present_card(void)
      * rows by the big bitmap's pitch, and the frame has the mode's. PIPs
      * are refused on one (p96.c) and dragging leaves it where it is. */
     if (front && prism_display_scroll(PC,&rx,&ry)) {
+        split_try(screen,front,back,0,backTop,width,height);   /* leaves a split */
         present_stop(PC); ReleaseSemaphore(&lock); return;
     }
     if (!prism_dragging()) top=0;
+    if (split_try(screen,front,back,top,backTop,width,height)) {
+        ReleaseSemaphore(&lock); return;
+    }
     /* The pointer alone is a software sprite (pointer.c), not a reason
      * to compose; while composing, pointer_compose draws it. */
     if (!screen || (!top && !p96_pip_active(screen))) {
@@ -249,14 +326,15 @@ static void present_card(void)
     }
     if (!prepare(front,width,height)) { ReleaseSemaphore(&lock);return; }
 
+    bs=prism_back_screen(PC,screen);
     frame.rgbTab=front->rgbTab;
     showBack=back && (top>0 || (LONG)top+front->h<height);
     /* The card shows one mode: a screen behind of another size would come
      * out cut off or magnified in the front's (issue #1). It stays black
      * until it comes to the front; one of the same size shows through
      * (another depth converted, which looks right). */
-    if (showBack && screen->NextScreen &&
-        (screen->NextScreen->Width!=screen->Width || screen->NextScreen->Height!=screen->Height))
+    if (showBack && bs &&
+        (bs->Width!=screen->Width || bs->Height!=screen->Height))
         showBack=FALSE;
     /* the front's band: rows of the frame it covers */
     if (top<height && (LONG)top+front->h>0) {
@@ -288,7 +366,7 @@ static void present_card(void)
     frontChanged = full || moved || front->modified!=seenFrontMod || volatile_bitmap(front) ||
         p96_pip_volatile(screen);
     backChanged = full || (back && (back->modified!=seenBackMod || volatile_bitmap(back))) ||
-        (back && screen->NextScreen && p96_pip_volatile(screen->NextScreen));
+        (back && bs && p96_pip_volatile(bs));
     ptrChanged = full || (ptrHere && (px!=seenPX || py!=seenPY)) || ovY0!=seenOv0 || ovY1!=seenOv1 ||
         anyY0!=seenAny0 || anyY1!=seenAny1;
     if (!frontChanged && !backChanged && !ptrChanged) { ReleaseSemaphore(&lock); return; }
@@ -346,8 +424,8 @@ static void present_card(void)
     /* after a drag step too (the rows it uncovered were redone from the
      * screen behind's bitmap), and under the pointer; never on the front's
      * band, which is on top of it */
-    if(showBack && screen->NextScreen && (backChanged || moved || ptrChanged))
-        p96_pip_compose(&frame,screen->NextScreen,backTop,bandY0,bandY1);
+    if(showBack && bs && (backChanged || moved || ptrChanged))
+        p96_pip_compose(&frame,bs,backTop,bandY0,bandY1);
     if (hwBand) {
         if (frontChanged) {
             /* not the overlay rows: those are composed on the CPU and

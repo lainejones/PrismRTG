@@ -129,6 +129,107 @@ BOOL pbm_to_vram(struct PBitMap *p)
     return TRUE;
 }
 
+/* ---- a bitmap to VRAM 0 (screen dragging by the card's split) ------- */
+
+/* len bytes inside VRAM from src to dst on the blitter, as rows of up to
+ * 2048 bytes (the smallest Cirrus limit), at most `chunk` bytes a blit so
+ * an overlapping move to a lower address copies nothing it hasn't read. */
+static void vram_move(struct PrismBoard *B, ULONG src, ULONG dst, ULONG len, ULONG chunk)
+{
+    ULONG wb = 2048, o = 0;
+    if (chunk < wb) wb = chunk & ~3UL;
+    while (o < len) {
+        ULONG n = len - o, rows;
+        if (n > chunk) n = chunk;
+        rows = n / wb;
+        if (B->blitMaxRows && rows > B->blitMaxRows) rows = B->blitMaxRows;
+        if (rows) {
+            B->copyBetween(B, src + o, wb, dst + o, wb, (UWORD)wb, (UWORD)rows);
+            o += rows * wb;
+        } else {
+            B->copyBetween(B, src + o, n, dst + o, n, (UWORD)n, 1);
+            o += n;
+        }
+    }
+}
+
+static BOOL movable(const struct PBitMap *p)
+{
+    return p && p->inVram && !p->locks && !p->direct;
+}
+
+/* Exchange the VRAM of two bitmaps of the same size (their blocks keep
+ * their places in the allocator, only the owners change), through a free
+ * piece of VRAM. */
+static BOOL pbm_swap_vram(struct PBitMap *a, struct PBitMap *b)
+{
+    struct PrismCard *c = a->card;
+    struct PrismBoard *B = a->bd;
+    ULONG size = pbm_bytes(a), largest, t, o, n;
+    LONG tmp;
+    UBYTE *pix;
+    if (!movable(a) || !movable(b) || b->card != c || pbm_bytes(b) != size) return FALSE;
+    vram_free_bytes(c, &largest);
+    if (largest > 65536) largest = 65536;
+    largest &= ~2047UL;
+    if (largest < 2048 || (tmp = vram_alloc(c, largest, PF_CLUT8, 2048, 2048, largest / 2048)) < 0)
+        return FALSE;
+    t = (ULONG)tmp;
+    if (B->waitBlit) B->waitBlit(B);
+    for (o = 0; o < size; o += n) {
+        n = size - o > largest ? largest : size - o;
+        vram_move(B, a->vramOff + o, t, n, n);
+        vram_move(B, b->vramOff + o, a->vramOff + o, n, n);
+        vram_move(B, t, b->vramOff + o, n, n);
+    }
+    vram_free(c, t);
+    o = a->vramOff; a->vramOff = b->vramOff; b->vramOff = o;
+    pix = a->pix; a->pix = b->pix; b->pix = pix;
+    dbg("vram: %ux%u x%u swapped with the bitmap at +%lx\n", a->w, a->h, a->bpp, (ULONG)b->vramOff);
+    return TRUE;
+}
+
+/* Put bitmap f at VRAM offset 0, where the card's split shows the front
+ * screen from (present.c split_try). Lock held. The bitmap at 0 of the
+ * same size swaps places with it; otherwise whatever is in the way goes to
+ * fast RAM and f moves down. FALSE: nothing could be done (locked or
+ * direct bitmaps, a board with its own allocator, no blitter), f stays. */
+BOOL pbm_to_vram0(struct PBitMap *f)
+{
+    struct PrismCard *c = f->card;
+    struct PrismBoard *B = f->bd;
+    ULONG size = pbm_bytes(f), old = f->vramOff;
+    LONG off;
+    UWORD i;
+    if (!movable(f) || !B->copyBetween || (B->ops && B->ops->allocate) || (B->flags & PBF_SHADOW))
+        return FALSE;
+    if (!old) return TRUE;
+    for (i = 0; i < PBM_MAX; i++)
+        if (table[i] && table[i] != f && table[i]->card == c && table[i]->inVram && !table[i]->vramOff &&
+            pbm_swap_vram(f, table[i]))
+            return TRUE;
+    /* f partly inside [0, size): moving it down would overlap itself */
+    if (old < size) return FALSE;
+    /* the bitmaps in [0, size) out of the way */
+    for (i = 0; i < PBM_MAX; i++) {
+        struct PBitMap *q = table[i];
+        if (q && q != f && q->card == c && q->inVram && q->vramOff < size &&
+            (pbm_is_shown(q) || !pbm_to_fast(q)))
+            return FALSE;
+    }
+    if ((off = vram_alloc(c, size, f->fmt, f->bpr, f->w, f->h)) != 0) {
+        if (off > 0) vram_free(c, (ULONG)off);
+        return FALSE;                                     /* something else sits at 0 */
+    }
+    if (B->waitBlit) B->waitBlit(B);
+    vram_move(B, old, 0, size, 65536);
+    vram_free(c, old);
+    f->vramOff = 0;
+    f->pix = B->vram;
+    dbg("vram: %ux%u x%u moved from +%lx to 0\n", f->w, f->h, f->bpp, old);
+    return TRUE;
+}
+
 /* A driver's format change may rebuild its VRAM pool. Shadow pointers stay
  * valid even for locked/direct bitmaps while their device storage is freed. */
 BOOL pbm_prepare_mode(struct PrismCard *c)

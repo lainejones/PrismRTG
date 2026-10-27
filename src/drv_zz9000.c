@@ -34,6 +34,9 @@ extern struct ExpansionBase *ExpansionBase;
 #define REG_X1          0x10
 #define REG_Y1          0x12
 #define REG_X2          0x14
+#define REG_BLIT_SRC_HI 0x28          /* source offset (the split's bottom)  */
+#define REG_BLIT_SRC_LO 0x2a
+#define REG_SPLIT_POS   0x5e          /* trigger: the split line             */
 #define REG_COLORMODE   0x30
 #define REG_SPRITE_SHOW 0x48          /* 1 = cursor on, 2 = off              */
 #define REG_VBLANK      0x4c
@@ -84,6 +87,7 @@ extern struct ExpansionBase *ExpansionBase;
 #define OP_PAN          10
 #define OP_SPRITE_XY    11
 #define OP_SPRITE_CLUT  14            /* cursor image, one byte per pixel    */
+#define OP_SET_SPLIT    16
 #define OP_SET_PALETTE  17
 #define OP_VIDEO_OVERLAY 19           /* BlitterStudio firmware 2.8+: see zz_OverlaySet */
 
@@ -125,6 +129,7 @@ struct ZZPriv {
     UBYTE colormode;       /* CM_*                                       */
     ULONG panOffset;
     ULONG capOffset;       /* pan that shows the native capture          */
+    ULONG splitBottom;     /* the split's lower part, kept when it ends  */
     UBYTE saved[GD_CLUT1]; /* mailbox header, while the card is borrowed */
 };
 
@@ -659,6 +664,36 @@ static void zz_SetDisplayStart(struct PrismBoard *b, ULONG off)
         zz_pan(b);
 }
 
+/* Screen dragging (PrismBoard.setSplit, the firmware's SetSplitPosition):
+ * the lines above `line` from the pan address, the ones below from
+ * `bottom` - the firmware restarts its video DMA there at that line, and
+ * takes a new line at the next vertical blank. Any offset will do.
+ * The offset, though, it takes at once: ending a split with offset 0
+ * showed what lies at VRAM 0 below the old line until that blank (a flash
+ * of another screen at the end of a drag), so the end keeps the last one. */
+static BOOL zz_SetSplit(struct PrismBoard *b, ULONG top, ULONG bottom, UWORD line)
+{
+    struct ZZPriv *p = b->priv;
+    if (!line)
+        bottom = p->splitBottom;
+    else {
+        zz_SetDisplayStart(b, top);
+        p->splitBottom = bottom;
+    }
+    if (p->z3) {
+        Forbid();
+        GD32(p, GD_OFFSET0, bottom);
+        GD16(p, GD_Y0, line);
+        z3_kick(b, OP_SET_SPLIT);
+        Permit();
+    } else {
+        W16(b, REG_BLIT_SRC_HI, bottom >> 16);
+        W16(b, REG_BLIT_SRC_LO, bottom & 0xffff);
+        W16(b, REG_SPLIT_POS, line);
+    }
+    return TRUE;
+}
+
 static void zz_SetPalette(struct PrismBoard *b, UWORD first, UWORD count,
                           const UBYTE *rgb)
 {
@@ -793,6 +828,7 @@ BOOL ZZ9000_Probe(struct PrismBoard *b)
     b->setMode         = zz_SetMode;
     b->checkMode       = zz_CheckMode;
     b->setDisplayStart = zz_SetDisplayStart;
+    b->setSplit        = zz_SetSplit;
     b->setPalette      = zz_SetPalette;
     b->overlaySet      = zz_OverlaySet;   /* refused by a firmware without the op */
     b->overlayOff      = zz_OverlayOff;

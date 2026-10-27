@@ -195,6 +195,7 @@ ULONG           pbm_count(void);
  * display or locked. */
 BOOL            pbm_to_vram(struct PBitMap *p);
 BOOL            pbm_to_fast(struct PBitMap *p);
+BOOL            pbm_to_vram0(struct PBitMap *f);   /* f to VRAM offset 0 (a split's front) */
 void pbm_surface(const struct PBitMap *, struct PrismSurface *);
 BOOL pbm_upload(struct PBitMap *);
 BOOL pbm_prepare_mode(struct PrismCard *c);
@@ -349,6 +350,8 @@ void pointer_colours(struct ViewPort *vp);   /* lock held                 */
 void pointer_compose(struct PBitMap *, WORD);
 void present_tick(void);
 BOOL present_ready(struct PrismCard *c);
+BOOL present_split(struct PrismCard *c);        /* a drag shown by the card's split */
+BOOL present_active(void);                      /* anything composed or split now */
 BOOL prism_dragging(void);
 BOOL prism_hw_overlay(void);             /* HWOVERLAY= (prefs): layers on the board's overlay */
 BOOL prism_any_shadow(void);           /* a board with PBF_SHADOW is driven */
@@ -379,6 +382,7 @@ BOOL  arexx_init(void);
 void  arexx_tick(void);                      /* the main loop, every tick */
 void  arexx_quit(void);
 struct Screen *prism_display_layers(struct PrismCard *,struct PBitMap **,struct PBitMap **,WORD *,WORD *,UWORD *,UWORD *);
+struct Screen *prism_back_screen(struct PrismCard *c, struct Screen *s);  /* what a drag of s uncovers on c */
 BOOL p96_pip_active(struct Screen *);
 /* the screen's PIPs into the frame; frame rows skipY0..skipY1-1 are left alone */
 void p96_pip_compose(struct PBitMap *,struct Screen *,WORD,WORD skipY0,WORD skipY1);

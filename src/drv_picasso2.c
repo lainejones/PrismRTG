@@ -87,6 +87,7 @@ struct P2Priv {
     UWORD  width;
     ULONG  bpr;
     UBYTE  bpp;               /* bytes per pixel of the current mode      */
+    UBYTE  dbl;               /* the current mode is double-scanned       */
     ULONG  scratch;           /* VRAM offset of the driver scratch area   */
     UBYTE  xpad;              /* text expansion: template rows padded to
                                  1 or 4 bytes; 0 = not tested, 0xff = off  */
@@ -450,6 +451,7 @@ static BOOL p2_SetMode(struct PrismBoard *b, struct PrismMode *m)
     if (!(t = p2_check(b, m, &p->sr7, &p->hdr, &bpp, &scratch)))
         return FALSE;
     p->bpp = bpp;
+    p->dbl = t->dbl;
     p->width = m->width;
     p->bpr = m->bytesPerRow;
     pitch8 = m->bytesPerRow >> 3;
@@ -1121,6 +1123,28 @@ static void p2_SetDisplayStart(struct PrismBoard *b, ULONG off)
         wcrt(b, 0x1d, (rcrt(b, 0x1d) & 0x7f) | ((a >> 12) & 0x80));
 }
 
+/* Screen dragging without copying (PrismBoard.setSplit): the CRTC's line
+ * compare - CR18, bit 8 in CR07 bit 4, bit 9 in CR09 bit 6 - resets the
+ * address counter to 0 on the line after the one it names, so lines from
+ * `line` on show the front screen from VRAM 0 and the ones above come from
+ * the display start. 1023 (what SetMode writes) never matches. */
+static BOOL p2_SetSplit(struct PrismBoard *b, ULONG top, ULONG bottom, UWORD line)
+{
+    struct P2Priv *p = b->priv;
+    UWORD lc = 0x3ff;
+    if (line) {
+        ULONG l = p->dbl ? (ULONG)line * 2 : line;
+        if (bottom || l > 0x3ff)
+            return FALSE;
+        lc = (UWORD)(l - 1);
+        p2_SetDisplayStart(b, top);
+    }
+    wcrt(b, 0x18, lc & 0xff);
+    wcrt(b, 0x07, (rcrt(b, 0x07) & ~0x10) | ((lc >> 4) & 0x10));
+    wcrt(b, 0x09, (rcrt(b, 0x09) & ~0x40) | ((lc >> 3) & 0x40));
+    return TRUE;
+}
+
 static void p2_SetPalette(struct PrismBoard *b, UWORD first, UWORD count,
                           const UBYTE *rgb)
 {
@@ -1592,6 +1616,7 @@ BOOL Picasso2_Probe(struct PrismBoard *b)
     b->setMode         = p2_SetMode;
     b->checkMode       = p2_CheckMode;
     b->setDisplayStart = p2_SetDisplayStart;
+    b->setSplit        = p2_SetSplit;
     b->cursorW         = CURSOR_SIZE;     /* the Cirrus cursor is 64x64 */
     b->cursorH         = CURSOR_SIZE;
     b->setPalette      = p2_SetPalette;

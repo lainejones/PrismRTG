@@ -188,6 +188,14 @@ struct PrismBoard {
     ULONG opsSize;
 
     /* frozen up to here (board ABI 3): new members go below, at the end */
+
+    /* Split display (optional, for screen dragging): scan lines 0..line-1
+     * from VRAM offset top, the lines from `line` on from offset bottom.
+     * line 0 = no split (the caller sets the display start again). FALSE =
+     * not possible: this mode, or a bottom offset the board can't start
+     * from (a VGA line compare restarts at 0 - PrismD then moves the front
+     * screen there and asks again, or composes the drag). Lock held. */
+    BOOL (*setSplit)(struct PrismBoard *b, ULONG top, ULONG bottom, UWORD line);
 #ifdef PRISM_ABI_PROBE
     /* test only (the ABI-freeze check): what a later PrismD might add */
     ULONG futureCount;

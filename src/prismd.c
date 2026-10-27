@@ -208,6 +208,39 @@ static void sync_timer_close(void)
     syncPort = NULL;
 }
 
+/* The sleep between ticks without the log. Delay(1) slept 40 ms - two DOS
+ * ticks, so everything once a frame ran at 25 Hz - and a drag stepped at
+ * that rate. timer.device's microsecond unit keeps to what is asked: a
+ * card's 60 Hz while the compositor or a split shows a drag, 50 Hz else. */
+static struct MsgPort *tickPort;
+static struct timerequest *tickTr;
+
+static void tick_sleep(void)
+{
+    if (!tickTr && (!(tickPort = CreateMsgPort()) ||
+                    !(tickTr = (struct timerequest *)CreateIORequest(tickPort, sizeof(*tickTr))) ||
+                    OpenDevice((STRPTR)TIMERNAME, UNIT_MICROHZ, (struct IORequest *)tickTr, 0))) {
+        if (tickTr) DeleteIORequest((struct IORequest *)tickTr);
+        if (tickPort) DeleteMsgPort(tickPort);
+        tickTr = NULL; tickPort = NULL;
+        Delay(1);                         /* no timer: the old way */
+        return;
+    }
+    tickTr->tr_node.io_Command = TR_ADDREQUEST;
+    tickTr->tr_time.tv_secs = 0;
+    tickTr->tr_time.tv_micro = present_active() ? 16667 : 20000;
+    DoIO((struct IORequest *)tickTr);
+}
+
+static void tick_close(void)
+{
+    if (!tickTr) return;
+    CloseDevice((struct IORequest *)tickTr);
+    DeleteIORequest((struct IORequest *)tickTr);
+    DeleteMsgPort(tickPort);
+    tickTr = NULL; tickPort = NULL;
+}
+
 /* the signals that came; *frame: a frame is up (the per-frame work is due) */
 static ULONG sync_sleep(BOOL *frame)
 {
@@ -809,14 +842,26 @@ struct Screen *prism_display_layers(struct PrismCard *c,struct PBitMap **front,s
     if (!cs->shown || !cs->shown->screen || !cs->shownPbm || !cs->curMode || !cs->rtgOn) return NULL;
     *width=cs->curMode->m.width;*height=cs->curMode->m.height;
     *top=cs->shown->screen->TopEdge;
-    s=cs->shown->screen->NextScreen;
+    s=prism_back_screen(c,cs->shown->screen);
     if(s) {
-        /* another board's screen (shown on its own monitor) or a native one
-         * behind: nothing shows through, it stays black */
+        /* a native screen behind: nothing shows through, it stays black */
         struct PScreen *ps=ps_by_screen(s);
         if(ps && ps->mode->card==c) { *back=ps->front ? ps->front : ps->pbm;*backTop=s->TopEdge; }
     }
     return cs->shown->screen;
+}
+
+/* The screen a drag of s uncovers on card c: the next one behind it,
+ * passing over the other board's screens - those are on their own monitor
+ * (with two monitors, cycling the screens puts PRISM2's between two of
+ * this card's, and the drag showed black). */
+struct Screen *prism_back_screen(struct PrismCard *c, struct Screen *s)
+{
+    struct PScreen *ps;
+    for (s = s ? s->NextScreen : NULL; s; s = s->NextScreen)
+        if (!(ps = ps_by_screen(s)) || ps->mode->card == c)
+            break;
+    return s;
 }
 
 /* A screen's colours changed: rebuild its pen table (16-bit) and, if it
@@ -3863,7 +3908,7 @@ int main(void)
                 if (!frame)
                     continue;                 /* a log line: the frame's work when it is due */
             } else
-                Delay(1);                     /* ~one frame              */
+                tick_sleep();                 /* one frame               */
             if (chipTop != 0xffffffffUL && (tick & 63) == 0 && other_rtg()) {
                 chipTop = 0xffffffffUL;       /* Picasso96 came up after us */
                 dbg("Picasso96 has started: its bitmaps are left to it from now on\n");
@@ -3883,6 +3928,7 @@ int main(void)
         }
         SetSignal(0, SIGBREAKF_CTRL_C);
         sync_timer_close();               /* opened again if the loop goes on */
+        tick_close();
 #ifdef PRISM_MISSLOG
         miss_print();
 #endif

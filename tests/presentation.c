@@ -35,6 +35,21 @@ struct Screen *prism_display_layers(struct PrismCard *c,struct PBitMap **f,struc
     WORD *top,WORD *bt,UWORD *w,UWORD *h)
 { *f=&front;*b=nativeBehind ? NULL : &back;*top=screenTop;*bt=backTop;*w=*h=2;return &screen; }
 BOOL p96_pip_active(struct Screen *s) { (void)s;return overlay; }
+/* one card here: what a drag uncovers is simply the next screen */
+struct Screen *prism_back_screen(struct PrismCard *c,struct Screen *s) { (void)c;return s ? s->NextScreen : NULL; }
+/* the split: what the board was asked, and a board (a VGA line compare)
+ * that only restarts the lower part at VRAM 0 */
+static ULONG splitTop,splitBottom,toVram0;
+static UWORD splitLine;
+static BOOL splitZeroOnly;
+static BOOL set_split(struct PrismBoard *b,ULONG top,ULONG bottom,UWORD line)
+{
+    (void)b;
+    if (line && splitZeroOnly && bottom) return FALSE;
+    splitTop=top;splitBottom=bottom;splitLine=line;return TRUE;
+}
+BOOL pbm_to_vram(struct PBitMap *p) { p->inVram=TRUE;return TRUE; }
+BOOL pbm_to_vram0(struct PBitMap *p) { toVram0++;p->vramOff=0;return TRUE; }
 volatile ULONG paletteGen; ULONG pipGen;
 BOOL p96_pip_volatile(struct Screen *s) { (void)s;return FALSE; }
 /* the fixture's PIP sits on row 1 of the frame */
@@ -184,12 +199,29 @@ int main(void)
     failAllocate=FALSE;assert(present_reserve(&screen));
     failWrite=TRUE;present_tick();pointer_tick();
     assert(!present_ready(&cards[0]) && hwVisible);
+    /* the card's cursor stays on over the composed drag, at display rows */
     failWrite=FALSE;present_tick();pointer_tick();
-    assert(present_ready(&cards[0]) && !hwVisible);
+    assert(present_ready(&cards[0]) && hwVisible && hardwareY==1);
     pointer_off();screenTop=0;on=TRUE;dragEnabled=FALSE;
     screenTop=1;present_tick();assert(!allocated && !pointer_software());
     forceSoftware=TRUE;assert(pointer_software());
     pointer_off();
+    /* A board with a split shows the drag by itself: the lines above from
+     * the screen behind's bitmap, the rest from the front's - nothing
+     * composed or written. Ending the drag puts the display on the front. */
+    on=forceSoftware=FALSE;dragEnabled=TRUE;board.flags=0;board.setSplit=set_split;
+    front.direct=back.direct=FALSE;front.inVram=back.inVram=TRUE;
+    front.vramOff=64;back.vramOff=32;backTop=0;screenTop=1;n=writes;
+    present_tick();
+    assert(present_split(&cards[0]) && !allocated && writes==n);
+    assert(splitTop==32 && splitBottom==64 && splitLine==1 && !toVram0);
+    screenTop=0;present_tick();
+    assert(!present_split(&cards[0]) && splitLine==0 && display==64);
+    /* One that restarts at VRAM 0 only: the front moves there first. */
+    splitZeroOnly=TRUE;screenTop=1;present_tick();
+    assert(present_split(&cards[0]) && toVram0==1 && front.vramOff==0 && splitBottom==0 && splitLine==1);
+    screenTop=0;present_tick();
+    assert(!present_split(&cards[0]) && display==0);
     puts("presentation: cursor, split, damage and scanout lifetime passed");
     return 0;
 }

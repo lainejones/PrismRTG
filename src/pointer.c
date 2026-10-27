@@ -111,10 +111,10 @@ static BOOL image_fits(void)
 
 static BOOL pointer_software(void)
 {
-    struct PBitMap *front,*back; WORD top,backTop; UWORD w,h;
+    /* the card's cursor during a drag too: drawn into the composed frame,
+     * the pointer cost 64 full rows read back and written per step */
     if (!on) return FALSE;
-    prism_display_layers(ptrCard,&front,&back,&top,&backTop,&w,&h);
-    return prism_software_pointer() || (prism_dragging() && top) || !(PB->flags & PBF_HW_CURSOR) ||
+    return prism_software_pointer() || !(PB->flags & PBF_HW_CURSOR) ||
         !PB->cursorImage || !PB->cursorShow || !PB->cursorMove || !image_fits();
 }
 /* The board's cursor, unless PrismPrefs asks for the software pointer, the
@@ -289,7 +289,7 @@ static void shown_origin(WORD *ox, WORD *oy)
         *ox = s->LeftEdge;
         /* a composed frame with dragging on has the screen at its TopEdge
          * already; with dragging off (a PIP) it is composed at row 0 */
-        if (!(present_ready(ptrCard) && prism_dragging()))
+        if (!((present_ready(ptrCard) || present_split(ptrCard)) && prism_dragging()))
             *oy = s->TopEdge;
         /* an oversized screen: the display starts rx,ry into it */
         if (prism_display_scroll(ptrCard, &rx, &ry)) {
