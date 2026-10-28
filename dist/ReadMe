@@ -43,6 +43,15 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.3 beta 3 (please report how it goes)
+  Text in fonts with kerning (most proportional bitmap fonts, such as the
+  ones Amelinium uses) is as wide again as graphics.library draws it: each
+  character moved on by its spacing but not its kerning, so a line came out
+  narrower than TextLength() said. Programs that place their cursor or
+  clear behind the text by that width left old pixels standing; in
+  Amelinium's address bar the cursor grew and edited addresses showed
+  leftover characters (issue #25).
+
 New in 1.3 beta 2 (please report how it goes)
   Span: one screen across both monitors. "Span right" or "Span left" in
   PrismPrefs' 2nd monitor setting gives every 8- and 16-bit mode both

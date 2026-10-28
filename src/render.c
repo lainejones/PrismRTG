@@ -2680,16 +2680,21 @@ LONG h_Text(struct Regs *r)
         }
     }
 
-    /* extent: the advance [0, width) plus any glyph overhang (kerning) */
+    /* extent: the advance [0, width) plus any glyph overhang. A character
+     * advances by its kern AND its space, as graphics.library's Text and
+     * TextLength count it: the kern only for placing the glyph drew kerned
+     * fonts narrower than TextLength said, and a program that clears or
+     * puts its cursor by TextLength (Amelinium's address bar) left old
+     * pixels behind (issue #25). */
     x0 = 0;
     x1 = 0;
     cx = 0;
     for (i = 0; i < count; i++) {
         UWORD idx = glyph_index(tf, str[i]);
-        WORD gx = cx + (kern ? kern[idx] : 0), gw = (loc[idx] & 0xffff) + smear;
+        WORD k = kern ? kern[idx] : 0, gx = cx + k, gw = (loc[idx] & 0xffff) + smear;
         if (gx < x0) x0 = gx;
         if (gx + gw > x1) x1 = gx + gw;
-        cx += (space ? space[idx] : tf->tf_XSize) + rp->TxSpacing + smear;
+        cx += k + (space ? space[idx] : tf->tf_XSize) + rp->TxSpacing + smear;
     }
     width = cx;
     if (width > x1) x1 = width;
@@ -2712,7 +2717,7 @@ LONG h_Text(struct Regs *r)
     cx = 0;
     for (i = 0; i < count; i++) {
         UWORD idx = glyph_index(tf, str[i]), bitoff = loc[idx] >> 16, bitw = loc[idx] & 0xffff, gy;
-        WORD gx = cx + (kern ? kern[idx] : 0) - x0;
+        WORD k = kern ? kern[idx] : 0, gx = cx + k - x0;
         if (!bitw)
             ;
         else if (bitw <= 24 && !smear) {
@@ -2737,7 +2742,7 @@ LONG h_Text(struct Regs *r)
                     or_bits(trow, gx + s, grow, bitoff, bitw);
             }
         }
-        cx += (space ? space[idx] : tf->tf_XSize) + rp->TxSpacing + smear;
+        cx += k + (space ? space[idx] : tf->tf_XSize) + rp->TxSpacing + smear;
     }
     if ((style & FSF_UNDERLINED) && tf->tf_Baseline + 1 < tf->tf_YSize) {
         UBYTE *trow = tmpl + (tf->tf_Baseline + 1) * tbpr;
