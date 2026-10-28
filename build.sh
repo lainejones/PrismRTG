@@ -31,6 +31,8 @@ sh tools/mkdriver.sh ZZ9000 src/drv_zz9000.c
 sh tools/mkdriver.sh Z3660 src/drv_z3660.c
 sh tools/mkdriver.sh P96 src/drv_p96.c src/rtg_ops.c
 sh tools/mkdriver.sh UAEGFX src/drv_uaegfx.c src/rtg_ops.c
+# the SAGA test driver (Vampire V4): built, not packaged until it has run on one
+sh tools/mkdriver.sh SAGA src/drv_saga.c
 # the template for new drivers must keep building (it is not packaged)
 OUT=out/template sh tools/mkdriver.sh TEMPLATE src/drv_template.c
 

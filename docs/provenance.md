@@ -38,8 +38,10 @@ meanings and command sequences were read from public source code and
 written down, with file and line references, in
 [cirrus-picasso2-hw.md](cirrus-picasso2-hw.md) (Cirrus GD542x/543x boards:
 NetBSD, Linux, WinUAE/PCem, QEMU, 86Box, xf86-video-cirrus, the GBAPII++
-design) and [zz9000-hw.md](zz9000-hw.md) (MNT's ZZ9000 driver and
-firmware). The drivers were then written from those notes. The README's
+design), [zz9000-hw.md](zz9000-hw.md) (MNT's ZZ9000 driver and
+firmware) and [saga-hw.md](saga-hw.md) (the Apollo team's SAGA.card
+source and Jason McMullan's saga-drivers, for the Vampire V4 test
+driver). The drivers were then written from those notes. The README's
 credits name every source.
 
 ## Checking it

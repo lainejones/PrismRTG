@@ -600,6 +600,11 @@ brackets; the exact files and revisions are listed in
 * **Individual Computers** - the P96 driver development headers (above),
   which also define the Picasso96 API numbers PrismRTG's own
   `Picasso96API.library` implements.
+* **flype and the APOLLO-Team** - the SAGA.card source in
+  [flype44/Vampire](https://github.com/flype44/Vampire) (MPL-2.0), and
+  **Jason S. McMullan** - [ezrec/saga-drivers](https://github.com/ezrec/saga-drivers)
+  (MIT): the Vampire V4's SAGA video registers, for the SAGA test driver
+  ([docs/saga-hw.md](docs/saga-hw.md)).
 
 Programs talk to PrismRTG through the cybergraphics and Picasso96
 interfaces: their function and tag numbers are reproduced so that existing
