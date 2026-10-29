@@ -1,0 +1,77 @@
+SAGA driver test @N@ - for PrismRTG 1.3 beta 3
+=============================================
+
+A native PrismRTG driver for SAGA video, the Apollo Vampire V4's and the
+Apollo A6000's, so PrismRTG drives it directly instead of through
+vampiregfx.card.
+
+New in test 2: the driver also finds the Apollo A6000 (board 5016,
+product 8). Test 1 only knew the Vampire V4 (product 5), so on an A6000
+it said "no supported board".
+
+It has NOT run on Apollo hardware yet: it is written from the Apollo
+team's own description of the SAGA registers (thank you, flype and the
+Apollo team). Expect the first try to need fixing. Nothing here changes
+your current setup until step 2, and step 2 is easy to undo.
+
+Needs: a Vampire V4 (Standalone / V4+) or an Apollo A6000, and PrismRTG
+1.3 beta 3 installed. If it still says "no supported board", please
+post what ShowConfig lists under "Expansion boards", so the board can be
+added.
+
+In this drawer
+  PrismTest            shows a test pattern with a driver, no PrismD
+  Drivers/SAGA.driver  the driver
+
+
+Step 1 - a test pattern (nothing installed, nothing changed)
+-------------------------------------------------------------
+PrismTest must run without PrismD, so start the Amiga with PrismRTG
+skipped: hold the LEFT mouse button from power-on until Workbench is
+up. Then open a Shell, CD into this drawer and run, one at a time:
+
+  PrismTest BOARD=SAGA DEPTH=8
+  PrismTest BOARD=SAGA DEPTH=16 WIDTH=800 HEIGHT=600
+  PrismTest BOARD=SAGA DEPTH=24 WIDTH=800 HEIGHT=600
+  PrismTest BOARD=SAGA DEPTH=32 WIDTH=1280 HEIGHT=720
+
+Each shows a pattern for 10 seconds and then gives the display back:
+colour bars across the top, a grey ramp, a checkerboard. Ctrl-C ends it
+early. Wrong colours mean a wrong pixel format, a slanted picture a
+wrong row length. Please note for each one what you saw (a photo is
+perfect) and copy the Shell output.
+
+
+Step 2 - Workbench on it (only if step 1 looked right)
+-------------------------------------------------------
+  Copy Drivers/SAGA.driver LIBS:Prism/
+  Copy ENVARC:Prism.prefs ENVARC:Prism.prefs.p96
+
+Then edit ENVARC:Prism.prefs (Ed ENVARC:Prism.prefs): change the line
+BOARD=P96 to BOARD=SAGA, and add a line LOG=SYNC. Save and reboot.
+
+SAGA has fixed screen sizes: 640x400, 640x480, 800x600, 1024x768,
+1280x720, 960x540 and the small ones. If Workbench was on a size SAGA
+does not have (1440x900 for example), it comes up on the native screen:
+pick a PRISM: mode in Prefs/ScreenMode then.
+
+Things worth trying: windows, a Shell, Amelinium, the pointer (the
+hardware pointer is 16x16 - its colours and its position over the
+screen), and another screen dragged down (with Drag screens on).
+
+
+Getting back
+------------
+If there is no picture, or anything goes wrong: reboot holding the LEFT
+mouse button (PrismRTG is skipped), then in a Shell
+
+  Copy ENVARC:Prism.prefs.p96 ENVARC:Prism.prefs
+
+and reboot - you are back on the P96 driver as before.
+
+
+Please send
+-----------
+The Shell output and photos from step 1, and from step 2 the file
+SYS:PrismD.log (with LOG=SYNC it survives a freeze: reboot and send it).
+Post them on the GitHub issue. Thank you!

@@ -38,7 +38,12 @@
 #endif
 
 #define SAGA_MFR    0x1398      /* Apollo team                         */
-#define SAGA_PROD   5           /* Vampire V4 (Standalone, V4+)         */
+
+/* the Apollo boards with SAGA video, by autoconfig product number */
+static const struct { UWORD prod; const char *name; } sagaBoards[] = {
+    { 5, "SAGA (Vampire V4)" },              /* Standalone, V4+                     */
+    { 8, "SAGA (Apollo A6000)" },            /* reported by nihirash (#25)          */
+};
 
 /* registers, offsets from $DFF000 */
 #define R_SPRITE_X  0x1D0       /* W: sprite left + 16                  */
@@ -245,12 +250,14 @@ static BOOL saga_probe(struct PrismBoard *b)
     b->configDev = NULL;
     b->name = "SAGA (fake)";
 #else
-    struct ConfigDev *cd = driver_find(NULL, SAGA_MFR, SAGA_PROD);
+    struct ConfigDev *cd = NULL;
+    for (i = 0; i < sizeof(sagaBoards) / sizeof(sagaBoards[0]) && !cd; i++)
+        cd = driver_find(NULL, SAGA_MFR, sagaBoards[i].prod);
     if (!cd)
         return FALSE;
     p->regs = (volatile UBYTE *)0xDFF000;
     b->configDev = cd;
-    b->name = "SAGA";
+    b->name = sagaBoards[i - 1].name;
 #endif
     /* the frame buffer: fast RAM, as much as can be had up to 16 MB
      * (more bitmaps stay "on the card"), aligned so every 256-byte VRAM

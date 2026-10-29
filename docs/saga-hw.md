@@ -23,7 +23,8 @@ No code was taken from either; only the numbers below.
 ## Detection
 
 Autoconfig manufacturer $1398 (APOLLO-Team), product 5 (Vampire V4,
-V4+). The registers are in the custom chip range at $DFF000.
+V4+), or product 8 (Apollo A6000, reported in #25). The registers are in
+the custom chip range at $DFF000.
 
 ## Frame buffer
 
