@@ -1271,6 +1271,7 @@ static void mirror_tick(void)
 
 static BOOL mon2_show(void);              /* SECONDMONITOR=MIRROR, further down */
 static void mon2_stop(void);
+static struct PScreen *span_source(void);
 
 /* Make card k show its front screen. TRUE if it now shows another screen
  * than before (the pointer has to be set up again). Lock held. */
@@ -1333,8 +1334,7 @@ static BOOL show_card(UBYTE k)
     present_stop(c);
     /* SECONDMONITOR=MIRROR: nothing of its own on board 1, so a copy of board 0;
      * SPAN: a copy of the half of board 0's span screen board 0 doesn't show */
-    if (k == 1 && (prefs.secondMon == SM_MIRROR ||
-                   (cst[0].shown && cst[0].shown->mode->spanHalf)) && mon2_show())
+    if (k == 1 && (prefs.secondMon == SM_MIRROR || span_source()) && mon2_show())
         return FALSE;
     if (k == 1)
         mon2_stop();
@@ -3334,39 +3334,71 @@ static void mon2_stop(void)
 
 /* start mirroring board 0's picture on board 1, or go on with it; TRUE while
  * it is mirrored (lock held) */
+/* SPAN: the span screen board 1 shows the other half of - the one board 0
+ * shows, else the frontmost span screen behind whatever is in front there
+ * (a test picture, a game's own screen, a chipset screen), so the second
+ * monitor keeps its half of Workbench instead of going black. NULL: none. */
+static struct PScreen *span_source(void)
+{
+    struct Screen *s;
+    if (prefs.secondMon != SM_SPAN)
+        return NULL;
+    if (cst[0].shown && cst[0].shown->mode->spanHalf)
+        return cst[0].shown;
+    for (s = IntuitionBase->FirstScreen; s; s = s->NextScreen) {
+        struct PScreen *ps = ps_by_screen(s);
+        if (ps && ps->pbm && ps->mode->card->index == 0 && ps->mode->spanHalf)
+            return ps;
+    }
+    return NULL;
+}
+
+/* what board 1 copies from: board 0's shown bitmap, or a span screen behind it */
+static struct PBitMap *mon2_source(struct ModeRec **mode)
+{
+    struct PScreen *sp = span_source();
+    if (sp && sp != cst[0].shown) {
+        if (mode) *mode = sp->mode;
+        return sp->front ? sp->front : sp->pbm;
+    }
+    if (mode) *mode = cst[0].curMode;
+    return cst[0].shownPbm;
+}
+
 static BOOL mon2_show(void)
 {
-    struct CardState *a = &cst[0], *cs = &cst[1];
+    struct CardState *cs = &cst[1];
     struct PrismBoard *B = cards[1].b;
-    struct PBitMap *src = a->shownPbm, *p;
+    struct ModeRec *am = NULL;
+    struct PBitMap *src = mon2_source(&am), *p;
     struct ModeRec *best = NULL;
     struct PrismMode m;
     ULONG i;
     UWORD w, x;
 
-    if (!src || !a->curMode || cs->testPbm || (B->flags & (PBF_SHADOW | PBF_PRESENT))) {
+    if (!src || !am || cs->testPbm || (B->flags & (PBF_SHADOW | PBF_PRESENT))) {
         mon2_stop();
         return FALSE;
     }
     /* a span screen: board 1 shows the half board 0 doesn't, in its mode
      * of half the width */
-    w = a->curMode->spanHalf ? a->curMode->spanHalf : a->curMode->m.width;
-    x = a->curMode->spanHalf && !prefs.secondLeft ? a->curMode->spanHalf : 0;
+    w = am->spanHalf ? am->spanHalf : am->m.width;
+    x = am->spanHalf && !prefs.secondLeft ? am->spanHalf : 0;
     if (mon2Dst && mirSrc == src && mon2X == x && cs->curMode && cs->curMode->m.width == w &&
-        cs->curMode->m.height == a->curMode->m.height)
+        cs->curMode->m.height == am->m.height)
         return TRUE;
     mon2_stop();
     mon2X = x;
     for (i = 0; i < cs->nmodes; i++) {
         struct ModeRec *mr = &cs->modes[i];
-        if (mr->m.width == w && mr->m.height == a->curMode->m.height && mr->bpp == src->bpp) {
+        if (mr->m.width == w && mr->m.height == am->m.height && mr->bpp == src->bpp) {
             best = mr;
             break;
         }
     }
     if (!best) {
         dbg("second monitor: no %ux%u mode at %u bytes a pixel to mirror into\n",
-            w, a->curMode->m.height, src->bpp);
+            w, am->m.height, src->bpp);
         return FALSE;
     }
     present_stop(&cards[1]);
@@ -3448,7 +3480,7 @@ static void mon2_tick(void)
     if (!mon2Dst)
         return;
     LOCK_QUIET();
-    if (mirSrc != cst[0].shownPbm) {      /* another bitmap on board 0 (double buffering) */
+    if (mirSrc != mon2_source(NULL)) {    /* another bitmap to copy (double buffering, a span screen to front) */
         ReleaseSemaphore(&lock);
         update_display();
         return;

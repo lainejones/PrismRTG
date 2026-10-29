@@ -43,6 +43,16 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.3 beta 4 (please report how it goes)
+  Span: the second monitor keeps its half of Workbench while another
+  screen is in front on the first one (a test picture, a game's own
+  screen, a chipset screen). It went black until the span screen came
+  back to the front.
+  Refresh rates: with a card driven through its Picasso96 driver,
+  PrismD's mode list no longer shows rates the card never gave, such as
+  "1920x1080 8 Hz" on an Apollo A6000 (issue #25). A mode without real
+  timing has no rate listed; the card times it as before.
+
 New in 1.3 beta 3 (please report how it goes)
   Text in fonts with kerning (most proportional bitmap fonts, such as the
   ones Amelinium uses) is as wide again as graphics.library draws it: each
