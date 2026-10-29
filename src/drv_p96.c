@@ -340,15 +340,21 @@ static UBYTE mode_type(UBYTE bpp)
     return bpp == 1 ? CHUNKY : bpp == 2 ? HICOLOR : bpp == 3 ? TRUECOLOR : TRUEALPHA;
 }
 
+/* The refresh rate a card driver's own mode stands for, 0 = not known.
+ * Some drivers' internal modes carry no real timing: the Apollo SAGA
+ * driver (vampiregfx.card) sets HorTotal/VerTotal to the visible size and
+ * one placeholder PixelClock for every mode, which made PrismD list
+ * "1920x1080 32bit 8 Hz" on an A6000 (nihirash's install video, #25). A
+ * mode with no blanking, or a rate no display runs at, is not a timing. */
 static UBYTE refresh(const struct ModeInfo *mi)
 {
     ULONG total = (ULONG)mi->HorTotal * mi->VerTotal;
     ULONG hz;
-    if (!total) return 0;
+    if (!total || mi->HorTotal <= mi->Width || mi->VerTotal <= mi->Height) return 0;
     hz = (mi->PixelClock + total / 2) / total;
     if (mi->Flags & GMF_DOUBLESCAN) hz /= 2;
     if (mi->Flags & GMF_INTERLACE) hz *= 2;
-    return hz < 256 ? hz : 0;
+    return hz >= 20 && hz <= 250 ? hz : 0;
 }
 
 static BOOL mode_info(struct P96Priv *p, struct PrismMode *m, struct ModeInfo *mi)

@@ -213,8 +213,33 @@ static void test_modes(void)
         assert(b.checkMode(&b, &m));
         m.refresh = 75;
         assert(!b.checkMode(&b, &m));
+        m.refresh = 0;
+        assert(b.checkMode(&b, &m) && m.refresh == 60);
         Remove(&res.Node);
     }
+    {
+        /* vampiregfx.card style (#25): the visible size as the totals and
+         * one placeholder clock for every mode - usable, rate not known */
+        struct LibResolution res;
+        struct ModeInfo mode;
+        memset(&res, 0, sizeof(res));
+        memset(&mode, 0, sizeof(mode));
+        res.Width = mode.Width = 640; res.Height = mode.Height = 480;
+        mode.Depth = 8; mode.HorTotal = 640; mode.VerTotal = 480;
+        mode.PixelClock = 28375000;
+        res.Modes[CHUNKY] = &mode;
+        AddTail((struct List *)&p.bi.ResolutionsList, &res.Node);
+        m.refresh = 0;
+        assert(b.checkMode(&b, &m) && m.refresh == 0);
+        m.refresh = 60;                     /* a rate asked for can't be promised */
+        assert(!b.checkMode(&b, &m));
+        /* real-looking totals but a rate no display runs at */
+        mode.HorTotal = 800; mode.VerTotal = 525; mode.PixelClock = 2000000;
+        m.refresh = 0;
+        assert(b.checkMode(&b, &m) && m.refresh == 0);
+        Remove(&res.Node);
+    }
+    p.bi.Flags &= ~BIF_INTERNALMODESONLY;
 }
 
 static void test_aperture(void)

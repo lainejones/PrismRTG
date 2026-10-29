@@ -3957,8 +3957,11 @@ int main(void)
         printf("PrismD: %s%s, %lu KB VRAM, modes:\n", k ? "second board: " : "", cards[k].b->name,
                (unsigned long)(cards[k].b->vramSize >> 10));
         for (i = 0; i < cs->nmodes; i++)
-            printf("  $%08lx %s %u Hz\n", (unsigned long)cs->modes[i].id, cs->modes[i].name,
-                   cs->modes[i].m.refresh);
+            if (cs->modes[i].m.refresh)
+                printf("  $%08lx %s %u Hz\n", (unsigned long)cs->modes[i].id, cs->modes[i].name,
+                       cs->modes[i].m.refresh);
+            else            /* the card's driver times it and doesn't say how */
+                printf("  $%08lx %s\n", (unsigned long)cs->modes[i].id, cs->modes[i].name);
     }
     if (!prefs.blitter)
         printf("PrismD: blitter off (PrismPrefs)\n");
