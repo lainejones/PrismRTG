@@ -362,6 +362,15 @@
                 (if (= wb 3) (run "C:PrismSetup >NIL: WBID=0103"))
             ))
     ))
+
+; the package drawer came with a plain drawer icon so it shows when unpacked;
+; from now on it has this Workbench's own (ENV:Sys/def_drawer.info). Not on
+; the install floppy: a disk root has no drawer icon, and it may be locked.
+(set pkgdir (expandpath ""))
+(if (and (exists "ENV:Sys/def_drawer.info" (noreq))
+         (<> (substr pkgdir (- (strlen pkgdir) 1) 1) ":"))
+    (if (exists (cat pkgdir ".info") (noreq))
+        (run (cat "Copy >NIL: ENV:Sys/def_drawer.info \"" pkgdir ".info\""))))
 (complete 100)
 
 (if (= p96left 1)
