@@ -25,13 +25,13 @@
  * its "v" and "-beta" (v1.1-beta5 = 1.1b5): PrismUpdate compares it with
  * GitHub's */
 #ifndef PRISM_RELEASE
-#define PRISM_RELEASE     "1.3b5"
+#define PRISM_RELEASE     "1.3b6"
 #endif
-#define PRISM_RELDATE     "29.10.26"      /* the $VER date, dd.mm.yy */
+#define PRISM_RELDATE     "30.10.26"      /* the $VER date, dd.mm.yy */
 
 /* Boot failsafe: DEVS:Monitors/Prism creates this before starting PrismD
- * and PrismD deletes it after a minute. Found at boot, it means the last
- * start never got that far: Prism is skipped once. */
+ * and PrismD deletes it after a minute, or when it gives up. Found at boot,
+ * it means the last start hung: Prism is skipped once. */
 #define PRISM_BOOTFLAG    "ENVARC:Prism.booting"
 
 /* Prism ModeIDs: one "monitor" per board, 0x7A00xxxx for the first and
