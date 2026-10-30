@@ -44,6 +44,17 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.3 beta 7
+  PrismPrefs is one window with four tabs - Modes, Screens, Board,
+  Other - that fits a 640x200 Workbench with topaz 8; it no longer opens
+  a screen of its own on a short Workbench. Save, Use, Test, Defaults and
+  Cancel stay under the tabs.
+  Menus (right mouse button), as in the system's prefs editors: Project
+  (About, Test mode, Check for updates, Save, Use, Quit) and Edit (Reset
+  to defaults, Last saved, Restore = the settings the window opened with).
+  The 2nd monitor choice shows Span right and Span left by name again.
+  The drawing code is the same as in beta 6.
+
 New in 1.3 beta 6
   When PrismRTG doesn't start at boot, it says why: PrismPrefs shows the
   reason on its bottom line ("Not running: no supported board"), and
