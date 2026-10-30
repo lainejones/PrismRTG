@@ -382,6 +382,10 @@
       (if (<> cardname "") (cat " for the " cardname) "")
       "." ssmsg "\n\n"
       "Reboot to start it.\n\n"
+      "If Workbench comes back on a small Amiga screen, PrismRTG did not start: "
+      "Prefs/PrismPrefs says why on its bottom line. Change what it says and "
+      "reboot again; if that doesn't help, double-click PrismProbe here for a "
+      "report to send.\n\n"
       "If the screen stays dark or looks wrong: hold the LEFT MOUSE BUTTON while "
       "booting and PrismRTG does not start. A start that hangs is also skipped by "
       "itself on the next boot. Then use Prefs/PrismPrefs to change the modes."

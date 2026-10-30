@@ -398,8 +398,44 @@ static void check_update(struct Gui *g)
     }
 }
 
+/* Why the last start at boot ended: the last PrismD or Prism line in
+ * T:PrismD.log (prismmon.c writes it), or FALSE when it just stopped. A
+ * closing "no supported board" gives way to the line before it when that
+ * one says more (a card still held by an earlier start) */
+static BOOL last_start(char *why, int len)
+{
+    char line[120], prev[60];
+    BPTR f = Open((STRPTR)"T:PrismD.log", MODE_OLDFILE);
+    why[0] = prev[0] = 0;
+    if (!f)
+        return FALSE;
+    while (FGets(f, (STRPTR)line, sizeof(line))) {
+        char *t = line;
+        int n;
+        if (!strncmp(t, "PrismD: ", 8))
+            t += 8;
+        else if (!strncmp(t, "Prism: ", 7))
+            t += 7;
+        else
+            continue;
+        if (!strncmp(t, "modes", 5) || t[0] == ' ' || t[0] == '$')
+            continue;                         /* the mode list, not news */
+        n = strlen(t);
+        while (n && (t[n - 1] == '\n' || t[n - 1] == '\r'))
+            t[--n] = 0;
+        strcpy(prev, why);
+        strncpy(why, t, len - 1);
+        why[len - 1] = 0;
+    }
+    Close(f);
+    if (!strcmp(why, "no supported board") && prev[0] && !strstr(prev, "no supported board"))
+        strcpy(why, prev);
+    return why[0] && strcmp(why, "stopped");
+}
+
 static void running_status(struct Gui *g)
 {
+    char why[60];
     struct PrismSem *s;
     char buf[80];
 
@@ -414,7 +450,9 @@ static void running_status(struct Gui *g)
                 s->boardName ? s->boardName : "?", (unsigned long)s->numModes);
     Permit();
     g->running = s != NULL;
-    if (!s)
+    if (!s && last_start(why, sizeof(why)))
+        snprintf(buf, sizeof(buf), S(ID_PRISMD_DIDN_T_START, "Not running: %s"), why);
+    else if (!s)
         snprintf(buf, sizeof(buf), "%s", S(ID_PRISMD_ISN_T_RUNNING_IT_READS_THESE, "PrismD isn't running. It reads these when it starts."));
     strcpy(g->status, buf);
 }

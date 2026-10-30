@@ -6,8 +6,9 @@
  *
  * It starts C:PrismD in the background, waits until PrismD has published
  * its modes, and returns. Hold the LEFT MOUSE BUTTON during boot to skip
- * Prism (a way out if a board or mode misbehaves). Output goes to NIL:, or
- * to T:PrismD.log when ENV:Prism.prefs has LOG=ON.
+ * Prism (a way out if a board or mode misbehaves). PrismD's output goes to
+ * T:PrismD.log (with its log too when ENV:Prism.prefs has LOG=ON): when it
+ * doesn't start, PrismPrefs and PrismProbe's report say why from there.
  */
 #include <exec/types.h>
 #include <exec/semaphores.h>
@@ -16,11 +17,21 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include "prism.h"
-#include "prefs.h"
 
 static const char version[] __attribute__((used)) = "$VER: Prism " PRISM_RELEASE " (" PRISM_RELDATE ")";
 
 #define PRISMD "C:PrismD"
+
+/* a line in T:PrismD.log for a start that didn't happen, for PrismPrefs */
+static void note(const char *why)
+{
+    BPTR f = Open("T:PrismD.log", MODE_NEWFILE);
+    if (f) {
+        FPuts(f, (STRPTR)why);
+        Close(f);
+    }
+    PutStr((STRPTR)why);
+}
 
 static BOOL prism_up(void)
 {
@@ -33,13 +44,12 @@ static BOOL prism_up(void)
 
 int main(void)
 {
-    struct PrismPrefs p;
     BPTR in, out, lock;
     int i;
 
     /* CIA-A PRA bit 6 is low while the left mouse button is held */
     if (!(*(volatile UBYTE *)0xbfe001 & 0x40)) {
-        PutStr("Prism: left mouse button held - not starting\n");
+        note("Prism: left mouse button held - not starting\n");
         return 0;
     }
     if (prism_up())
@@ -51,19 +61,18 @@ int main(void)
     if ((lock = Lock(PRISM_BOOTFLAG, ACCESS_READ))) {
         UnLock(lock);
         DeleteFile(PRISM_BOOTFLAG);
-        PutStr("Prism: the last start didn't finish - skipped this once\n");
+        note("Prism: the last start didn't finish - skipped this once\n");
         return 5;
     }
     if (!(lock = Lock(PRISMD, ACCESS_READ))) {
-        PutStr("Prism: " PRISMD " is missing\n");
+        note("Prism: " PRISMD " is missing\n");
         return 10;
     }
     UnLock(lock);
 
-    prefs_load(&p, PREFS_ENV);
     if (!(in = Open("NIL:", MODE_OLDFILE)))
         return 20;
-    out = p.log ? Open("T:PrismD.log", MODE_NEWFILE) : 0;
+    out = Open("T:PrismD.log", MODE_NEWFILE);
     if (!out && !(out = Open("NIL:", MODE_NEWFILE))) {
         Close(in);
         return 20;

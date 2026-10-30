@@ -3864,7 +3864,7 @@ int main(void)
     if (FindSemaphore(PRISM_SEMNAME)) {
         printf("PrismD: already running\n");
         rc = 5;
-        goto out;
+        goto out_other;
     }
     /* Never next to Picasso96: the two patch the same calls, and an A4000
      * with Picasso96's "Native" monitor still installed froze at the first
@@ -4186,6 +4186,12 @@ int main(void)
     rc = 0;
 
 out:
+    /* PrismD ended by itself - no board, a setting it can't use, a quit:
+     * not the hang the boot flag is for (prismmon.c). Left there, the next
+     * boot skipped PrismRTG even after the cause was fixed (1.3 beta 6).
+     * Not when another PrismD runs: its start may still be under way. */
+    DeleteFile(PRISM_BOOTFLAG);
+out_other:
     for (k = 0; k < ncards; k++)
         present_stop(&cards[k]);
     driver_close();

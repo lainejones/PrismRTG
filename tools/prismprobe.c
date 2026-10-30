@@ -216,7 +216,9 @@ static void report(FILE *f)
     ps = (struct PrismSem *)FindSemaphore((STRPTR)PRISM_SEMNAME);
     if (!ps) {
         Permit();
-        fprintf(f, "PrismD is not running\n");
+        fprintf(f, "PrismD is not running. What it said at the last boot:\n");
+        /* prismmon.c keeps it there; while PrismD runs the file is its own */
+        file_into(f, "T:PrismD.log");
     } else {
         char name1[60] = "", name2[60] = "", rel[24] = "";
         UWORD v = ps->version;
@@ -234,6 +236,14 @@ static void report(FILE *f)
                 rel[0] ? rel : "?", v, (unsigned long)modes);
         fprintf(f, "board 1: %s @ $%08lx\n", name1[0] ? name1 : "?", (unsigned long)a0);
         if (nb > 1) fprintf(f, "board 2: %s @ $%08lx\n", name2[0] ? name2 : "?", (unsigned long)a1);
+    }
+    {
+        BPTR flag = Lock((STRPTR)PRISM_BOOTFLAG, ACCESS_READ);
+        if (flag) {
+            UnLock(flag);
+            fprintf(f, "%s is there: a start that never ran a minute; the next boot skips PrismRTG once\n",
+                    PRISM_BOOTFLAG);
+        }
     }
     file_into(f, "ENV:Prism.prefs");
     if (same_file("ENV:Prism.prefs", "ENVARC:Prism.prefs"))

@@ -57,7 +57,7 @@ else
 fi
 
 echo "== M6 =="
-$CC $CFLAGS -s -o out/PrismMon tools/prismmon.c src/prefs.c
+$CC $CFLAGS -s -o out/PrismMon tools/prismmon.c
 $CC $CFLAGS -s -o out/PrismSetup tools/prismsetup.c src/prefs.c src/catalog.c
 $CC $CFLAGS -s -o out/PrismImport tools/prismimport.c src/prefs.c
 $CC $CFLAGS -s -o out/prismgrab tools/prismgrab.c

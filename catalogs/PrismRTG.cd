@@ -441,3 +441,6 @@ Second board: the Amiga's own video while nothing is on it (restart PrismD)
 ID_SPAN_MODES_ONE_SCREEN_ACROSS_BOTH_MONITO (141//)
 Span modes: one screen across both monitors (restart PrismD, then pick one in ScreenMode)
 ;
+ID_PRISMD_DIDN_T_START (142//)
+Not running: %s
+;

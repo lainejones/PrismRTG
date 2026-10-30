@@ -805,7 +805,7 @@ BOOL P96_Probe(struct PrismBoard *b, const char *card, const char *monitor)
     claimed = FindSemaphore(P96_OWNER) != NULL;
     Permit();
     if (claimed) {
-        puts("PrismD: a Prism P96 driver is already resident; reboot before restarting");
+        puts("PrismD: the card is still held by an earlier start - reboot");
         return FALSE;
     }
     p = AllocVec(sizeof(*p), MEMF_PUBLIC | MEMF_CLEAR);
