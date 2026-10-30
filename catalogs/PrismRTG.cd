@@ -492,3 +492,9 @@ The settings last saved (ENVARC:Prism.prefs)
 ID_THE_SETTINGS_THE_WINDOW_OPENED_WITH (158//)
 The settings the window opened with
 ;
+ID_SPAN_LEFT (159//)
+Span left
+;
+ID_SPAN_RIGHT (160//)
+Span right
+;

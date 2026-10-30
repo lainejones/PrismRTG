@@ -170,7 +170,9 @@ static void init_texts(void)
     gammaLabels[6] = (STRPTR)S(ID_0_8, "0.8");
     secLabels[0] = (STRPTR)S(ID_OWN_SCREEN, "Own screen");
     secLabels[1] = (STRPTR)S(ID_MIRROR_FIRST, "Mirror");
-    secLabels[2] = (STRPTR)S(ID_OFF, "Off");
+    secLabels[2] = (STRPTR)S(ID_SPAN_RIGHT, "Span right");
+    secLabels[3] = (STRPTR)S(ID_SPAN_LEFT, "Span left");
+    secLabels[4] = (STRPTR)S(ID_OFF, "Off");
     menuDef[0].nm_Label = (STRPTR)S(ID_MENU_PROJECT, "Project");
     menuDef[1].nm_Label = (STRPTR)S(ID_MENU_ABOUT, "About...");
     menuDef[3].nm_Label = (STRPTR)S(ID_MENU_TEST_MODE, "Test mode");
