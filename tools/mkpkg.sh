@@ -30,7 +30,7 @@ cp dist/Install_PrismRTG dist/ReadMe LICENSE $P/
 # the ReadMe as an AmigaGuide document too (MultiView), with its committed icon
 python3 tools/mkguide.py dist/ReadMe $P/PrismRTG.guide
 cp dist/PrismRTG.guide.info $P/
-cp dist/Install_PrismRTG.info dist/Prism.info dist/PrismPrefs.info dist/ReadMe.info $P/
+cp dist/Install_PrismRTG.info dist/Prism.info dist/PrismPrefs.info dist/PrismProbe.info dist/ReadMe.info $P/
 # the drawer's own icon goes BESIDE it, or Workbench doesn't show the drawer
 cp dist/PrismRTG.info out/pkg/
 ls -l $P

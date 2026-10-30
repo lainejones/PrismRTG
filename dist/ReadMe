@@ -32,7 +32,8 @@ What goes where
                          more file here (docs/writing-a-driver.md on
                          GitHub); BOARD=<name> selects it, Auto tries it
   C:PrismSetup           the installer's helper (card detection)
-  C:PrismProbe           lists the expansion boards PrismRTG can drive
+  C:PrismProbe           lists the expansion boards PrismRTG can drive;
+                         REPORT makes a report for a card it doesn't find
   C:PrismImport          Picasso96's screen sizes into PrismRTG's settings
   DEVS:Monitors/Prism    starts PrismD before Workbench opens
   SYS:Prefs/PrismPrefs   modes, refresh rates, board, blitter, palette, log
@@ -483,6 +484,11 @@ Reporting a problem
   Download PrismCheck from the same release page, run it, and attach
   the report it writes to an issue at
   https://github.com/lainejones/PrismRTG/issues
+
+  A card PrismRTG doesn't find: double-click PrismProbe in this drawer
+  (or run PrismProbe REPORT). It only reads, never touches a board, and
+  saves a report to RAM:PrismRTG-report.txt. Attach it to an issue
+  there: New issue, then "A graphics card PrismRTG doesn't find".
 
 Credits
   Laine Jones, with Claude (Anthropic). Thanks to Stefan Reinauer (P96

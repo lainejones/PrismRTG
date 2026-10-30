@@ -1,0 +1,42 @@
+name: A graphics card PrismRTG doesn't find
+description: A graphics card PrismRTG doesn't find or doesn't drive - with a PrismProbe report.
+title: "Card: "
+labels: ["card"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping PrismRTG support another card!
+
+        **Make the report on the Amiga:** double-click **PrismProbe** in the PrismRTG drawer
+        (or run `PrismProbe REPORT` in a Shell). It lists the expansion boards and saves a report
+        to `RAM:PrismRTG-report.txt`; copy it somewhere you can reach from the browser.
+        PrismProbe only reads, it never touches a board, so it is safe to run with Picasso96 or
+        anything else driving the card.
+  - type: input
+    id: card
+    attributes:
+      label: Which card is it?
+      description: Make and model, its bus (Zorro II/III, PCI via a bridge, CPU card, ...) and how much video memory.
+      placeholder: e.g. "Picasso IV, Zorro III, 4 MB"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens?
+      description: Does PrismD start? Are there no Prism modes, a black screen, a wrong picture? What does it work with now (Picasso96, CyberGraphX, ...)?
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: The report
+      description: Drag `PrismRTG-report.txt` into this box to attach it.
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: The Picasso96 or CyberGraphX card file you use for it today, links to the card's documentation, photos of the board...

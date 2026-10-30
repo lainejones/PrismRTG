@@ -507,6 +507,15 @@ and `vramcheck` - into one text file. Attach that file to an
 [issue](https://github.com/lainejones/PrismRTG/issues) with a few words on what
 you saw on the screen.
 
+**A card PrismRTG doesn't find?** Double-click **PrismProbe** in the PrismRTG drawer
+(or run `PrismProbe REPORT`). It only reads, so it is safe with Picasso96 or anything
+else driving the card. It lists the expansion boards and saves a report to
+`RAM:PrismRTG-report.txt`: the system, every board's autoconfig data and the driver
+that claimed it, PrismD's state and settings, and the other graphics software in
+memory. Attach it to a
+[card report](https://github.com/lainejones/PrismRTG/issues/new?template=card-report.yml);
+the form asks for the card and what happens.
+
 ## Build
 
 Needs amiga-gcc (Bebbo) under WSL or Linux:
@@ -525,7 +534,7 @@ finished `.info` files in `dist/`.
 | `PrismPrefs` | Settings editor. `FROM= USE SAVE TEST=<slot>` work without the window. |
 | `Prism` (`out/PrismMon`) | `DEVS:Monitors` launcher with the boot failsafe. |
 | `PrismSetup` | Installer helper: `DETECT`, `WBID=<id>` (Workbench mode by ModeID, e.g. `0102` = 800x600 16-bit; `WBMODE=<slot>` still works). |
-| `PrismProbe` | Lists expansion boards and marks the ones PrismRTG can drive. Read-only. |
+| `PrismProbe` | Lists expansion boards and marks the ones PrismRTG can drive. `REPORT` (or a double-click on its icon) writes a report for a card PrismRTG doesn't find. Read-only. |
 | `PrismUpdate` | Asks GitHub or a mirror whether a newer release exists and offers to fetch and install it: `GET`. |
 | `PrismImport` | Picasso96's switched-on sizes and depths into `ENVARC:Prism.prefs`: `[FROM=file] [BOARD=name] [ONLY] [TEST]` (ONLY switches every other mode off, TEST writes nothing). |
 | `cgxtest`, `arexxtest.rexx` | Checks of the CyberGraphX 43 calls (`MODEID=`) and of the ARexx port (`rx arexxtest.rexx`). |
