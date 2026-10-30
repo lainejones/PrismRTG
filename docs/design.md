@@ -211,7 +211,9 @@ callbacks so everything draws on the CPU (a diagnostic for the real GBAPII++). *
 (on/off, size, depth, refresh, and "live" for modes the running PrismD offers, found with
 `ModeNotAvailable`), Offered + Refresh for the selected mode, Board / Use blitter / Debug log, a status
 line and Save / Use / Defaults / Cancel (Esc cancels). Like the system editors it takes
-`FROM= USE SAVE` to work without a window. Changes take effect when PrismD next starts.
+`FROM= USE SAVE` to work without a window, and has their menus: Project (About, Test mode, Check
+for updates, Save, Use, Quit) and Edit (Reset to defaults, Last saved = ENVARC:, Restore = the
+settings the window opened with). Changes take effect when PrismD next starts.
 
 Verified in WinUAE: PrismMouse clicks toggled a mode, set 72 Hz, ticked Debug log and pressed Use;
 the written file matched. Booting with `640x480x16 ON 75` + `BLITTER=OFF`, Workbench came up on

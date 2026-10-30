@@ -76,6 +76,29 @@ static const char *const updSource[] = { "OFF", "GITHUB", "MIRROR", "BOTH" };
 static STRPTR gammaLabels[] = { "1.0 (off)", "1.2", "1.4", "1.6", "1.8", "2.0", "0.8", NULL };
 static const UBYTE gammaValues[] = { 10, 12, 14, 16, 18, 20, 8 };
 
+/* the menus: Project and Edit as in the system prefs editors (Edit's three
+ * like theirs: the defaults, ENVARC:, or what the window opened with). The
+ * texts are put in by init_texts; the user data is the action */
+enum { MN_ABOUT = 1, MN_TEST, MN_CHECK, MN_SAVE, MN_USE, MN_QUIT, MN_DEFAULTS, MN_LASTSAVED, MN_RESTORE };
+
+static struct NewMenu menuDef[] = {
+    { NM_TITLE, (STRPTR)"Project", NULL, 0, 0, NULL },
+    { NM_ITEM,  (STRPTR)"About...", (STRPTR)"?", 0, 0, (APTR)MN_ABOUT },
+    { NM_ITEM,  NM_BARLABEL, NULL, 0, 0, NULL },
+    { NM_ITEM,  (STRPTR)"Test mode", (STRPTR)"T", 0, 0, (APTR)MN_TEST },
+    { NM_ITEM,  (STRPTR)"Check for updates", NULL, 0, 0, (APTR)MN_CHECK },
+    { NM_ITEM,  NM_BARLABEL, NULL, 0, 0, NULL },
+    { NM_ITEM,  (STRPTR)"Save", (STRPTR)"S", 0, 0, (APTR)MN_SAVE },
+    { NM_ITEM,  (STRPTR)"Use", (STRPTR)"U", 0, 0, (APTR)MN_USE },
+    { NM_ITEM,  NM_BARLABEL, NULL, 0, 0, NULL },
+    { NM_ITEM,  (STRPTR)"Quit", (STRPTR)"Q", 0, 0, (APTR)MN_QUIT },
+    { NM_TITLE, (STRPTR)"Edit", NULL, 0, 0, NULL },
+    { NM_ITEM,  (STRPTR)"Reset to defaults", (STRPTR)"D", 0, 0, (APTR)MN_DEFAULTS },
+    { NM_ITEM,  (STRPTR)"Last saved", (STRPTR)"L", 0, 0, (APTR)MN_LASTSAVED },
+    { NM_ITEM,  (STRPTR)"Restore", (STRPTR)"R", 0, 0, (APTR)MN_RESTORE },
+    { NM_END,   NULL, NULL, 0, 0, NULL }
+};
+
 static UWORD gamma_index(UBYTE g)
 {
     UWORD i;
@@ -93,6 +116,7 @@ struct Gui {
     struct Gadget *glist, *gList, *gOn, *gHz, *gBoard, *gBlit, *gLog, *gBgr, *gDrag, *gSoft, *gHwOvl, *gStatus;
     struct Gadget *gPromote, *gPList, *gProg, *gUpdates, *gW, *gH, *gSet, *gGamma, *gPower, *gMirror;
     struct Gadget *gSecMon;
+    struct Menu *menu;
     struct List modes;
     struct Node node[PREFS_NMODES];
     char text[PREFS_NMODES][48];
@@ -102,6 +126,7 @@ struct Gui {
     char ptext[PREFS_NPROGS][48];
     LONG psel;                       /* selected program, -1 none              */
     struct PrismPrefs prefs;
+    struct PrismPrefs opened;        /* as the window opened with them: Restore */
     LONG sel;
     BOOL running;                    /* PrismD is up: show which modes are live */
     UBYTE boards;                    /* the boards it drives (1 or 2)          */
@@ -146,6 +171,17 @@ static void init_texts(void)
     secLabels[0] = (STRPTR)S(ID_OWN_SCREEN, "Own screen");
     secLabels[1] = (STRPTR)S(ID_MIRROR_FIRST, "Mirror");
     secLabels[2] = (STRPTR)S(ID_OFF, "Off");
+    menuDef[0].nm_Label = (STRPTR)S(ID_MENU_PROJECT, "Project");
+    menuDef[1].nm_Label = (STRPTR)S(ID_MENU_ABOUT, "About...");
+    menuDef[3].nm_Label = (STRPTR)S(ID_MENU_TEST_MODE, "Test mode");
+    menuDef[4].nm_Label = (STRPTR)S(ID_MENU_CHECK_FOR_UPDATES, "Check for updates");
+    menuDef[6].nm_Label = (STRPTR)S(ID_SAVE, "Save");
+    menuDef[7].nm_Label = (STRPTR)S(ID_USE, "Use");
+    menuDef[9].nm_Label = (STRPTR)S(ID_MENU_QUIT, "Quit");
+    menuDef[10].nm_Label = (STRPTR)S(ID_MENU_EDIT, "Edit");
+    menuDef[11].nm_Label = (STRPTR)S(ID_MENU_RESET_TO_DEFAULTS, "Reset to defaults");
+    menuDef[12].nm_Label = (STRPTR)S(ID_MENU_LAST_SAVED, "Last saved");
+    menuDef[13].nm_Label = (STRPTR)S(ID_MENU_RESTORE, "Restore");
 }
 
 
@@ -819,18 +855,101 @@ static BOOL open_window(struct Gui *g)
         WA_Left, 20, WA_Top, g->scr->BarHeight + 4,
         WA_InnerWidth, iw, WA_InnerHeight, ih,
         WA_AutoAdjust, TRUE,
+        WA_NewLookMenus, TRUE,
         WA_Flags, WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_CLOSEGADGET | WFLG_ACTIVATE |
                   WFLG_SMART_REFRESH,
         WA_IDCMP, IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_VANILLAKEY |
-                  IDCMP_MOUSEBUTTONS |
+                  IDCMP_MOUSEBUTTONS | IDCMP_MENUPICK |
                   BUTTONIDCMP | CHECKBOXIDCMP | CYCLEIDCMP | LISTVIEWIDCMP | STRINGIDCMP,
         WA_Gadgets, (ULONG)g->glist,
         g->ownScr ? WA_CustomScreen : WA_PubScreen, (ULONG)g->scr,
         TAG_END);
     if (!g->win)
         return FALSE;
+    /* the menus; without them the window still works by its buttons */
+    if ((g->menu = CreateMenus(menuDef, TAG_END))) {
+        if (LayoutMenus(g->menu, g->vi, GTMN_NewLookMenus, TRUE, TAG_END))
+            SetMenuStrip(g->win, g->menu);
+        else {
+            FreeMenus(g->menu);
+            g->menu = NULL;
+        }
+    }
     GT_RefreshWindow(g->win, NULL);
     return TRUE;
+}
+
+/* ---- the actions the buttons and the menus share --------------------- */
+
+/* new settings as a whole (Defaults, Last saved, Restore): every gadget follows */
+static void show_prefs(struct Gui *g, const char *msg)
+{
+    refresh_list(g);
+    g->psel = -1;
+    refresh_progs(g);
+    show_settings(g);
+    set_status(g, msg);
+}
+
+/* Test: with two boards, ask which one shows it */
+static void test_selected(struct Gui *g)
+{
+    if (g->boards > 1) {
+        struct EasyStruct es = { sizeof(struct EasyStruct), 0, (STRPTR)S(ID_PRISM_MODE_TEST, "Prism mode test"),
+                                 (STRPTR)S(ID_SHOW_THE_TEST_PICTURE_ON_WHICH_BOARD, "Show the test picture on which board?"),
+                                 (STRPTR)S(ID_FIRST_SECOND_CANCEL, "First|Second|Cancel") };
+        LONG b = EasyRequest(g->win, &es, NULL);   /* 1 First, 2 Second, 0 Cancel */
+        if (!b)
+            return;
+        g->testOn = b == 2;
+    }
+    test_mode(g, g->sel, TRUE);
+}
+
+static void about(struct Gui *g)
+{
+    struct EasyStruct es = { sizeof(struct EasyStruct), 0, (STRPTR)S(ID_ABOUT_PRISMPREFS, "About PrismPrefs"),
+                             (STRPTR)"PrismPrefs %s\n\n%s\n\n%s", (STRPTR)S(ID_OK, "OK") };
+    EasyRequest(g->win, &es, NULL, (ULONG)PRISM_RELEASE,
+                (ULONG)S(ID_THE_SETTINGS_EDITOR_OF_PRISMRTG, "The settings editor of PrismRTG, the RTG system for AmigaOS 3.x"),
+                (ULONG)S(ID_LICENCE_GPL_3_0, "Licence: GPL-3.0"));
+}
+
+/* a menu item; TRUE when the window should close */
+static BOOL menu_pick(struct Gui *g, ULONG id)
+{
+    switch (id) {
+    case MN_ABOUT:
+        about(g);
+        break;
+    case MN_TEST:
+        test_selected(g);
+        break;
+    case MN_CHECK:
+        check_update(g);
+        break;
+    case MN_SAVE:
+        return write_prefs(g, TRUE);
+    case MN_USE:
+        return write_prefs(g, FALSE);
+    case MN_QUIT:                        /* as Cancel: nothing written */
+        return TRUE;
+    case MN_DEFAULTS:
+        prefs_default(&g->prefs);
+        show_prefs(g, S(ID_DEFAULTS_EVERY_MODE_THE_BOARD_CAN_SHOW, "Defaults - every mode the board can show"));
+        break;
+    case MN_LASTSAVED:
+        /* prefs_load starts from the defaults: no ENVARC: file is the defaults */
+        show_prefs(g, prefs_load(&g->prefs, PREFS_ENVARC)
+                      ? S(ID_THE_SETTINGS_LAST_SAVED_ENVARC, "The settings last saved (ENVARC:Prism.prefs)")
+                      : S(ID_NOTHING_SAVED_YET_THE_DEFAULTS, "Nothing saved yet: the defaults"));
+        break;
+    case MN_RESTORE:
+        g->prefs = g->opened;
+        show_prefs(g, S(ID_THE_SETTINGS_THE_WINDOW_OPENED_WITH, "The settings the window opened with"));
+        break;
+    }
+    return FALSE;
 }
 
 /* returns when the window should close */
@@ -858,6 +977,16 @@ static void event_loop(struct Gui *g)
             case IDCMP_REFRESHWINDOW:
                 GT_BeginRefresh(g->win);
                 GT_EndRefresh(g->win, TRUE);
+                break;
+            case IDCMP_MENUPICK:
+                /* every item picked in one go (NextSelect), until one closes */
+                while (code != MENUNULL && !done) {
+                    struct MenuItem *it = ItemAddress(g->menu, code);
+                    if (!it)
+                        break;
+                    done = menu_pick(g, (ULONG)GTMENUITEM_USERDATA(it));
+                    code = it->NextSelect;
+                }
                 break;
             case IDCMP_GADGETUP:
                 switch (gad->GadgetID) {
@@ -992,31 +1121,16 @@ static void event_loop(struct Gui *g)
                     }
                     break;
                 case GAD_TEST:
-                    /* with two boards: which one shows it */
-                    if (g->boards > 1) {
-                        struct EasyStruct es = { sizeof(struct EasyStruct), 0, (STRPTR)S(ID_PRISM_MODE_TEST, "Prism mode test"),
-                                                 (STRPTR)S(ID_SHOW_THE_TEST_PICTURE_ON_WHICH_BOARD, "Show the test picture on which board?"),
-                                                 (STRPTR)S(ID_FIRST_SECOND_CANCEL, "First|Second|Cancel") };
-                        LONG b = EasyRequest(g->win, &es, NULL);   /* 1 First, 2 Second, 0 Cancel */
-                        if (!b)
-                            break;
-                        g->testOn = b == 2;
-                    }
-                    test_mode(g, g->sel, TRUE);
+                    test_selected(g);
                     break;
                 case GAD_SAVE:
-                    done = write_prefs(g, TRUE);
+                    done = menu_pick(g, MN_SAVE);
                     break;
                 case GAD_USE:
-                    done = write_prefs(g, FALSE);
+                    done = menu_pick(g, MN_USE);
                     break;
                 case GAD_DEFAULTS:
-                    prefs_default(&g->prefs);
-                    refresh_list(g);
-                    g->psel = -1;
-                    refresh_progs(g);
-                    show_settings(g);
-                    set_status(g, S(ID_DEFAULTS_EVERY_MODE_THE_BOARD_CAN_SHOW, "Defaults - every mode the board can show"));
+                    menu_pick(g, MN_DEFAULTS);
                     break;
                 case GAD_CANCEL:
                     done = TRUE;
@@ -1087,6 +1201,7 @@ int main(void)
         goto out;
     }
 
+    g.opened = g.prefs;
     running_status(&g);
     build_list(&g);
     build_progs(&g);
@@ -1097,7 +1212,9 @@ int main(void)
     }
 
 out:
+    if (g.win && g.menu) ClearMenuStrip(g.win);
     if (g.win) CloseWindow(g.win);
+    if (g.menu) FreeMenus(g.menu);
     if (g.glist) FreeGadgets(g.glist);
     if (g.vi) FreeVisualInfo(g.vi);
     if (g.scr && g.ownScr) CloseScreen(g.scr);

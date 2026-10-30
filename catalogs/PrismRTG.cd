@@ -444,3 +444,51 @@ Span modes: one screen across both monitors (restart PrismD, then pick one in Sc
 ID_PRISMD_DIDN_T_START (142//)
 Not running: %s
 ;
+ID_ABOUT_PRISMPREFS (143//)
+About PrismPrefs
+;
+ID_LICENCE_GPL_3_0 (144//)
+Licence: GPL-3.0
+;
+ID_MENU_ABOUT (145//)
+About...
+;
+ID_MENU_CHECK_FOR_UPDATES (146//)
+Check for updates
+;
+ID_MENU_EDIT (147//)
+Edit
+;
+ID_MENU_LAST_SAVED (148//)
+Last saved
+;
+ID_MENU_PROJECT (149//)
+Project
+;
+ID_MENU_QUIT (150//)
+Quit
+;
+ID_MENU_RESET_TO_DEFAULTS (151//)
+Reset to defaults
+;
+ID_MENU_RESTORE (152//)
+Restore
+;
+ID_MENU_TEST_MODE (153//)
+Test mode
+;
+ID_NOTHING_SAVED_YET_THE_DEFAULTS (154//)
+Nothing saved yet: the defaults
+;
+ID_OK (155//)
+OK
+;
+ID_THE_SETTINGS_EDITOR_OF_PRISMRTG (156//)
+The settings editor of PrismRTG, the RTG system for AmigaOS 3.x
+;
+ID_THE_SETTINGS_LAST_SAVED_ENVARC (157//)
+The settings last saved (ENVARC:Prism.prefs)
+;
+ID_THE_SETTINGS_THE_WINDOW_OPENED_WITH (158//)
+The settings the window opened with
+;
