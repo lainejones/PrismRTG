@@ -207,10 +207,21 @@ can't do falls back to the default with a message. **Blitter off** NULLs the boa
 callbacks so everything draws on the CPU (a diagnostic for the real GBAPII++). **Log off** makes
 `dbg()` return at once.
 
-`PrismPrefs` (`tools/prismprefs.c`) is a fixed-size GadTools window, font-sensitive: the mode list
-(on/off, size, depth, refresh, and "live" for modes the running PrismD offers, found with
-`ModeNotAvailable`), Offered + Refresh for the selected mode, Board / Use blitter / Debug log, a status
-line and Save / Use / Defaults / Cancel (Esc cancels). Like the system editors it takes
+`PrismPrefs` (`tools/prismprefs.c`) is a fixed-size GadTools window, font-sensitive, with four tabs
+(the tab row is `tools/tabs.c`, copied from PrismNet Prefs; each page's gadgets are a list of their
+own, rebuilt on a tab change): **Modes** - the mode list (on/off, size, depth, refresh, and "live" for
+modes the running PrismD offers, found with `ModeNotAvailable`), Offered + Refresh for the selected
+mode, Width / Height / Set size for a custom slot; **Screens** - Promote screens, the Programs list with
+Promote / Keep / Remove and the Program field, Drag screens, Soft pointer; **Board** - Board, 2nd
+monitor, Use blitter, Swap red/blue, Video on board, Mirror chipset; **Other** - Gamma, Sleep, Log,
+Updates + Check now. Under the tabs, always there: a status line and Save / Use / Test / Defaults /
+Cancel (Esc cancels). The window fits a 640x200 NTSC Workbench with topaz 8 (inner 510x176, outer
+518x189 under the 11-line screen title bar; the mode list gets 13 lines) and is never more than 600
+pixels wide: the page is as tall as the screen leaves, between the smallest every page fits (Screens:
+110 lines with topaz 8; the mode list at least 6 lines) and the mode list at 14 lines. A screen font
+with which it doesn't fit gives way to topaz 8 for the gadgets (as WHDUpdate does). Until 1.3 beta 6
+the window was one ~460-line page, and on a shorter Workbench PrismPrefs opened its own taller screen;
+that fallback is gone. Like the system editors it takes
 `FROM= USE SAVE` to work without a window, and has their menus: Project (About, Test mode, Check
 for updates, Save, Use, Quit) and Edit (Reset to defaults, Last saved = ENVARC:, Restore = the
 settings the window opened with). Changes take effect when PrismD next starts.

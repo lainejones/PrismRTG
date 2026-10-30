@@ -29,6 +29,7 @@
 #include "prism.h"
 #include "prefs.h"
 #include "catalog.h"
+#include "tabs.h"
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
@@ -41,6 +42,12 @@ enum { GAD_LIST = 1, GAD_ON, GAD_HZ, GAD_BOARD, GAD_BLIT, GAD_LOG,
        GAD_DRAG, GAD_SOFTPTR, GAD_HWOVL, GAD_PROMOTE, GAD_PLIST, GAD_PROG, GAD_PADD, GAD_PKEEP, GAD_PDEL,
        GAD_UPDATES, GAD_CHECK, GAD_W, GAD_H, GAD_SETSIZE, GAD_GAMMA, GAD_POWER, GAD_MIRROR, GAD_SECMON };
 
+/* The window is tabbed (as PrismNet Prefs) so that it fits a 640x200 screen
+ * with topaz 8: each tab's page has only its own gadgets, the status line
+ * and the Save / Use / Test / Defaults / Cancel row are always there */
+enum { PG_MODES, PG_SCREENS, PG_BOARD, PG_OTHER, PG_COUNT };
+static const char *pageLabels[PG_COUNT] = { "Modes", "Screens", "Board", "Other" };
+#define GAD_TAB0 100                     /* the tabs' GadgetIDs: GAD_TAB0 + page */
 /* the 2nd monitor cycle (SECONDMONITOR=): what a second board shows while
  * no screen is opened on it; its entries in the order of secValues. Span
  * twice, for the side the second monitor stands on (SECONDSIDE=) */
@@ -108,14 +115,36 @@ static UWORD gamma_index(UBYTE g)
     return 0;
 }
 
+/* the window's measures, from the gadget font (make_layout) */
+struct Layout {
+    WORD fw, fh, gh, row, cbw, cbh;  /* font, gadget height, row pitch, checkbox */
+    WORD w;                          /* inner width                            */
+    WORD pageTop, pageH;             /* the page under the tabs (from inner top) */
+    WORD minPage, maxPage;
+    WORD listW;                      /* the Modes and the Programs lists       */
+    WORD mLab, mCol;                 /* Modes: right column labels, gadgets    */
+    WORD sBtn, sLab, sGap;           /* Screens: buttons, "Program", 2nd box x */
+    WORD bLab, bCol;                 /* Board                                  */
+    WORD oLab, oCol, oBtn;           /* Other                                  */
+};
+
 struct Gui {
     struct Screen *scr;
-    BOOL ownScr;                     /* scr is our own tall screen, not Workbench */
     APTR vi;
     struct Window *win;
-    struct Gadget *glist, *gList, *gOn, *gHz, *gBoard, *gBlit, *gLog, *gBgr, *gDrag, *gSoft, *gHwOvl, *gStatus;
+    struct Tabs tabs;
+    int page;
+    struct Layout lay;
+    struct TextAttr ta;              /* the gadgets' font: the screen's or topaz 8 */
+    struct TextFont *font;
+    struct RastPort mrp;             /* measures texts in it                   */
+    struct Gadget *bglist;           /* status line + buttons: always there    */
+    struct Gadget *gStatus;
+    /* the page's gadgets (glist); those of the other pages are NULL */
+    struct Gadget *glist, *gList, *gOn, *gHz, *gBoard, *gBlit, *gLog, *gBgr, *gDrag, *gSoft, *gHwOvl;
     struct Gadget *gPromote, *gPList, *gProg, *gUpdates, *gW, *gH, *gSet, *gGamma, *gPower, *gMirror;
     struct Gadget *gSecMon;
+    char progName[PREFS_PROGNAME + 1]; /* the Program field, kept across tabs */
     struct Menu *menu;
     struct List modes;
     struct Node node[PREFS_NMODES];
@@ -184,6 +213,17 @@ static void init_texts(void)
     menuDef[11].nm_Label = (STRPTR)S(ID_MENU_RESET_TO_DEFAULTS, "Reset to defaults");
     menuDef[12].nm_Label = (STRPTR)S(ID_MENU_LAST_SAVED, "Last saved");
     menuDef[13].nm_Label = (STRPTR)S(ID_MENU_RESTORE, "Restore");
+    pageLabels[PG_MODES] = S(ID_MODES, "Modes");
+    pageLabels[PG_SCREENS] = S(ID_TAB_SCREENS, "Screens");
+    pageLabels[PG_BOARD] = S(ID_TAB_BOARD, "Board");
+    pageLabels[PG_OTHER] = S(ID_TAB_OTHER, "Other");
+}
+
+/* a page gadget's attribute; nothing when its page isn't the one shown */
+static void gset(struct Gui *g, struct Gadget *gad, ULONG tag, ULONG val)
+{
+    if (gad)
+        GT_SetGadgetAttrs(gad, g->win, NULL, tag, val, TAG_END);
 }
 
 
@@ -302,12 +342,13 @@ static void build_progs(struct Gui *g)
 
 static void refresh_progs(struct Gui *g)
 {
-    GT_SetGadgetAttrs(g->gPList, g->win, NULL, GTLV_Labels, ~0UL, TAG_END);
+    gset(g, g->gPList, GTLV_Labels, ~0UL);
     build_progs(g);
     if (g->psel >= g->prefs.nprog)
         g->psel = g->prefs.nprog - 1;
-    GT_SetGadgetAttrs(g->gPList, g->win, NULL, GTLV_Labels, (ULONG)&g->progs,
-                      GTLV_Selected, g->psel < 0 ? ~0UL : (ULONG)g->psel, TAG_END);
+    if (g->gPList)
+        GT_SetGadgetAttrs(g->gPList, g->win, NULL, GTLV_Labels, (ULONG)&g->progs,
+                          GTLV_Selected, g->psel < 0 ? ~0UL : (ULONG)g->psel, TAG_END);
 }
 
 static void set_status(struct Gui *g, const char *s)
@@ -320,33 +361,34 @@ static void set_status(struct Gui *g, const char *s)
 static void refresh_list(struct Gui *g)
 {
     int i;
-    GT_SetGadgetAttrs(g->gList, g->win, NULL, GTLV_Labels, ~0UL, TAG_END);
+    gset(g, g->gList, GTLV_Labels, ~0UL);
     for (i = 0; i < PREFS_NMODES; i++)
         entry_text(g, i);
-    GT_SetGadgetAttrs(g->gList, g->win, NULL, GTLV_Labels, (ULONG)&g->modes,
-                      GTLV_Selected, (ULONG)g->sel, TAG_END);
+    if (g->gList)
+        GT_SetGadgetAttrs(g->gList, g->win, NULL, GTLV_Labels, (ULONG)&g->modes,
+                          GTLV_Selected, (ULONG)g->sel, TAG_END);
 }
 
-/* the right-hand gadgets follow the selected mode / the global settings */
+/* the page's gadgets follow the selected mode / the global settings */
 static void show_settings(struct Gui *g)
 {
     struct PrismPrefs *p = &g->prefs;
-    GT_SetGadgetAttrs(g->gOn, g->win, NULL, GTCB_Checked, (ULONG)p->on[g->sel], TAG_END);
-    GT_SetGadgetAttrs(g->gHz, g->win, NULL, GTCY_Active, (ULONG)rate_index(p->hz[g->sel]), TAG_END);
-    GT_SetGadgetAttrs(g->gBoard, g->win, NULL, GTCY_Active, (ULONG)board_entry(p), TAG_END);
-    GT_SetGadgetAttrs(g->gSecMon, g->win, NULL, GTCY_Active, (ULONG)sec_index(p), TAG_END);
-    GT_SetGadgetAttrs(g->gBlit, g->win, NULL, GTCB_Checked, (ULONG)p->blitter, TAG_END);
-    GT_SetGadgetAttrs(g->gLog, g->win, NULL, GTCY_Active, (ULONG)(p->log <= 2 ? p->log : 1), TAG_END);
-    GT_SetGadgetAttrs(g->gBgr, g->win, NULL, GTCB_Checked, (ULONG)p->clutBGR, TAG_END);
-    GT_SetGadgetAttrs(g->gDrag, g->win, NULL, GTCB_Checked, (ULONG)p->dragging, TAG_END);
-    GT_SetGadgetAttrs(g->gSoft, g->win, NULL, GTCB_Checked, (ULONG)p->softwarePointer, TAG_END);
-    GT_SetGadgetAttrs(g->gHwOvl, g->win, NULL, GTCB_Checked, (ULONG)p->hwOverlay, TAG_END);
-    GT_SetGadgetAttrs(g->gPromote, g->win, NULL, GTCB_Checked, (ULONG)p->promote, TAG_END);
-    GT_SetGadgetAttrs(g->gUpdates, g->win, NULL, GTCY_Active, (ULONG)(p->updates < UPD_COUNT ? p->updates : 0), TAG_END);
-    GT_SetGadgetAttrs(g->gGamma, g->win, NULL, GTCY_Active, (ULONG)gamma_index(p->gamma), TAG_END);
-    GT_SetGadgetAttrs(g->gPower, g->win, NULL, GTIN_Number, (ULONG)p->powerSave, TAG_END);
-    GT_SetGadgetAttrs(g->gMirror, g->win, NULL, GTCB_Checked, (ULONG)p->mirrorChip, TAG_END);
-    {
+    gset(g, g->gOn, GTCB_Checked, (ULONG)p->on[g->sel]);
+    gset(g, g->gHz, GTCY_Active, (ULONG)rate_index(p->hz[g->sel]));
+    gset(g, g->gBoard, GTCY_Active, (ULONG)board_entry(p));
+    gset(g, g->gSecMon, GTCY_Active, (ULONG)sec_index(p));
+    gset(g, g->gBlit, GTCB_Checked, (ULONG)p->blitter);
+    gset(g, g->gLog, GTCY_Active, (ULONG)(p->log <= 2 ? p->log : 1));
+    gset(g, g->gBgr, GTCB_Checked, (ULONG)p->clutBGR);
+    gset(g, g->gDrag, GTCB_Checked, (ULONG)p->dragging);
+    gset(g, g->gSoft, GTCB_Checked, (ULONG)p->softwarePointer);
+    gset(g, g->gHwOvl, GTCB_Checked, (ULONG)p->hwOverlay);
+    gset(g, g->gPromote, GTCB_Checked, (ULONG)p->promote);
+    gset(g, g->gUpdates, GTCY_Active, (ULONG)(p->updates < UPD_COUNT ? p->updates : 0));
+    gset(g, g->gGamma, GTCY_Active, (ULONG)gamma_index(p->gamma));
+    gset(g, g->gPower, GTIN_Number, (ULONG)p->powerSave);
+    gset(g, g->gMirror, GTCB_Checked, (ULONG)p->mirrorChip);
+    if (g->gW && g->gH && g->gSet) {
         /* the size fields follow a custom slot and are ghosted for a fixed one */
         int k = PREFS_SIZE(g->sel) - PREFS_NFIXED;
         BOOL custom = PREFS_IS_CUSTOM(PREFS_SIZE(g->sel));
@@ -362,8 +404,11 @@ static void show_settings(struct Gui *g)
 static void set_size(struct Gui *g)
 {
     int k = PREFS_SIZE(g->sel) - PREFS_NFIXED;
-    LONG w = ((struct StringInfo *)g->gW->SpecialInfo)->LongInt;
-    LONG h = ((struct StringInfo *)g->gH->SpecialInfo)->LongInt;
+    LONG w, h;
+    if (!g->gW || !g->gH)                /* not the Modes page */
+        return;
+    w = ((struct StringInfo *)g->gW->SpecialInfo)->LongInt;
+    h = ((struct StringInfo *)g->gH->SpecialInfo)->LongInt;
     if (!PREFS_IS_CUSTOM(PREFS_SIZE(g->sel))) {
         set_status(g, S(ID_PICK_ONE_OF_THE_FOUR_CUSTOM_ENTRIES_IN_T, "Pick one of the four custom entries in the list first"));
         return;
@@ -604,258 +649,378 @@ static LONG test_mode(struct Gui *g, LONG i, BOOL ask)
 
 /* ---- window --------------------------------------------------------- */
 
-static BOOL make_gadgets(struct Gui *g, WORD *innerW, WORD *innerH)
+/* The window is tabbed so that it fits a 640x200 NTSC Workbench with topaz 8
+ * (screen title bar and window borders included) and stays a normal size on
+ * a big RTG screen: the page height is what the screen leaves, between the
+ * smallest every page fits in (the mode list LIST_MIN lines) and the mode
+ * list at LIST_MAX lines. A screen font too big for that gives way to
+ * topaz 8, as WHDUpdate does. The window is at most WIN_MAXW wide. */
+static struct TextAttr topaz8 = { (STRPTR)"topaz.font", 8, 0, FPF_ROMFONT };
+
+#define WIN_MAXW 600
+#define LIST_MIN 6
+#define LIST_MAX 14
+
+/* the labels make_layout measures and make_page shows */
+#define T_OFFERED   S(ID_OFFERED, "Offered")
+#define T_REFRESH   S(ID_REFRESH, "Refresh")
+#define T_WIDTH     S(ID_WIDTH, "Width")
+#define T_HEIGHT    S(ID_HEIGHT, "Height")
+#define T_SETSIZE   S(ID_SET_SIZE, "Set size")
+#define T_PROMOTESC S(ID_PROMOTE_SCREENS, "Promote screens")
+#define T_PROGRAMS  S(ID_PROGRAMS, "Programs")
+#define T_PROMOTE   S(ID_PROMOTE, "Promote")
+#define T_KEEP      S(ID_KEEP, "Keep")
+#define T_REMOVE    S(ID_REMOVE, "Remove")
+#define T_PROGRAM   S(ID_PROGRAM, "Program")
+#define T_DRAG      S(ID_DRAG_SCREENS, "Drag screens")
+#define T_SOFT      S(ID_SOFT_POINTER, "Soft pointer")
+#define T_BOARD     S(ID_BOARD, "Board")
+#define T_SECMON    S(ID_2ND_MONITOR, "2nd monitor")
+#define T_BLIT      S(ID_USE_BLITTER, "Use blitter")
+#define T_BGR       S(ID_SWAP_RED_BLUE, "Swap red/blue")
+#define T_HWOVL     S(ID_VIDEO_ON_BOARD, "Video on board")
+#define T_MIRROR    S(ID_MIRROR_CHIPSET, "Mirror chipset")
+#define T_GAMMA     S(ID_GAMMA, "Gamma")
+#define T_SLEEP     S(ID_SLEEP, "Sleep")
+#define T_LOG       S(ID_LOG, "Log")
+#define T_UPDATES   S(ID_UPDATES, "Updates")
+#define T_CHECK     S(ID_CHECK_NOW, "Check now")
+#define T_SAVE      S(ID_SAVE, "Save")
+#define T_USE       S(ID_USE, "Use")
+#define T_TEST      S(ID_TEST, "Test")
+#define T_DEFAULTS  S(ID_DEFAULTS, "Defaults")
+#define T_CANCEL    S(ID_CANCEL, "Cancel")
+
+static WORD max2(WORD a, WORD b)
 {
-    struct NewGadget ng;
-    struct Gadget *gad;
-    struct TextFont *tf = g->scr->RastPort.Font;
-    WORD fw = tf->tf_XSize, fh = tf->tf_YSize, gh = fh + 6, row = gh + 4;
-    WORD cl = g->scr->WBorLeft + 8, ct = g->scr->WBorTop + fh + 1 + 6;
-    WORD listW = 38 * fw + 24, listH;
-    WORD rx, rw, y, bw, by, py, plH;
+    return a > b ? a : b;
+}
 
-    if (!(gad = CreateContext(&g->glist)))
-        return FALSE;
-    memset(&ng, 0, sizeof(ng));
-    ng.ng_TextAttr = g->scr->Font;
-    ng.ng_VisualInfo = g->vi;
+static WORD tlen(struct Gui *g, const char *s)
+{
+    ULONG n = strlen(s);                 /* not inside the library macro's arguments */
+    return TextLength(&g->mrp, (STRPTR)s, n);
+}
 
-    /* right column: label width + gadgets */
-    rx = cl + listW + 16 + 12 * fw;     /* room for "2nd monitor" */
-    rw = 15 * fw + 30;                  /* "Promote screens" beside its box */
+static WORD tmax(struct Gui *g, STRPTR *l)
+{
+    WORD m = 0, w;
+    for (; *l; l++)
+        if ((w = tlen(g, (const char *)*l)) > m)
+            m = w;
+    return m;
+}
 
-    y = ct + fh + 2;
-    ng.ng_LeftEdge = rx; ng.ng_TopEdge = y;
-    ng.ng_Width = 26; ng.ng_Height = fh + 3;
-    ng.ng_GadgetText = (STRPTR)S(ID_OFFERED, "Offered"); ng.ng_Flags = PLACETEXT_RIGHT; ng.ng_GadgetID = GAD_ON;
-    gad = g->gOn = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
-                                GTCB_Checked, (ULONG)g->prefs.on[g->sel], TAG_END);
+/* everything but the page: the tab row, the status line, the buttons */
+#define FIXED_H(l) ((l)->pageTop + 4 + (l)->gh + 3 + (l)->gh + 4)
 
-    y += row;
-    ng.ng_TopEdge = y; ng.ng_Width = rw; ng.ng_Height = gh;
-    ng.ng_GadgetText = (STRPTR)S(ID_REFRESH, "Refresh"); ng.ng_Flags = PLACETEXT_LEFT; ng.ng_GadgetID = GAD_HZ;
-    gad = g->gHz = CreateGadget(CYCLE_KIND, gad, &ng, GTCY_Labels, (ULONG)hzLabels,
-                                GTCY_Active, (ULONG)rate_index(g->prefs.hz[g->sel]), TAG_END);
+/* The measures of every page in the font g->mrp has: the inner width (the
+ * widest page), the smallest page height every page fits in, the tallest
+ * worth having. */
+static void make_layout(struct Gui *g)
+{
+    struct Layout *l = &g->lay;
+    WORD w, cb, i, t;
 
-    y += row + fh + 6;
-    ng.ng_TopEdge = y;
-    ng.ng_GadgetText = (STRPTR)S(ID_BOARD, "Board"); ng.ng_GadgetID = GAD_BOARD;
-    gad = g->gBoard = CreateGadget(CYCLE_KIND, gad, &ng, GTCY_Labels, (ULONG)boardLabels,
-                                   GTCY_Active, (ULONG)board_entry(&g->prefs), TAG_END);
+    memset(l, 0, sizeof(*l));
+    l->fw = g->font->tf_XSize;
+    l->fh = g->font->tf_YSize;
+    l->gh = l->fh + 6;
+    l->row = l->gh + 3;
+    l->cbw = 26;
+    l->cbh = l->fh + 3;
+    cb = l->cbw + 8;                     /* a checkbox and the gap to its text */
+    l->listW = 38 * l->fw + 24;          /* a mode / program line, the scroller */
 
-    /* SECONDMONITOR=: the second board's monitor with nothing of its own on it */
-    y += row;
-    ng.ng_TopEdge = y;
-    ng.ng_GadgetText = (STRPTR)S(ID_2ND_MONITOR, "2nd monitor"); ng.ng_GadgetID = GAD_SECMON;
-    gad = g->gSecMon = CreateGadget(CYCLE_KIND, gad, &ng, GTCY_Labels, (ULONG)secLabels,
-                                    GTCY_Active, (ULONG)sec_index(&g->prefs), TAG_END);
+    /* Modes: the list, beside it Offered, Refresh, Width, Height, Set size */
+    l->mLab = max2(max2(tlen(g, T_REFRESH), tlen(g, T_WIDTH)), tlen(g, T_HEIGHT)) + 8;
+    l->mCol = max2(max2(tmax(g, hzLabels) + 34, 6 * l->fw + 12),
+                   max2(tlen(g, T_SETSIZE) + 16, cb + tlen(g, T_OFFERED)));
+    w = 8 + l->listW + 12 + l->mLab + l->mCol + 8;
 
-    y += row;
-    ng.ng_TopEdge = y; ng.ng_Width = 26; ng.ng_Height = fh + 3;
-    ng.ng_GadgetText = (STRPTR)S(ID_USE_BLITTER, "Use blitter"); ng.ng_Flags = PLACETEXT_RIGHT; ng.ng_GadgetID = GAD_BLIT;
-    gad = g->gBlit = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
-                                  GTCB_Checked, (ULONG)g->prefs.blitter, TAG_END);
+    /* Screens: Promote screens, the Programs list with Promote / Keep /
+     * Remove beside it, Program, then Drag screens and Soft pointer */
+    l->sBtn = max2(max2(tlen(g, T_PROMOTE), tlen(g, T_KEEP)), tlen(g, T_REMOVE)) + 24;
+    l->sLab = tlen(g, T_PROGRAM) + 8;
+    l->sGap = cb + tlen(g, T_DRAG) + 24;
+    w = max2(w, 8 + l->listW + 8 + l->sBtn + 8);
+    w = max2(w, 8 + l->sGap + cb + tlen(g, T_SOFT) + 8);
+    w = max2(w, 8 + cb + tlen(g, T_PROMOTESC) + 8);
 
-    y += row;
-    ng.ng_TopEdge = y;
-    ng.ng_GadgetText = (STRPTR)S(ID_SWAP_RED_BLUE, "Swap red/blue"); ng.ng_GadgetID = GAD_BGR;
-    gad = g->gBgr = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
-                                 GTCB_Checked, (ULONG)g->prefs.clutBGR, TAG_END);
+    /* Board: Board and 2nd monitor, four checkboxes under them */
+    l->bLab = max2(tlen(g, T_BOARD), tlen(g, T_SECMON)) + 8;
+    l->bCol = max2(tmax(g, boardLabels), tmax(g, secLabels)) + 34;
+    t = max2(max2(tlen(g, T_BLIT), tlen(g, T_BGR)), max2(tlen(g, T_HWOVL), tlen(g, T_MIRROR)));
+    l->bCol = max2(l->bCol, cb + t);
+    w = max2(w, 8 + l->bLab + l->bCol + 8);
 
-    /* the two experimental switches (DRAGGING=, SOFTWAREPOINTER=) */
-    y += row;
-    ng.ng_TopEdge = y;
-    ng.ng_GadgetText = (STRPTR)S(ID_DRAG_SCREENS, "Drag screens"); ng.ng_GadgetID = GAD_DRAG;
-    gad = g->gDrag = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
-                                  GTCB_Checked, (ULONG)g->prefs.dragging, TAG_END);
+    /* Other: Gamma, Sleep, Log, Updates with Check now beside it */
+    l->oLab = max2(max2(tlen(g, T_GAMMA), tlen(g, T_SLEEP)), max2(tlen(g, T_LOG), tlen(g, T_UPDATES))) + 8;
+    l->oCol = max2(max2(tmax(g, updLabels), tmax(g, gammaLabels)), tmax(g, logLabels)) + 34;
+    l->oBtn = tlen(g, T_CHECK) + 24;
+    w = max2(w, 8 + l->oLab + l->oCol + 12 + l->oBtn + 8);
 
-    y += row;
-    ng.ng_TopEdge = y;
-    ng.ng_GadgetText = (STRPTR)S(ID_SOFT_POINTER, "Soft pointer"); ng.ng_GadgetID = GAD_SOFTPTR;
-    gad = g->gSoft = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
-                                  GTCB_Checked, (ULONG)g->prefs.softwarePointer, TAG_END);
+    /* the five buttons, the tabs (tabs.c: text + 20 each) */
+    t = max2(max2(tlen(g, T_SAVE), tlen(g, T_USE)), max2(tlen(g, T_TEST), max2(tlen(g, T_DEFAULTS), tlen(g, T_CANCEL))));
+    w = max2(w, 16 + 5 * (t + 16) + 4 * 8);
+    for (i = 0, t = 0; i < PG_COUNT; i++)
+        t += tlen(g, pageLabels[i]) + 20;
+    l->w = max2(w, 8 + t + 8);
 
-    /* video layers on the board's own overlay (HWOVERLAY=; the ZZ9000) */
-    y += row;
-    ng.ng_TopEdge = y;
-    ng.ng_GadgetText = (STRPTR)S(ID_VIDEO_ON_BOARD, "Video on board"); ng.ng_GadgetID = GAD_HWOVL;
-    gad = g->gHwOvl = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
-                                   GTCB_Checked, (ULONG)g->prefs.hwOverlay, TAG_END);
+    /* the heights: 2 + the tab row (font + 8) + 4, then the page */
+    l->pageTop = 2 + l->fh + 8 + 4;
+    l->minPage = max2(LIST_MIN * l->fh + 4, 4 * l->row + 6 + l->gh);           /* Modes */
+    l->minPage = max2(l->minPage, 4 * l->row + 2 * l->gh + l->fh + 6);          /* Screens */
+    l->minPage = max2(l->minPage, 5 * l->row + l->gh);                          /* Board */
+    l->maxPage = max2(l->minPage, LIST_MAX * l->fh + 4);
+}
 
-    /* screen mode promotion (PROMOTE=), its exceptions are the list below */
-    y += row;
-    ng.ng_TopEdge = y;
-    ng.ng_GadgetText = (STRPTR)S(ID_PROMOTE_SCREENS, "Promote screens"); ng.ng_GadgetID = GAD_PROMOTE;
-    gad = g->gPromote = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
-                                     GTCB_Checked, (ULONG)g->prefs.promote, TAG_END);
+/* The gadget font: the screen's when the window fits the screen with it,
+ * else topaz 8; then the page height the screen leaves. */
+static BOOL choose_font(struct Gui *g)
+{
+    struct Screen *s = g->scr;
+    struct Layout *l = &g->lay;
+    WORD aw = (s->Width < WIN_MAXW ? s->Width : WIN_MAXW) - s->WBorLeft - s->WBorRight;
+    /* the window opens under the screen's title bar; its own title bar is
+     * in the screen's font whatever the gadgets use */
+    WORD ah = s->Height - (s->BarHeight + 1) - (s->WBorTop + s->Font->ta_YSize + 1) - s->WBorBottom;
 
-    /* MIRROR=: chipset screens copied to the board's monitor */
-    y += row;
-    ng.ng_TopEdge = y;
-    ng.ng_GadgetText = (STRPTR)S(ID_MIRROR_CHIPSET, "Mirror chipset"); ng.ng_GadgetID = GAD_MIRROR;
-    gad = g->gMirror = CreateGadget(CHECKBOX_KIND, gad, &ng, GTCB_Scaled, TRUE,
-                                    GTCB_Checked, (ULONG)g->prefs.mirrorChip, TAG_END);
-
-    y += row;
-    ng.ng_TopEdge = y; ng.ng_Width = rw; ng.ng_Height = gh;
-    ng.ng_GadgetText = (STRPTR)S(ID_LOG, "Log"); ng.ng_Flags = PLACETEXT_LEFT; ng.ng_GadgetID = GAD_LOG;
-    gad = g->gLog = CreateGadget(CYCLE_KIND, gad, &ng, GTCY_Labels, (ULONG)logLabels,
-                                 GTCY_Active, (ULONG)(g->prefs.log <= 2 ? g->prefs.log : 1), TAG_END);
-
-    /* update checks (UPDATES=, PrismUpdate): where to look, and a check now */
-    y += row;
-    ng.ng_TopEdge = y;
-    ng.ng_GadgetText = (STRPTR)S(ID_UPDATES, "Updates"); ng.ng_GadgetID = GAD_UPDATES;
-    gad = g->gUpdates = CreateGadget(CYCLE_KIND, gad, &ng, GTCY_Labels, (ULONG)updLabels,
-                                     GTCY_Active, (ULONG)(g->prefs.updates < UPD_COUNT ? g->prefs.updates : 0), TAG_END);
-    y += row;
-    ng.ng_TopEdge = y;
-    ng.ng_GadgetText = (STRPTR)S(ID_CHECK_NOW, "Check now"); ng.ng_Flags = PLACETEXT_IN; ng.ng_GadgetID = GAD_CHECK;
-    gad = CreateGadget(BUTTON_KIND, gad, &ng, TAG_END);
-
-    /* GAMMA=: the palette's curve (256-colour screens) */
-    y += row;
-    ng.ng_TopEdge = y;
-    ng.ng_GadgetText = (STRPTR)S(ID_GAMMA, "Gamma"); ng.ng_Flags = PLACETEXT_LEFT; ng.ng_GadgetID = GAD_GAMMA;
-    gad = g->gGamma = CreateGadget(CYCLE_KIND, gad, &ng, GTCY_Labels, (ULONG)gammaLabels,
-                                   GTCY_Active, (ULONG)gamma_index(g->prefs.gamma), TAG_END);
-
-    /* POWERSAVE=: minutes without input before the monitors go dark */
-    y += row;
-    ng.ng_TopEdge = y;
-    ng.ng_GadgetText = (STRPTR)S(ID_SLEEP, "Sleep"); ng.ng_Flags = PLACETEXT_LEFT; ng.ng_GadgetID = GAD_POWER;
-    gad = g->gPower = CreateGadget(INTEGER_KIND, gad, &ng, GTIN_Number, (ULONG)g->prefs.powerSave,
-                                   GTIN_MaxChars, 3, TAG_END);
-
-    /* the mode list at least 12 lines, and as tall as the column beside it */
-    listH = y + gh - (ct + fh + 2);
-    if (listH < 12 * fh + 4)
-        listH = 12 * fh + 4;
-
-    /* the programs list under the modes, Promote / Keep / Remove beside it
-     * and the name being added below */
-    py = ct + fh + 2 + listH + 6 + fh + 2;
-    plH = 3 * row + 2;
-    ng.ng_LeftEdge = rx; ng.ng_Width = rw; ng.ng_Height = gh; ng.ng_Flags = PLACETEXT_IN;
-    ng.ng_TopEdge = py;           ng.ng_GadgetText = (STRPTR)S(ID_PROMOTE, "Promote"); ng.ng_GadgetID = GAD_PADD;
-    gad = CreateGadget(BUTTON_KIND, gad, &ng, TAG_END);
-    ng.ng_TopEdge = py + row;     ng.ng_GadgetText = (STRPTR)S(ID_KEEP, "Keep");    ng.ng_GadgetID = GAD_PKEEP;
-    gad = CreateGadget(BUTTON_KIND, gad, &ng, TAG_END);
-    ng.ng_TopEdge = py + 2 * row; ng.ng_GadgetText = (STRPTR)S(ID_REMOVE, "Remove");  ng.ng_GadgetID = GAD_PDEL;
-    gad = CreateGadget(BUTTON_KIND, gad, &ng, TAG_END);
-    ng.ng_LeftEdge = cl + 8 * fw; ng.ng_TopEdge = py + plH + 4;
-    ng.ng_Width = rx + rw - cl - 8 * fw; ng.ng_Height = gh;
-    ng.ng_GadgetText = (STRPTR)S(ID_PROGRAM, "Program"); ng.ng_Flags = PLACETEXT_LEFT; ng.ng_GadgetID = GAD_PROG;
-    gad = g->gProg = CreateGadget(STRING_KIND, gad, &ng, GTST_MaxChars, PREFS_PROGNAME, TAG_END);
-
-    /* a custom size for the selected custom slot: Width, Height, Set size */
-    y = py + plH + 4 + row;
-    ng.ng_LeftEdge = cl + 6 * fw; ng.ng_TopEdge = y; ng.ng_Width = 7 * fw + 8; ng.ng_Height = gh;
-    ng.ng_GadgetText = (STRPTR)S(ID_WIDTH, "Width"); ng.ng_Flags = PLACETEXT_LEFT; ng.ng_GadgetID = GAD_W;
-    gad = g->gW = CreateGadget(INTEGER_KIND, gad, &ng, GTIN_Number, 0, GTIN_MaxChars, 4,
-                               GA_Disabled, TRUE, TAG_END);
-    ng.ng_LeftEdge = cl + 21 * fw + 8;
-    ng.ng_GadgetText = (STRPTR)S(ID_HEIGHT, "Height"); ng.ng_GadgetID = GAD_H;
-    gad = g->gH = CreateGadget(INTEGER_KIND, gad, &ng, GTIN_Number, 0, GTIN_MaxChars, 4,
-                               GA_Disabled, TRUE, TAG_END);
-    ng.ng_LeftEdge = cl + 30 * fw + 24; ng.ng_Width = 10 * fw + 8;
-    ng.ng_GadgetText = (STRPTR)S(ID_SET_SIZE, "Set size"); ng.ng_Flags = PLACETEXT_IN; ng.ng_GadgetID = GAD_SETSIZE;
-    gad = g->gSet = CreateGadget(BUTTON_KIND, gad, &ng, GA_Disabled, TRUE, TAG_END);
-
-    /* status line, then the Save / Use / Defaults / Cancel row */
-    by = y + row + 2;
-    ng.ng_LeftEdge = cl; ng.ng_TopEdge = by;
-    ng.ng_Width = rx + rw - cl; ng.ng_Height = gh;
-    ng.ng_GadgetText = NULL; ng.ng_Flags = 0; ng.ng_GadgetID = GAD_STATUS;
-    gad = g->gStatus = CreateGadget(TEXT_KIND, gad, &ng, GTTX_Text, (ULONG)g->status,
-                                    GTTX_Border, TRUE, TAG_END);
-
-    by += row + 2;
-    bw = (rx + rw - cl - 4 * 8) / 5;
-    ng.ng_TopEdge = by; ng.ng_Width = bw; ng.ng_Height = gh; ng.ng_Flags = PLACETEXT_IN;
-    ng.ng_LeftEdge = cl;                     ng.ng_GadgetText = (STRPTR)S(ID_SAVE, "Save");     ng.ng_GadgetID = GAD_SAVE;
-    gad = CreateGadget(BUTTON_KIND, gad, &ng, TAG_END);
-    ng.ng_LeftEdge = cl + (bw + 8);          ng.ng_GadgetText = (STRPTR)S(ID_USE, "Use");      ng.ng_GadgetID = GAD_USE;
-    gad = CreateGadget(BUTTON_KIND, gad, &ng, TAG_END);
-    ng.ng_LeftEdge = cl + 2 * (bw + 8);      ng.ng_GadgetText = (STRPTR)S(ID_TEST, "Test");     ng.ng_GadgetID = GAD_TEST;
-    gad = CreateGadget(BUTTON_KIND, gad, &ng, TAG_END);
-    ng.ng_LeftEdge = cl + 3 * (bw + 8);      ng.ng_GadgetText = (STRPTR)S(ID_DEFAULTS, "Defaults"); ng.ng_GadgetID = GAD_DEFAULTS;
-    gad = CreateGadget(BUTTON_KIND, gad, &ng, TAG_END);
-    ng.ng_LeftEdge = rx + rw - bw;           ng.ng_GadgetText = (STRPTR)S(ID_CANCEL, "Cancel");   ng.ng_GadgetID = GAD_CANCEL;
-    gad = CreateGadget(BUTTON_KIND, gad, &ng, TAG_END);
-
-    /* listviews last: their scroller sub-gadgets end the chain */
-    ng.ng_LeftEdge = cl; ng.ng_TopEdge = py;
-    ng.ng_Width = listW; ng.ng_Height = plH;
-    ng.ng_GadgetText = (STRPTR)S(ID_PROGRAMS, "Programs"); ng.ng_Flags = PLACETEXT_ABOVE | NG_HIGHLABEL; ng.ng_GadgetID = GAD_PLIST;
-    gad = g->gPList = CreateGadget(LISTVIEW_KIND, gad, &ng, GTLV_Labels, (ULONG)&g->progs,
-                                   GTLV_ShowSelected, 0, TAG_END);
-    ng.ng_LeftEdge = cl; ng.ng_TopEdge = ct + fh + 2;
-    ng.ng_Width = listW; ng.ng_Height = listH;
-    ng.ng_GadgetText = (STRPTR)S(ID_MODES, "Modes"); ng.ng_Flags = PLACETEXT_ABOVE | NG_HIGHLABEL; ng.ng_GadgetID = GAD_LIST;
-    gad = g->gList = CreateGadget(LISTVIEW_KIND, gad, &ng, GTLV_Labels, (ULONG)&g->modes,
-                                  GTLV_ShowSelected, 0, GTLV_Selected, (ULONG)g->sel,
-                                  GTLV_MakeVisible, (ULONG)g->sel, TAG_END);
-    if (!gad)
-        return FALSE;
-
-    *innerW = rx + rw + 8 - g->scr->WBorLeft;
-    *innerH = by + gh + 6 - (g->scr->WBorTop + fh + 1);
+    g->ta = *s->Font;
+    if (!(g->font = OpenFont(&g->ta))) {
+        g->ta = topaz8;
+        if (!(g->font = OpenFont(&g->ta)))
+            return FALSE;
+    }
+    InitRastPort(&g->mrp);
+    SetFont(&g->mrp, g->font);
+    make_layout(g);
+    if (l->w > aw || FIXED_H(l) + l->minPage > ah) {
+        CloseFont(g->font);
+        g->ta = topaz8;
+        if (!(g->font = OpenFont(&g->ta)))
+            return FALSE;
+        SetFont(&g->mrp, g->font);
+        make_layout(g);
+    }
+    /* with topaz 8 every page fits a 640x200 screen; a still smaller one
+     * gets the smallest page and WA_AutoAdjust */
+    l->pageH = ah - FIXED_H(l);
+    if (l->pageH > l->maxPage)
+        l->pageH = l->maxPage;
+    if (l->pageH < l->minPage)
+        l->pageH = l->minPage;
     return TRUE;
 }
 
-/* The window needs about 460 lines with topaz 8. A Workbench shorter than
- * that (640x256 PAL, 640x200 NTSC: any machine without an RTG Workbench,
- * so most machines PrismRTG isn't installed on yet) left half the gadgets,
- * Save and Cancel among them, outside the window - and a crash on some
- * systems. Then the editor opens its own screen like the Workbench,
- * interlaced where the mode has an interlaced form, as tall as it needs
- * (scrolling if the display is shorter still). */
-static struct Screen *tall_screen(struct Screen *wb, WORD h)
+/* one gadget into the list being built (ng, gad); var takes it */
+#define MK(var, kind, id, x_, y_, w_, h_, txt, fl, ...) do {                 \
+        ng.ng_LeftEdge = (x_); ng.ng_TopEdge = (y_);                          \
+        ng.ng_Width = (w_); ng.ng_Height = (h_);                              \
+        ng.ng_GadgetText = (STRPTR)(txt); ng.ng_Flags = (fl);                 \
+        ng.ng_GadgetID = (id);                                                \
+        gad = (var) = CreateGadget(kind, gad, &ng, __VA_ARGS__, TAG_END);     \
+    } while (0)
+
+/* the status line and Save / Use / Test / Defaults / Cancel, under the page */
+static BOOL make_base(struct Gui *g)
 {
-    ULONG id = GetVPModeID(&wb->ViewPort);
-    struct DisplayInfo di;
-    /* the LACE bit means "interlaced" only for chipset modes: take id|LACE
-     * only when the system says that mode is the interlaced one */
-    if (id != INVALID_ID && !(id & LACE) && !ModeNotAvailable(id | LACE) &&
-        GetDisplayInfoData(NULL, (UBYTE *)&di, sizeof(di), DTAG_DISP, id | LACE) &&
-        (di.PropertyFlags & DIPF_IS_LACE))
-        id |= LACE;
-    return OpenScreenTags(NULL,
-        SA_LikeWorkbench, TRUE,
-        id != INVALID_ID ? SA_DisplayID : TAG_IGNORE, id,
-        SA_Height, (ULONG)h,
-        SA_AutoScroll, TRUE,
-        SA_Title, (ULONG)S(ID_PRISMRTG_PREFERENCES, "PrismRTG Preferences"),
-        TAG_END);
+    struct Layout *l = &g->lay;
+    struct NewGadget ng;
+    struct Gadget *gad, *b;
+    WORD x0 = g->win->BorderLeft + 8, cw = l->w - 16, bw = (cw - 4 * 8) / 5;
+    WORD y = g->win->BorderTop + l->pageTop + l->pageH + 4;
+
+    if (!(gad = CreateContext(&g->bglist)))
+        return FALSE;
+    memset(&ng, 0, sizeof(ng));
+    ng.ng_TextAttr = &g->ta;
+    ng.ng_VisualInfo = g->vi;
+    MK(g->gStatus, TEXT_KIND, GAD_STATUS, x0, y, cw, l->gh, NULL, 0,
+       GTTX_Text, (ULONG)g->status, GTTX_Border, TRUE, GTTX_Clipped, TRUE);
+    y += l->gh + 3;
+    MK(b, BUTTON_KIND, GAD_SAVE, x0, y, bw, l->gh, T_SAVE, PLACETEXT_IN, TAG_IGNORE, 0);
+    MK(b, BUTTON_KIND, GAD_USE, x0 + (bw + 8), y, bw, l->gh, T_USE, PLACETEXT_IN, TAG_IGNORE, 0);
+    MK(b, BUTTON_KIND, GAD_TEST, x0 + 2 * (bw + 8), y, bw, l->gh, T_TEST, PLACETEXT_IN, TAG_IGNORE, 0);
+    MK(b, BUTTON_KIND, GAD_DEFAULTS, x0 + 3 * (bw + 8), y, bw, l->gh, T_DEFAULTS, PLACETEXT_IN, TAG_IGNORE, 0);
+    MK(b, BUTTON_KIND, GAD_CANCEL, x0 + cw - bw, y, bw, l->gh, T_CANCEL, PLACETEXT_IN, TAG_IGNORE, 0);
+    (void)b;
+    return gad != NULL;
+}
+
+static void clear_page(struct Gui *g)
+{
+    g->gList = g->gOn = g->gHz = g->gBoard = g->gBlit = g->gLog = g->gBgr = g->gDrag = NULL;
+    g->gSoft = g->gHwOvl = g->gPromote = g->gPList = g->gProg = g->gUpdates = NULL;
+    g->gW = g->gH = g->gSet = g->gGamma = g->gPower = g->gMirror = g->gSecMon = NULL;
+}
+
+/* The shown tab's gadgets (glist). Created with their kinds only:
+ * show_settings puts the values in. */
+static BOOL make_page(struct Gui *g)
+{
+    struct Layout *l = &g->lay;
+    struct NewGadget ng;
+    struct Gadget *gad, *b;
+    WORD x0 = g->win->BorderLeft + 8, y0 = g->win->BorderTop + l->pageTop;
+    WORD gh = l->gh, row = l->row, x, y;
+
+    clear_page(g);
+    if (!(gad = CreateContext(&g->glist)))
+        return FALSE;
+    memset(&ng, 0, sizeof(ng));
+    ng.ng_TextAttr = &g->ta;
+    ng.ng_VisualInfo = g->vi;
+
+    switch (g->page) {
+    case PG_MODES:
+        /* the selected mode's Offered and Refresh; a custom slot's size */
+        x = x0 + l->listW + 12 + l->mLab;
+        MK(g->gOn, CHECKBOX_KIND, GAD_ON, x, y0 + 1, l->cbw, l->cbh, T_OFFERED, PLACETEXT_RIGHT,
+           GTCB_Scaled, TRUE);
+        MK(g->gHz, CYCLE_KIND, GAD_HZ, x, y0 + row, l->mCol, gh, T_REFRESH, PLACETEXT_LEFT,
+           GTCY_Labels, (ULONG)hzLabels);
+        y = y0 + 2 * row + 6;
+        MK(g->gW, INTEGER_KIND, GAD_W, x, y, l->mCol, gh, T_WIDTH, PLACETEXT_LEFT,
+           GTIN_MaxChars, 4, GA_Disabled, TRUE);
+        MK(g->gH, INTEGER_KIND, GAD_H, x, y + row, l->mCol, gh, T_HEIGHT, PLACETEXT_LEFT,
+           GTIN_MaxChars, 4, GA_Disabled, TRUE);
+        MK(g->gSet, BUTTON_KIND, GAD_SETSIZE, x, y + 2 * row, l->mCol, gh, T_SETSIZE, PLACETEXT_IN,
+           GA_Disabled, TRUE);
+        /* listviews last: their scroller sub-gadgets end the chain */
+        MK(g->gList, LISTVIEW_KIND, GAD_LIST, x0, y0, l->listW, l->pageH, NULL, 0,
+           GTLV_Labels, (ULONG)&g->modes, GTLV_ShowSelected, 0, GTLV_Selected, (ULONG)g->sel,
+           GTLV_MakeVisible, (ULONG)g->sel);
+        break;
+
+    case PG_SCREENS:
+        /* screen mode promotion (PROMOTE=), its exceptions in the list */
+        MK(g->gPromote, CHECKBOX_KIND, GAD_PROMOTE, x0, y0 + 1, l->cbw, l->cbh, T_PROMOTESC, PLACETEXT_RIGHT,
+           GTCB_Scaled, TRUE);
+        y = y0 + row + l->fh + 3;
+        x = x0 + l->listW + 8;
+        MK(b, BUTTON_KIND, GAD_PADD, x, y, l->sBtn, gh, T_PROMOTE, PLACETEXT_IN, TAG_IGNORE, 0);
+        MK(b, BUTTON_KIND, GAD_PKEEP, x, y + row, l->sBtn, gh, T_KEEP, PLACETEXT_IN, TAG_IGNORE, 0);
+        MK(b, BUTTON_KIND, GAD_PDEL, x, y + 2 * row, l->sBtn, gh, T_REMOVE, PLACETEXT_IN, TAG_IGNORE, 0);
+        (void)b;
+        MK(g->gProg, STRING_KIND, GAD_PROG, x0 + l->sLab, y + 2 * row + gh + 3,
+           l->listW + 8 + l->sBtn - l->sLab, gh, T_PROGRAM, PLACETEXT_LEFT,
+           GTST_MaxChars, PREFS_PROGNAME, GTST_String, (ULONG)g->progName);
+        /* the two experimental switches (DRAGGING=, SOFTWAREPOINTER=) */
+        MK(g->gDrag, CHECKBOX_KIND, GAD_DRAG, x0, y + 3 * row + gh + 4, l->cbw, l->cbh, T_DRAG, PLACETEXT_RIGHT,
+           GTCB_Scaled, TRUE);
+        MK(g->gSoft, CHECKBOX_KIND, GAD_SOFTPTR, x0 + l->sGap, y + 3 * row + gh + 4, l->cbw, l->cbh, T_SOFT,
+           PLACETEXT_RIGHT, GTCB_Scaled, TRUE);
+        MK(g->gPList, LISTVIEW_KIND, GAD_PLIST, x0, y, l->listW, 2 * row + gh, T_PROGRAMS,
+           PLACETEXT_ABOVE | NG_HIGHLABEL, GTLV_Labels, (ULONG)&g->progs, GTLV_ShowSelected, 0);
+        break;
+
+    case PG_BOARD:
+        x = x0 + l->bLab;
+        MK(g->gBoard, CYCLE_KIND, GAD_BOARD, x, y0, l->bCol, gh, T_BOARD, PLACETEXT_LEFT,
+           GTCY_Labels, (ULONG)boardLabels);
+        /* SECONDMONITOR=: the second board's monitor with nothing of its own on it */
+        MK(g->gSecMon, CYCLE_KIND, GAD_SECMON, x, y0 + row, l->bCol, gh, T_SECMON, PLACETEXT_LEFT,
+           GTCY_Labels, (ULONG)secLabels);
+        MK(g->gBlit, CHECKBOX_KIND, GAD_BLIT, x, y0 + 2 * row + 1, l->cbw, l->cbh, T_BLIT, PLACETEXT_RIGHT,
+           GTCB_Scaled, TRUE);
+        MK(g->gBgr, CHECKBOX_KIND, GAD_BGR, x, y0 + 3 * row + 1, l->cbw, l->cbh, T_BGR, PLACETEXT_RIGHT,
+           GTCB_Scaled, TRUE);
+        /* video layers on the board's own overlay (HWOVERLAY=; the ZZ9000) */
+        MK(g->gHwOvl, CHECKBOX_KIND, GAD_HWOVL, x, y0 + 4 * row + 1, l->cbw, l->cbh, T_HWOVL, PLACETEXT_RIGHT,
+           GTCB_Scaled, TRUE);
+        /* MIRROR=: chipset screens copied to the board's monitor */
+        MK(g->gMirror, CHECKBOX_KIND, GAD_MIRROR, x, y0 + 5 * row + 1, l->cbw, l->cbh, T_MIRROR, PLACETEXT_RIGHT,
+           GTCB_Scaled, TRUE);
+        break;
+
+    case PG_OTHER:
+        x = x0 + l->oLab;
+        /* GAMMA=: the palette's curve (256-colour screens) */
+        MK(g->gGamma, CYCLE_KIND, GAD_GAMMA, x, y0, l->oCol, gh, T_GAMMA, PLACETEXT_LEFT,
+           GTCY_Labels, (ULONG)gammaLabels);
+        /* POWERSAVE=: minutes without input before the monitors go dark */
+        MK(g->gPower, INTEGER_KIND, GAD_POWER, x, y0 + row, 5 * l->fw + 12, gh, T_SLEEP, PLACETEXT_LEFT,
+           GTIN_MaxChars, 3);
+        MK(g->gLog, CYCLE_KIND, GAD_LOG, x, y0 + 2 * row, l->oCol, gh, T_LOG, PLACETEXT_LEFT,
+           GTCY_Labels, (ULONG)logLabels);
+        /* update checks (UPDATES=, PrismUpdate): where to look, and a check now */
+        MK(g->gUpdates, CYCLE_KIND, GAD_UPDATES, x, y0 + 3 * row, l->oCol, gh, T_UPDATES, PLACETEXT_LEFT,
+           GTCY_Labels, (ULONG)updLabels);
+        MK(b, BUTTON_KIND, GAD_CHECK, x + l->oCol + 12, y0 + 3 * row, l->oBtn, gh, T_CHECK, PLACETEXT_IN,
+           TAG_IGNORE, 0);
+        (void)b;
+        break;
+    }
+    return gad != NULL;
+}
+
+/* what the page's fields hold that isn't in the prefs yet (typed in
+ * without Return): taken before the page goes */
+static void store_page(struct Gui *g)
+{
+    if (g->gPower) {
+        LONG m = ((struct StringInfo *)g->gPower->SpecialInfo)->LongInt;
+        if (m >= 0 && m <= 240)
+            g->prefs.powerSave = m;
+    }
+    if (g->gProg) {
+        strncpy(g->progName, (const char *)((struct StringInfo *)g->gProg->SpecialInfo)->Buffer, PREFS_PROGNAME);
+        g->progName[PREFS_PROGNAME] = 0;
+    }
+}
+
+/* the shown tab's gadgets into the window */
+static BOOL add_page(struct Gui *g)
+{
+    if (!make_page(g)) {
+        FreeGadgets(g->glist);           /* (NULL is fine) */
+        g->glist = NULL;
+        clear_page(g);
+        return FALSE;
+    }
+    AddGList(g->win, g->glist, ~0, -1, NULL);
+    RefreshGList(g->glist, g->win, NULL, -1);
+    GT_RefreshWindow(g->win, NULL);
+    show_settings(g);
+    return TRUE;
+}
+
+/* another tab: the old page's gadgets go, the new one's come */
+static void switch_page(struct Gui *g, int page)
+{
+    struct Window *w = g->win;
+    struct Layout *l = &g->lay;
+
+    store_page(g);
+    if (g->glist) {
+        RemoveGList(w, g->glist, -1);
+        FreeGadgets(g->glist);
+        g->glist = NULL;
+    }
+    clear_page(g);
+    EraseRect(w->RPort, w->BorderLeft, w->BorderTop + l->pageTop - 3,
+              w->Width - w->BorderRight - 1, w->BorderTop + l->pageTop + l->pageH + 3);
+    g->page = g->tabs.active = page;
+    if (!add_page(g))
+        set_status(g, S(ID_NOT_ENOUGH_MEMORY_FOR_THIS_PAGE, "Not enough memory for this page"));
+    tabs_draw(&g->tabs, w);
 }
 
 static BOOL open_window(struct Gui *g)
 {
-    WORD iw, ih, need;
-    struct Screen *own;
+    struct Layout *l;
 
     if (!(g->scr = LockPubScreen(NULL)) || !(g->vi = GetVisualInfo(g->scr, TAG_END)))
         return FALSE;
-    if (!make_gadgets(g, &iw, &ih))
+    if (!choose_font(g))
         return FALSE;
-    /* the window's outer height, from where it opens */
-    need = g->scr->BarHeight + 4 + g->scr->WBorTop + g->scr->RastPort.Font->tf_YSize + 1 + ih +
-           g->scr->WBorBottom;
-    if (need > g->scr->Height && (own = tall_screen(g->scr, need + 2))) {
-        FreeGadgets(g->glist);
-        g->glist = NULL;
-        FreeVisualInfo(g->vi);
-        UnlockPubScreen(NULL, g->scr);
-        g->scr = own;
-        g->ownScr = TRUE;
-        if (!(g->vi = GetVisualInfo(g->scr, TAG_END)) || !make_gadgets(g, &iw, &ih))
-            return FALSE;
-    }
+    l = &g->lay;
     g->win = OpenWindowTags(NULL,
         WA_Title, (ULONG)S(ID_PRISMRTG_PREFERENCES, "PrismRTG Preferences"),
-        WA_Left, 20, WA_Top, g->scr->BarHeight + 4,
-        WA_InnerWidth, iw, WA_InnerHeight, ih,
+        WA_Left, 20, WA_Top, g->scr->BarHeight + 1,
+        WA_InnerWidth, l->w, WA_InnerHeight, FIXED_H(l) + l->pageH,
         WA_AutoAdjust, TRUE,
         WA_NewLookMenus, TRUE,
         WA_Flags, WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_CLOSEGADGET | WFLG_ACTIVATE |
@@ -863,11 +1028,22 @@ static BOOL open_window(struct Gui *g)
         WA_IDCMP, IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_VANILLAKEY |
                   IDCMP_MOUSEBUTTONS | IDCMP_MENUPICK |
                   BUTTONIDCMP | CHECKBOXIDCMP | CYCLEIDCMP | LISTVIEWIDCMP | STRINGIDCMP,
-        WA_Gadgets, (ULONG)g->glist,
-        g->ownScr ? WA_CustomScreen : WA_PubScreen, (ULONG)g->scr,
+        WA_PubScreen, (ULONG)g->scr,
         TAG_END);
     if (!g->win)
         return FALSE;
+    /* the tab row under the title bar, in the gadgets' font */
+    SetFont(g->win->RPort, g->font);
+    tabs_init(&g->tabs, g->win->RPort, pageLabels, PG_COUNT, GAD_TAB0,
+              g->win->BorderLeft + 4, g->win->BorderTop + 2, l->w - 8);
+    tabs_add(&g->tabs, g->win);
+    if (!make_base(g))
+        return FALSE;
+    AddGList(g->win, g->bglist, ~0, -1, NULL);
+    RefreshGList(g->bglist, g->win, NULL, -1);
+    if (!add_page(g))
+        return FALSE;
+    tabs_draw(&g->tabs, g->win);
     /* the menus; without them the window still works by its buttons */
     if ((g->menu = CreateMenus(menuDef, TAG_END))) {
         if (LayoutMenus(g->menu, g->vi, GTMN_NewLookMenus, TRUE, TAG_END))
@@ -877,7 +1053,6 @@ static BOOL open_window(struct Gui *g)
             g->menu = NULL;
         }
     }
-    GT_RefreshWindow(g->win, NULL);
     return TRUE;
 }
 
@@ -961,6 +1136,7 @@ static void event_loop(struct Gui *g)
 
     while (!done) {
         struct IntuiMessage *im;
+        int newpage = -1;                /* a tab clicked: switched once the queue is empty */
         WaitPort(g->win->UserPort);
         while (!done && (im = GT_GetIMsg(g->win->UserPort))) {
             ULONG cls = im->Class;
@@ -978,6 +1154,7 @@ static void event_loop(struct Gui *g)
                 break;
             case IDCMP_REFRESHWINDOW:
                 GT_BeginRefresh(g->win);
+                tabs_draw(&g->tabs, g->win);
                 GT_EndRefresh(g->win, TRUE);
                 break;
             case IDCMP_MENUPICK:
@@ -991,6 +1168,10 @@ static void event_loop(struct Gui *g)
                 }
                 break;
             case IDCMP_GADGETUP:
+                if (tabs_hit(&g->tabs, gad->GadgetID) >= 0) {
+                    newpage = tabs_hit(&g->tabs, gad->GadgetID);
+                    break;
+                }
                 switch (gad->GadgetID) {
                 case GAD_LIST:
                     g->sel = code;
@@ -1099,13 +1280,16 @@ static void event_loop(struct Gui *g)
                     break;
                 case GAD_PLIST:
                     g->psel = code;
-                    if (code < g->prefs.nprog)
-                        GT_SetGadgetAttrs(g->gProg, g->win, NULL, GTST_String,
-                                          (ULONG)g->prefs.prog[code].name, TAG_END);
+                    if (code < g->prefs.nprog) {
+                        strcpy(g->progName, g->prefs.prog[code].name);
+                        gset(g, g->gProg, GTST_String, (ULONG)g->progName);
+                    }
                     break;
                 case GAD_PADD:
                 case GAD_PKEEP: {
-                    const char *nm = (const char *)((struct StringInfo *)g->gProg->SpecialInfo)->Buffer;
+                    const char *nm;
+                    store_page(g);               /* the Program field into progName */
+                    nm = g->progName;
                     if (prefs_prog_set(&g->prefs, nm, gad->GadgetID == GAD_PKEEP)) {
                         g->psel = prefs_prog_find(&g->prefs, nm);
                         refresh_progs(g);
@@ -1141,6 +1325,9 @@ static void event_loop(struct Gui *g)
                 break;
             }
         }
+        /* after the queue: no message left points at the old page's gadgets */
+        if (!done && newpage >= 0 && newpage != g->page)
+            switch_page(g, newpage);
     }
 }
 
@@ -1215,12 +1402,21 @@ int main(void)
 
 out:
     if (g.win && g.menu) ClearMenuStrip(g.win);
-    if (g.win) CloseWindow(g.win);
+    if (g.win) {
+        /* AddGList chained each list onto the one before it: take them off
+         * (the page first, it is last) so each ends on its own before
+         * FreeGadgets walks it */
+        if (g.glist) RemoveGList(g.win, g.glist, -1);
+        if (g.bglist) RemoveGList(g.win, g.bglist, -1);
+        tabs_remove(&g.tabs, g.win);
+        CloseWindow(g.win);
+    }
     if (g.menu) FreeMenus(g.menu);
     if (g.glist) FreeGadgets(g.glist);
+    if (g.bglist) FreeGadgets(g.bglist);
+    if (g.font) CloseFont(g.font);
     if (g.vi) FreeVisualInfo(g.vi);
-    if (g.scr && g.ownScr) CloseScreen(g.scr);
-    else if (g.scr) UnlockPubScreen(NULL, g.scr);
+    if (g.scr) UnlockPubScreen(NULL, g.scr);
     if (GadToolsBase) CloseLibrary(GadToolsBase);
     if (GfxBase) CloseLibrary((struct Library *)GfxBase);
     if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);

@@ -45,7 +45,7 @@ $CC $CFLAGS -s -o out/PrismBench tools/prismbench.c -lm
 echo "== M5 =="
 # the tools' texts: IDs for the translation catalog (src/catalog_ids.h, catalogs/PrismRTG.cd)
 python3 tools/mkcatalog.py --ids tools/prismprefs.c tools/prismsetup.c
-$CC $CFLAGS -s -o out/PrismPrefs tools/prismprefs.c src/prefs.c src/catalog.c
+$CC $CFLAGS -s -o out/PrismPrefs tools/prismprefs.c tools/tabs.c src/prefs.c src/catalog.c
 # PrismUpdate needs the AmiSSL SDK headers (the include/ directory of
 # https://github.com/jens-maus/amissl, Apache 2.0): AMISSL_INC, default
 # ~/amissl-sdk/include. Without them the rest still builds.

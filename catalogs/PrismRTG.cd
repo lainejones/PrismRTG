@@ -498,3 +498,15 @@ Span left
 ID_SPAN_RIGHT (160//)
 Span right
 ;
+ID_NOT_ENOUGH_MEMORY_FOR_THIS_PAGE (161//)
+Not enough memory for this page
+;
+ID_TAB_BOARD (162//)
+Board
+;
+ID_TAB_OTHER (163//)
+Other
+;
+ID_TAB_SCREENS (164//)
+Screens
+;
