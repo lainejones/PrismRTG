@@ -6,26 +6,49 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping PrismRTG support another card!
+        Thanks for helping PrismRTG support another card! The more of the **what, when, where,
+        why and who** you can answer, the quicker we can help.
 
-        **Make the report on the Amiga:** double-click **PrismProbe** in the PrismRTG drawer
-        (or run `PrismProbe REPORT` in a Shell). It lists the expansion boards and saves a report
-        to `RAM:PrismRTG-report.txt`; copy it somewhere you can reach from the browser.
-        PrismProbe only reads, it never touches a board, so it is safe to run with Picasso96 or
-        anything else driving the card.
+        **First make a report on the Amiga:** double-click **PrismProbe** in the PrismRTG drawer
+        (or run `PrismProbe REPORT` in a Shell). It only reads, never touches a board, so it is
+        safe with Picasso96 or anything else driving the card. It is saved as
+        `RAM:PrismRTG-report.txt` and already answers a lot by itself: your Amiga, its OS, CPU
+        and chipset, every expansion board and the driver that claimed it, PrismRTG's state and
+        settings, the other graphics software, and when it was made.
   - type: input
-    id: card
+    id: what-card
     attributes:
-      label: Which card is it?
-      description: Make and model, its bus (Zorro II/III, PCI via a bridge, CPU card, ...) and how much video memory.
+      label: What is the card?
+      description: Make and model, its bus (Zorro II/III, PCI via a bridge, CPU card...) and how much video memory.
       placeholder: e.g. "Picasso IV, Zorro III, 4 MB"
     validations:
       required: true
   - type: textarea
-    id: what
+    id: what-happens
     attributes:
-      label: What happens?
-      description: Does PrismD start? Are there no Prism modes, a black screen, a wrong picture? What does it work with now (Picasso96, CyberGraphX, ...)?
+      label: What happens, and what should happen?
+      description: Does PrismD start? No Prism modes, a black screen, a wrong picture? What does the card work with now (Picasso96, CyberGraphX...)?
+    validations:
+      required: true
+  - type: textarea
+    id: when
+    attributes:
+      label: When does it happen?
+      description: Every boot, or only sometimes? Straight away, or after a while? Did it ever work with PrismRTG (which version)?
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where?
+      description: Which slot is the card in, and what else is in the machine (other cards, a CPU card, a bus board or bridge)? Which screen mode or program shows it?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why / how - the steps
+      description: What you did, step by step, so we can do the same - from switching on to where it goes wrong.
     validations:
       required: true
   - type: textarea
@@ -36,7 +59,7 @@ body:
     validations:
       required: true
   - type: textarea
-    id: more
+    id: who
     attributes:
-      label: Anything else
-      description: The Picasso96 or CyberGraphX card file you use for it today, links to the card's documentation, photos of the board...
+      label: Who - your Amiga, and anything else
+      description: The report has most of this; add what it can't know. The Picasso96 or CyberGraphX card file you use for the card today, links to its documentation, photos of the board...

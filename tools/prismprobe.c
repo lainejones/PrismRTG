@@ -21,6 +21,7 @@
 #include <libraries/configvars.h>
 #include <graphics/gfxbase.h>
 #include <dos/dos.h>
+#include <dos/datetime.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/expansion.h>
@@ -82,6 +83,20 @@ static const char *state_of(const struct ConfigDev *cd)
 }
 
 /* ---- the report ---- */
+
+/* "when": the Amiga's date and time, as DOS writes it (a dead clock shows 1978) */
+static void when_text(char *out)
+{
+    struct DateTime dt;
+    char day[16], date[16], time[16];
+    memset(&dt, 0, sizeof(dt));
+    DateStamp(&dt.dat_Stamp);
+    dt.dat_Format = FORMAT_DOS;
+    dt.dat_StrDay = (STRPTR)day; dt.dat_StrDate = (STRPTR)date; dt.dat_StrTime = (STRPTR)time;
+    day[0] = date[0] = time[0] = 0;
+    DateToStr(&dt);
+    sprintf(out, "%s %s %s", day, date, time);
+}
 
 static void cpu_line(FILE *f)
 {
@@ -154,6 +169,11 @@ static void report(FILE *f)
     int n = 0;
 
     fprintf(f, "PrismProbe REPORT - PrismRTG %s (%s)\n", PRISM_RELEASE, PRISM_RELDATE);
+    {
+        char when[64];
+        when_text(when);
+        fprintf(f, "Made: %s\n", when);
+    }
     fprintf(f, "Send this with a report at %s\n\n", ISSUE_URL);
 
     fprintf(f, "== system\n");
