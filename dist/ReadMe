@@ -44,6 +44,18 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.3 beta 8
+  Vampire and Apollo boards running PrismRTG through their own Picasso96
+  driver (vampiregfx.card): PrismRTG starts again when the installer has
+  set P96MONITOR. The driver's monitor icon says VideoMemSize=0M, which
+  leaves the driver with no screen memory; PrismRTG now gives it 8 MB,
+  the driver's own default, unless the icon asks for a real amount. The
+  mouse pointer uses the 16x16 image this driver expects, switching back
+  to the native display turns the RTG picture off, and screen updates wait
+  for the vertical blank through the system.
+  When a Picasso96 driver sets up no screen memory, PrismD now says so.
+  Nothing else changed since beta 7.
+
 New in 1.3 beta 7
   PrismPrefs is one window with four tabs - Modes, Screens, Board,
   Other - that fits a 640x200 Workbench with topaz 8; it no longer opens

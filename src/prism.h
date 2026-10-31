@@ -25,9 +25,9 @@
  * its "v" and "-beta" (v1.1-beta5 = 1.1b5): PrismUpdate compares it with
  * GitHub's */
 #ifndef PRISM_RELEASE
-#define PRISM_RELEASE     "1.3b7"
+#define PRISM_RELEASE     "1.3b8"
 #endif
-#define PRISM_RELDATE     "30.10.26"      /* the $VER date, dd.mm.yy */
+#define PRISM_RELDATE     "31.10.26"      /* the $VER date, dd.mm.yy */
 
 /* Boot failsafe: DEVS:Monitors/Prism creates this before starting PrismD
  * and PrismD deletes it after a minute, or when it gives up. Found at boot,

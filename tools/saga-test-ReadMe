@@ -1,23 +1,30 @@
-SAGA driver test @N@ - for PrismRTG 1.3 beta 3
+SAGA driver test @N@ - for PrismRTG 1.3 beta 8
 =============================================
 
-A native PrismRTG driver for SAGA video, the Apollo Vampire V4's and the
+A native PrismRTG driver for SAGA video, the Apollo V4 boards' and the
 Apollo A6000's, so PrismRTG drives it directly instead of through
 vampiregfx.card.
 
-New in test 2: the driver also finds the Apollo A6000 (board 5016,
-product 8). Test 1 only knew the Vampire V4 (product 5), so on an A6000
-it said "no supported board".
+New in test 3:
+  - the board is found the way Apollo's own driver finds it, by the board
+    number SAGA reports: every V4 board (Firebird, Icedrake, Standalone,
+    Manticore) and the A6000. Vampire V2 boards are not supported; the
+    driver says so.
+  - more screen sizes: 1920x1080, 1280x1024, 1280x800, 1440x900, 640x200
+    and 720x405, up to 1920x1080 in all.
+  - screen updates wait for SAGA's vertical blank (falling back to the
+    system's if SAGA's line counter does not move).
+  - 15-bit colour, and 8 MB of fast RAM for the screens (16 MB if 8 is not
+    there in one piece).
 
 It has NOT run on Apollo hardware yet: it is written from the Apollo
 team's own description of the SAGA registers (thank you, flype and the
 Apollo team). Expect the first try to need fixing. Nothing here changes
 your current setup until step 2, and step 2 is easy to undo.
 
-Needs: a Vampire V4 (Standalone / V4+) or an Apollo A6000, and PrismRTG
-1.3 beta 3 installed. If it still says "no supported board", please
-post what ShowConfig lists under "Expansion boards", so the board can be
-added.
+Needs: an Apollo V4 board or an Apollo A6000, and PrismRTG 1.3 beta 8
+installed. If it says "no supported board", please post what ShowConfig
+lists and the first lines PrismTest printed, so the board can be added.
 
 In this drawer
   PrismTest            shows a test pattern with a driver, no PrismD
@@ -34,12 +41,13 @@ up. Then open a Shell, CD into this drawer and run, one at a time:
   PrismTest BOARD=SAGA DEPTH=16 WIDTH=800 HEIGHT=600
   PrismTest BOARD=SAGA DEPTH=24 WIDTH=800 HEIGHT=600
   PrismTest BOARD=SAGA DEPTH=32 WIDTH=1280 HEIGHT=720
+  PrismTest BOARD=SAGA DEPTH=16 WIDTH=1920 HEIGHT=1080
 
 Each shows a pattern for 10 seconds and then gives the display back:
 colour bars across the top, a grey ramp, a checkerboard. Ctrl-C ends it
 early. Wrong colours mean a wrong pixel format, a slanted picture a
 wrong row length. Please note for each one what you saw (a photo is
-perfect) and copy the Shell output.
+perfect) and copy the Shell output - its first line names your board.
 
 
 Step 2 - Workbench on it (only if step 1 looked right)
@@ -50,14 +58,16 @@ Step 2 - Workbench on it (only if step 1 looked right)
 Then edit ENVARC:Prism.prefs (Ed ENVARC:Prism.prefs): change the line
 BOARD=P96 to BOARD=SAGA, and add a line LOG=SYNC. Save and reboot.
 
-SAGA has fixed screen sizes: 640x400, 640x480, 800x600, 1024x768,
-1280x720, 960x540 and the small ones. If Workbench was on a size SAGA
-does not have (1440x900 for example), it comes up on the native screen:
-pick a PRISM: mode in Prefs/ScreenMode then.
+SAGA has fixed screen sizes: 640x200, 640x400, 640x480, 640x512,
+720x405, 720x576, 800x600, 848x480, 960x540, 1024x768, 1280x720,
+1280x800, 1280x1024, 1440x900, 1920x1080 and the small ones. If Workbench
+was on a size SAGA does not have, it comes up on the native screen: pick
+a PRISM: mode in Prefs/ScreenMode then.
 
 Things worth trying: windows, a Shell, Amelinium, the pointer (the
 hardware pointer is 16x16 - its colours and its position over the
-screen), and another screen dragged down (with Drag screens on).
+screen), another screen dragged down (with Drag screens on), and
+whether moving windows looks smooth or tears.
 
 
 Getting back
