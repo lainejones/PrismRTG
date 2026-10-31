@@ -41,7 +41,10 @@ NetBSD, Linux, WinUAE/PCem, QEMU, 86Box, xf86-video-cirrus, the GBAPII++
 design), [zz9000-hw.md](zz9000-hw.md) (MNT's ZZ9000 driver and
 firmware) and [saga-hw.md](saga-hw.md) (the Apollo team's SAGA.card
 source and Jason McMullan's saga-drivers, for the Vampire V4 test
-driver). The drivers were then written from those notes. The README's
+driver), with [saga-hw-card156.md](saga-hw-card156.md) adding what the
+Apollo team's vampiregfx.card 1.56 binary was seen to do (board IDs, the
+extra modes, the beam counter, its tool types: hardware facts only, no
+code). The drivers were then written from those notes. The README's
 credits name every source.
 
 ## Checking it

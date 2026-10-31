@@ -118,6 +118,31 @@ static void setup(void)
     assert(b.flags & PBF_SHADOW);
 }
 
+/* vampiregfx.card: a VideoMemSize under 1 MB gets VIDEOMEMSIZE=8M added
+ * at the end (the card takes the last one); a real size is left alone */
+static void test_vampire_tooltypes(void)
+{
+    static char t0[] = "BOARDTYPE=vampiregfx", t1[] = "VideoMemSize=0M", t2[] = "Scanlines=Yes";
+    static char t3[] = "VIDEOMEMSIZE=16M", t4[] = "videomemsize=8 M", t5[] = "VideoMemSize=8";
+    STRPTR zero[] = { (STRPTR)t0, (STRPTR)t1, (STRPTR)t2, NULL };
+    STRPTR big[] = { (STRPTR)t0, (STRPTR)t3, NULL };
+    STRPTR spaced[] = { (STRPTR)t4, NULL };
+    STRPTR bare[] = { (STRPTR)t5, NULL };
+    STRPTR none[] = { (STRPTR)t2, NULL };
+    STRPTR *r;
+    assert(mem_size((CONST_STRPTR)"0M") == 0 && mem_size((CONST_STRPTR)"8M") == 8UL << 20);
+    assert(mem_size((CONST_STRPTR)"512K") == 512UL << 10 && mem_size((CONST_STRPTR)"8") == 8);
+    r = vampire_tooltypes(&p, zero);
+    assert(r == p.toolTypes && r[2] == zero[2] && !strcmp((char *)r[3], "VIDEOMEMSIZE=8M") && !r[4]);
+    assert(vampire_tooltypes(&p, big) == big);          /* 16M stays */
+    assert(vampire_tooltypes(&p, none) == none);        /* the card's default */
+    r = vampire_tooltypes(&p, spaced);
+    assert(r == p.toolTypes && !strcmp((char *)r[1], "VIDEOMEMSIZE=8M"));
+    r = vampire_tooltypes(&p, bare);
+    assert(r == p.toolTypes && !strcmp((char *)r[1], "VIDEOMEMSIZE=8M"));
+    assert(ci_prefix("vampiregfx.card", "VAMPIREGFX") && !ci_prefix("uaegfx.card", "VAMPIREGFX"));
+}
+
 static void test_fill(void)
 {
     static const RGBFTYPE formats[] = { RGBFB_CLUT, RGBFB_R5G6B5PC,
@@ -419,6 +444,7 @@ int main(void)
     test_banks_and_allocator();
     test_planar_probe();
     test_rop();
+    test_vampire_tooltypes();
     assert(waits != 0);
     puts("P96 adapter: ABI, formats, drawing fallbacks and mode setup passed");
     return 0;

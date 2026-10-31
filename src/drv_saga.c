@@ -5,8 +5,9 @@
  *
  * TEST DRIVER, not yet run on a Vampire: written from the register
  * descriptions in the Apollo team's SAGA.card source (flype44/Vampire,
- * VIDEO/sagacard, MPL-2.0 - facts only, no code taken over). Selected
- * with BOARD=SAGA; Auto does not pick it yet.
+ * VIDEO/sagacard, MPL-2.0 - facts only, no code taken over) and from what
+ * vampiregfx.card 1.56 was seen to do (docs/saga-hw-card156.md - facts
+ * only). Selected with BOARD=SAGA; Auto does not pick it yet.
  *
  * The hardware, as that source describes it:
  *   - no VRAM of its own: the frame buffer is ordinary fast RAM, so the
@@ -26,6 +27,7 @@
  */
 #include <exec/types.h>
 #include <exec/memory.h>
+#include <exec/execbase.h>
 #include <libraries/configvars.h>
 #include <proto/exec.h>
 #include <proto/expansion.h>
@@ -38,12 +40,25 @@
 #endif
 
 #define SAGA_MFR    0x1398      /* Apollo team                         */
+#ifndef AFF_68080
+#define AFF_68080   (1 << 10)   /* the Apollo 68080 in AttnFlags        */
+#endif
 
-/* the Apollo boards with SAGA video, by autoconfig product number */
-static const struct { UWORD prod; const char *name; } sagaBoards[] = {
-    { 5, "SAGA (Vampire V4)" },              /* Standalone, V4+                     */
-    { 8, "SAGA (Apollo A6000)" },            /* reported by nihirash (#25)          */
+/* The board, by the ID in the high byte of $DFF3FC (what vampiregfx.card
+ * 1.56 goes by; the names follow ApolloControl's order). 0 = no SAGA.
+ * The V2 boards program their video quite differently (timing registers,
+ * a PLL): this driver does not drive them. */
+#define R_BOARDID   0x3FC       /* W: board ID << 8                     */
+#ifndef SAGA_FAKE
+static const char *const boardNames[] = {
+    NULL,
+    "SAGA (Vampire V600, V2)", "SAGA (Vampire V500, V2)",
+    "SAGA (Apollo V4 Firebird)", "SAGA (Apollo V4 Icedrake)",
+    "SAGA (Apollo V4 Standalone)", "SAGA (Vampire V1200, V2)",
+    "SAGA (Apollo V4 Manticore)", "SAGA (Apollo A6000)",
 };
+#endif
+#define BOARD_IS_V2(id) ((id) == 1 || (id) == 2 || (id) == 6)
 
 /* registers, offsets from $DFF000 */
 #define R_SPRITE_X  0x1D0       /* W: sprite left + 16                  */
@@ -51,6 +66,7 @@ static const struct { UWORD prod; const char *name; } sagaBoards[] = {
 #define R_MODULO    0x1E6       /* W: bytes after each displayed row    */
 #define R_BPLPTR    0x1EC       /* L: display start, 16-byte aligned    */
 #define R_FORMAT    0x1F4       /* W: size << 8 | pixel format          */
+#define R_BEAMPOS   0x204       /* L: (>> 8) & $FFF = the line being shown */
 #define R_CLUT      0x388       /* L: index << 24 | R << 16 | G << 8 | B */
 #define R_SPRCLUT   0x3A2       /* W x3: sprite colours 1-3, 0RGB       */
 #define R_SPRDATA   0x800       /* L x16: rows, plane 0 << 16 | plane 1 */
@@ -58,6 +74,7 @@ static const struct { UWORD prod; const char *name; } sagaBoards[] = {
 #define FMT_OFF     0           /* SAGA pixel formats                   */
 #define FMT_CLUT8   1
 #define FMT_RGB16   2           /* R5G6B5, big-endian                   */
+#define FMT_RGB15   3           /* x1R5G5B5, big-endian                 */
 #define FMT_RGB24   4           /* R,G,B bytes                          */
 #define FMT_RGB32   5           /* A,R,G,B bytes                        */
 
@@ -65,14 +82,16 @@ static const struct { UWORD prod; const char *name; } sagaBoards[] = {
 #define SPRITE_DY   8
 #define SPRITE_OFF  0x3FFF      /* a position outside every mode        */
 
-/* the display sizes the hardware knows, by number, and their refresh
- * (the 256- and 576-line sizes are PAL timings) */
+/* the display sizes the hardware knows, by number, and their refresh as
+ * vampiregfx.card 1.56 reports it (17-21 are new in that card) */
 static const struct { UBYTE id; UWORD w, h; UBYTE hz; } sizes[] = {
-    { 0x01,  320, 200, 60 }, { 0x02,  320, 240, 60 }, { 0x03,  320, 256, 50 },
+    { 0x01,  320, 200, 60 }, { 0x02,  320, 240, 60 }, { 0x03,  320, 256, 60 },
     { 0x04,  640, 400, 60 }, { 0x05,  640, 480, 60 }, { 0x06,  640, 512, 50 },
     { 0x07,  960, 540, 60 }, { 0x08,  480, 270, 60 }, { 0x09,  304, 224, 60 },
-    { 0x0A, 1280, 720, 60 }, { 0x0B,  640, 360, 60 }, { 0x0C,  800, 600, 60 },
+    { 0x0A, 1280, 720, 50 }, { 0x0B,  640, 360, 50 }, { 0x0C,  800, 600, 60 },
     { 0x0D, 1024, 768, 60 }, { 0x0E,  720, 576, 50 }, { 0x0F,  848, 480, 60 },
+    { 0x10,  640, 200, 60 }, { 0x11, 1920,1080, 24 }, { 0x12, 1280,1024, 50 },
+    { 0x13, 1280, 800, 60 }, { 0x14, 1440, 900, 50 }, { 0x15,  720, 405, 50 },
 };
 #define NSIZES (sizeof(sizes) / sizeof(sizes[0]))
 
@@ -81,7 +100,7 @@ struct SagaPriv {
     UBYTE *mem;                 /* the allocation; vram is it aligned   */
     ULONG memSize;
     UWORD format;               /* the FORMAT value of the mode shown   */
-    UWORD width;                /* the mode's width and bytes per pixel */
+    UWORD width, height;        /* the mode's size and bytes per pixel  */
     UBYTE bpp;
     UBYTE spriteOn;
     UBYTE down;                 /* shut down: the display reads no memory */
@@ -111,6 +130,7 @@ static UBYTE saga_format(UBYTE pf)
     switch (pf) {
     case PF_CLUT8:    return FMT_CLUT8;
     case PF_RGB565BE: return FMT_RGB16;
+    case PF_RGB555BE: return FMT_RGB15;
     case PF_RGB24:    return FMT_RGB24;
     case PF_ARGB32:   return FMT_RGB32;
     }
@@ -158,6 +178,7 @@ static BOOL saga_SetMode(struct PrismBoard *b, struct PrismMode *m)
         return FALSE;
     i = size_index(m->width, m->height);
     p->width = m->width;
+    p->height = m->height;
     p->bpp = board_bpp(m->format);
     p->format = ((UWORD)sizes[i].id << 8) | saga_format(m->format);
     W16(p, R_MODULO, m->bytesPerRow - (ULONG)m->width * p->bpp);
@@ -187,10 +208,34 @@ static void saga_SetSwitch(struct PrismBoard *b, BOOL rtg)
     p->down = !rtg;
 }
 
+/* SAGA has no vertical blank interrupt, but $DFF204 says which line of
+ * the RTG mode is being shown: the blank starts at its last line. Poll it,
+ * bounded; a counter that does not move (the fake registers, or a board
+ * that has no such counter) falls back to the chipset's WaitTOF. */
+#define BEAM_LINE(p) ((*(volatile ULONG *)((p)->regs + R_BEAMPOS) >> 8) & 0xFFF)
+#define BEAM_TRIES  400000UL
+
 static void saga_WaitVBlank(struct PrismBoard *b)
 {
-    (void)b;
-    WaitTOF();                          /* SAGA has no vertical blank interrupt */
+    struct SagaPriv *p = b->priv;
+    ULONG n = 0;
+    UWORD last, line, moved = 0;
+    if (p->down || p->format == FMT_OFF || p->height < 2) {
+        WaitTOF();
+        return;
+    }
+    last = BEAM_LINE(p);
+    /* out of the blank we may be in, then into the next one */
+    while ((line = BEAM_LINE(p)) >= p->height - 1 && n++ < BEAM_TRIES)
+        if (line != last) moved = 1, last = line;
+    while (n++ < BEAM_TRIES) {
+        line = BEAM_LINE(p);
+        if (line != last) moved = 1, last = line;
+        if (moved && line >= p->height - 1)
+            return;
+        if (!moved && n > 2000) break;          /* the counter stands still */
+    }
+    WaitTOF();
 }
 
 static void saga_Shutdown(struct PrismBoard *b)
@@ -242,7 +287,7 @@ static void saga_CursorMove(struct PrismBoard *b, WORD x, WORD y)
 /* ---- the probe --------------------------------------------------------- */
 static BOOL saga_probe(struct PrismBoard *b)
 {
-    static const ULONG tryMB[] = { 16, 8, 4 };
+    static const ULONG tryMB[] = { 8, 16, 4 };
     struct SagaPriv *p = &priv;
     UWORD i;
 #ifdef SAGA_FAKE
@@ -250,21 +295,30 @@ static BOOL saga_probe(struct PrismBoard *b)
     b->configDev = NULL;
     b->name = "SAGA (fake)";
 #else
-    struct ConfigDev *cd = NULL;
-    for (i = 0; i < sizeof(sagaBoards) / sizeof(sagaBoards[0]) && !cd; i++)
-        cd = driver_find(NULL, SAGA_MFR, sagaBoards[i].prod);
-    if (!cd)
+    struct ConfigDev *cd;
+    UWORD id;
+    /* $DFF3FC is read only on an Apollo machine: one with an Apollo board
+     * in autoconfig, or a 68080 */
+    cd = driver_find(NULL, SAGA_MFR, (ULONG)-1);
+    if (!cd && !(SysBase->AttnFlags & AFF_68080))
         return FALSE;
     p->regs = (volatile UBYTE *)0xDFF000;
+    id = *(volatile UWORD *)(p->regs + R_BOARDID) >> 8;
+    if (!id)
+        return FALSE;
+    if (BOARD_IS_V2(id)) {
+        printf("PrismD: %s: V2 boards are not supported by this driver\n", boardNames[id]);
+        return FALSE;
+    }
     b->configDev = cd;
-    b->name = sagaBoards[i - 1].name;
+    b->name = id < sizeof(boardNames) / sizeof(boardNames[0]) ? boardNames[id] : "SAGA (Apollo V4)";
 #endif
-    /* the frame buffer: fast RAM, as much as can be had up to 16 MB
-     * (more bitmaps stay "on the card"), aligned so every 256-byte VRAM
-     * block PrismD hands out starts on a 16-byte boundary */
+    /* the frame buffer: fast RAM, 8 MB as vampiregfx.card takes by default
+     * (more bitmaps stay "on the card" with 16), aligned so every 256-byte
+     * VRAM block PrismD hands out starts on a 16-byte boundary */
     for (i = 0; i < sizeof(tryMB) / sizeof(tryMB[0]) && !p->mem; i++) {
         p->memSize = tryMB[i] << 20;
-        p->mem = AllocMem(p->memSize + 255, MEMF_FAST | MEMF_PUBLIC);
+        p->mem = AllocMem(p->memSize + 255, MEMF_FAST | MEMF_PUBLIC | MEMF_REVERSE);
     }
     if (!p->mem) {
         puts("PrismD: SAGA found, but no fast RAM for its frame buffer");
@@ -273,10 +327,11 @@ static BOOL saga_probe(struct PrismBoard *b)
     b->regs      = p->regs;
     b->vram      = (UBYTE *)(((ULONG)p->mem + 255) & ~255UL);
     b->vramSize  = p->memSize;
-    b->formats   = PF_BIT(PF_CLUT8) | PF_BIT(PF_RGB565BE) | PF_BIT(PF_RGB24) | PF_BIT(PF_ARGB32);
+    b->formats   = PF_BIT(PF_CLUT8) | PF_BIT(PF_RGB565BE) | PF_BIT(PF_RGB555BE) |
+                   PF_BIT(PF_RGB24) | PF_BIT(PF_ARGB32);
     b->flags     = PBF_HW_CURSOR;
-    b->maxWidth  = 1280;
-    b->maxHeight = 768;
+    b->maxWidth  = 1920;
+    b->maxHeight = 1080;
     b->priv      = p;
     b->cursorW   = 16;
     b->cursorH   = 16;

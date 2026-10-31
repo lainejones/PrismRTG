@@ -57,6 +57,8 @@ struct P96Priv {
     struct Library *icon;
     struct DiskObject *disk;
     STRPTR emptyToolTypes[1];
+    STRPTR toolTypes[64];                 /* the icon's, plus what PrismD adds */
+    BOOL vampire;                         /* the card is vampiregfx.card     */
     struct ModeInfo mode;
     ULONG formats;
     UBYTE pf[5];                          /* selected Prism format by bpp */
@@ -341,11 +343,23 @@ static UBYTE mode_type(UBYTE bpp)
 }
 
 /* The refresh rate a card driver's own mode stands for, 0 = not known.
- * Some drivers' internal modes carry no real timing: the Apollo SAGA
- * driver (vampiregfx.card) sets HorTotal/VerTotal to the visible size and
- * one placeholder PixelClock for every mode, which made PrismD list
- * "1920x1080 32bit 8 Hz" on an A6000 (nihirash's install video, #25). A
- * mode with no blanking, or a rate no display runs at, is not a timing. */
+ * Some drivers' internal modes carry no real timing: older Apollo SAGA
+ * drivers (vampiregfx.card before 1.56) set HorTotal/VerTotal to the
+ * visible size and one placeholder PixelClock for every mode, which made
+ * PrismD list "1920x1080 32bit 8 Hz" on an A6000 (nihirash's install
+ * video, #25); 1.56 reports real totals. A mode with no blanking, or a
+ * rate no display runs at, is not a timing. */
+static STRPTR *vampire_tooltypes(struct P96Priv *p, STRPTR *tt);
+/* Does s start with prefix (upper case), ignoring case? */
+static BOOL ci_prefix(const char *s, const char *prefix)
+{
+    for (; *prefix; s++, prefix++) {
+        char c = *s >= 'a' && *s <= 'z' ? *s - 32 : *s;
+        if (c != *prefix) return FALSE;
+    }
+    return TRUE;
+}
+
 static UBYTE refresh(const struct ModeInfo *mi)
 {
     ULONG total = (ULONG)mi->HorTotal * mi->VerTotal;
@@ -536,9 +550,14 @@ static void p96_palette(struct PrismBoard *b, UWORD first, UWORD count, const UB
 
 static void p96_switch(struct PrismBoard *b, BOOL on)
 {
-    struct BoardInfo *bi = &((struct P96Priv *)b->priv)->bi;
+    struct P96Priv *p = b->priv;
+    struct BoardInfo *bi = &p->bi;
     wait_blitter(bi);
     bi->SetSwitch(bi, on);
+    /* vampiregfx.card's SetSwitch writes nothing on a V4: its picture goes
+     * away only when the display is turned off (FORMAT 0) */
+    if (p->vampire && p->modeSet)
+        bi->SetDisplay(bi, on);
 }
 
 static void p96_wait(struct PrismBoard *b)
@@ -554,6 +573,7 @@ static void quiesce(struct P96Priv *p)
     if (p->modeSet) {
         if (p->bi.SetSprite) p->bi.SetSprite(&p->bi, FALSE, p->bi.RGBFormat);
         p->bi.SetSwitch(&p->bi, FALSE);
+        if (p->vampire) p->bi.SetDisplay(&p->bi, FALSE);
     }
 }
 
@@ -565,8 +585,10 @@ static void p96_shutdown(struct PrismBoard *b)
 
 static void p96_vblank(struct PrismBoard *b)
 {
-    struct BoardInfo *bi = &((struct P96Priv *)b->priv)->bi;
-    if (bi->WaitVerticalSync) {
+    struct P96Priv *p = b->priv;
+    struct BoardInfo *bi = &p->bi;
+    /* vampiregfx.card's WaitVerticalSync returns at once (1.56) */
+    if (bi->WaitVerticalSync && !p->vampire) {
         bi->WaitVerticalSync(bi, TRUE);
         bi->WaitVerticalSync(bi, FALSE);
     } else {
@@ -650,6 +672,21 @@ static void p96_cursor_image(struct PrismBoard *b, const UBYTE *img, const UBYTE
     struct P96Priv *p = b->priv;
     struct BoardInfo *bi = &p->bi;
     UWORD x, y;
+    if (p->vampire) {
+        /* vampiregfx.card reads a 16x16 image only: one long of control
+         * words, then plane 0 and plane 1 words per row */
+        bi->Flags &= ~(BIF_BIGSPRITE | BIF_HIRESSPRITE);
+        bi->MouseWidth = 16;
+        bi->MouseHeight = 16;
+        memset(p->sprite, 0, sizeof(p->sprite));
+        for (y = 0; y < 16; y++)
+            for (x = 0; x < 16; x++) {
+                UBYTE pen = img[y * CURSOR_SIZE + x];
+                if (pen & 1) p->sprite[2 + 2 * y] |= 0x8000 >> x;
+                if (pen & 2) p->sprite[3 + 2 * y] |= 0x8000 >> x;
+            }
+        goto colours;
+    }
     /* HIRESSPRITE selects a 32-pixel source (two words per plane).
      * It is a requested image layout, not a hardware capability flag. */
     bi->Flags = (bi->Flags & ~BIF_BIGSPRITE) | BIF_HIRESSPRITE;
@@ -662,6 +699,7 @@ static void p96_cursor_image(struct PrismBoard *b, const UBYTE *img, const UBYTE
             if (pen & 1) p->sprite[4 + 4 * y + x / 16] |= 0x8000 >> (x & 15);
             if (pen & 2) p->sprite[6 + 4 * y + x / 16] |= 0x8000 >> (x & 15);
         }
+colours:
     for (x = 0; x < 3; x++) {
         /* Some drivers reload these entries when enabling the sprite. */
         bi->CLUT[17+x].Red = rgb[3*x];
@@ -731,7 +769,12 @@ static BOOL select_formats(struct P96Priv *p, struct PrismBoard *b)
 static BOOL attach_board(struct P96Priv *p, struct PrismBoard *b)
 {
     struct BoardInfo *bi = &p->bi;
-    if (!bi->MemoryBase || bi->MemorySize < 65536 || !bi->SetGC ||
+    if (!bi->MemoryBase || bi->MemorySize < 65536) {
+        puts("PrismD: the P96 driver set up no frame buffer (its monitor icon's\n"
+             "        VideoMemSize tool type may be 0 - try 8M)");
+        return FALSE;
+    }
+    if (!bi->SetGC ||
         !bi->SetDAC || !bi->SetPanning || !bi->SetSwitch || !bi->SetDisplay ||
         !bi->SetColorArray || !bi->CalculateBytesPerRow ||
         !bi->CalculateMemory || !bi->GetCompatibleFormats) {
@@ -825,6 +868,10 @@ BOOL P96_Probe(struct PrismBoard *b, const char *card, const char *monitor)
         printf("PrismD: cannot open P96 card driver %s\n", card);
         goto fail;
     }
+    p->vampire = p->card->lib_Node.ln_Name &&
+                 ci_prefix(p->card->lib_Node.ln_Name, "VAMPIREGFX");
+    if (p->vampire)
+        tt = vampire_tooltypes(p, tt);
     init_boardinfo(p);
     InitSemaphore(&p->owner);
     p->owner.ss_Link.ln_Name = (STRPTR)P96_OWNER;
@@ -859,6 +906,42 @@ fail:
     }
     FreeVec(p);
     return FALSE;
+}
+
+/* vampiregfx.card reads VideoMemSize from the tool types itself, the last
+ * entry winning: "0M" (as its own shipped monitor icon says), a bare
+ * number (bytes) or "8 M" (a space: 0) leave it with no frame buffer, and
+ * PrismD cannot run on that. Then the icon's list goes to the card with
+ * VIDEOMEMSIZE=8M - the card's own default - added at the end. */
+static ULONG mem_size(CONST_STRPTR v)
+{
+    ULONG n = 0;
+    while (*v == ' ') v++;
+    while (*v >= '0' && *v <= '9') n = n * 10 + (*v++ - '0');
+    if (*v == 'M' || *v == 'm') return n << 20;
+    if (*v == 'K' || *v == 'k') return n << 10;
+    return n;
+}
+
+static STRPTR *vampire_tooltypes(struct P96Priv *p, STRPTR *tt)
+{
+    static char eight[] = "VIDEOMEMSIZE=8M";
+    ULONG size = 8UL << 20;
+    UWORD n = 0;
+    BOOL set = FALSE;
+    for (; tt[n] && n < COUNT(p->toolTypes) - 2; n++) {
+        p->toolTypes[n] = tt[n];
+        if (ci_prefix((const char *)tt[n], "VIDEOMEMSIZE=")) {
+            size = mem_size(tt[n] + 13);
+            set = TRUE;
+        }
+    }
+    if (!set || size >= (1UL << 20))
+        return tt;
+    p->toolTypes[n++] = (STRPTR)eight;
+    p->toolTypes[n] = NULL;
+    printf("PrismD: the monitor icon's VideoMemSize leaves vampiregfx.card no frame buffer: using 8M\n");
+    return p->toolTypes;
 }
 
 void P96_KeepResident(void)
