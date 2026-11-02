@@ -98,6 +98,17 @@ Either board can be the primary - the one with the `PRISM:` modes, so Workbench:
 records and driver slots; the drivers keep no pointer to those). `PrismSem.boardAddr[]` gives
 each board's expansion address, so two of one kind can be told apart.
 
+## A board taken out (from 1.3 beta 9)
+
+With one board the span modes and the second board's modes don't exist. A Workbench saved in one
+of them used to come up on the chipset display (found 2026-11-02 on the A4000, Workbench in a span
+mode, with the GBAPII++ moved to another machine). `wb_mode_fallback()` runs once the modes are in:
+when `ENV:Sys/screenmode.prefs` names a Prism mode this boot doesn't have, it writes the closest
+one there into `ENV:` - the same mode on the first board without span, else the first of that
+depth, else the first mode - and says so. `ENVARC:` keeps the saved choice, so the span Workbench
+is back on the first boot with the board in again. `SECONDBOARD=ON` with one board found already
+just uses that board, and `PRIMARY=SECOND` only swaps when there are two.
+
 ## The second monitor (SECONDMONITOR=, from 1.3 beta 1)
 
 Until 1.3 a second board with no screen of its own went back to the Amiga's video, and with

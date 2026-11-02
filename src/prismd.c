@@ -488,6 +488,66 @@ static void build_span_modes(void)
     }
 }
 
+/* a big-endian LONG at any byte address (a 68000 traps on odd ones) */
+#define RD32(p) ((ULONG)(p)[0] << 24 | (ULONG)(p)[1] << 16 | (ULONG)(p)[2] << 8 | (p)[3])
+
+static BOOL have_mode(ULONG id)
+{
+    ULONG k, i;
+
+    for (k = 0; k < ncards; k++)
+        for (i = 0; i < cst[k].nmodes; i++)
+            if (cst[k].modes[i].id == id)
+                return TRUE;
+    return FALSE;
+}
+
+/* The saved Workbench mode can be one this boot doesn't have: a span mode,
+ * or a mode of the second board, when that board has been taken out (or a
+ * size the board refuses). Workbench then came up on the chipset display.
+ * Instead ENV:Sys/screenmode.prefs gets the closest mode there is - the same
+ * one on the first board without span, else the first of that depth, else
+ * the first mode - so Workbench opens on the card. ENVARC: keeps the choice,
+ * so it comes back once the board does. Run after install(): IPrefs may
+ * reset Workbench as soon as the file changes. */
+static void wb_mode_fallback(void)
+{
+    UBYTE buf[256];
+    BPTR fh;
+    LONG size, i;
+    ULONG id, use = 0, base, n;
+
+    if (!cst[0].nmodes || !(fh = Open((STRPTR)"ENV:Sys/screenmode.prefs", MODE_OLDFILE)))
+        return;
+    size = Read(fh, buf, sizeof(buf));
+    Close(fh);
+    /* FORM PREF: chunks from byte 12, each an ID, a length and the data (even) */
+    for (i = 12; i + 8 + 20 <= size; i += 8 + ((RD32(buf + i + 4) + 1) & ~1UL))
+        if (!memcmp(buf + i, "SCRM", 4))
+            break;
+    if (i + 8 + 20 > size)
+        return;
+    i += 8 + 16;                        /* the DisplayID, after 4 reserved LONGs */
+    id = RD32(buf + i);
+    if (!IS_PRISM_ID(id) || have_mode(id))
+        return;
+    base = PRISM_CARD_ID(0) | (id & 0xff7f);  /* the first board, no span */
+    if (have_mode(base))
+        use = base;
+    for (n = 0; !use && n < cst[0].nmodes; n++)
+        if ((cst[0].modes[n].id & 0xff00) == (id & 0xff00) && (cst[0].modes[n].id & 0xff) < SPAN_ID)
+            use = cst[0].modes[n].id;  /* the same depth */
+    if (!use)
+        use = cst[0].modes[0].id;
+    buf[i] = use >> 24; buf[i + 1] = use >> 16; buf[i + 2] = use >> 8; buf[i + 3] = use;
+    if (!(fh = Open((STRPTR)"ENV:Sys/screenmode.prefs", MODE_NEWFILE)))
+        return;
+    Write(fh, buf, size);
+    Close(fh);
+    printf("PrismD: the Workbench mode $%08lx is not here this boot (a board missing?); "
+           "using $%08lx until it is\n", (unsigned long)id, (unsigned long)use);
+}
+
 /* ---- VRAM allocator: first fit over a sorted list of used blocks --- */
 
 
@@ -4011,6 +4071,7 @@ int main(void)
     STAGE("installing patches");
     install();
     STAGE("patches in");
+    wb_mode_fallback();               /* a board missing: Workbench on the card all the same */
     if (cgx_init())
         printf("PrismD: cybergraphics.library 43 added\n");
     if (cgxvideo_init())
