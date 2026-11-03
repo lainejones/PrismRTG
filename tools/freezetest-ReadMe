@@ -1,0 +1,31 @@
+freezetest - a test for issue #1 (the freeze after changing DOpus's resolution)
+==============================================================================
+
+It does what you described, with plain screens instead of the programs:
+
+  1. opens screen A (in place of Amelinium) in mode A and draws in it
+  2. opens screen B (in place of DOpus) in mode A and draws in it
+  3. changes B to mode B the way DOpus does: closes it, opens it again
+  4. brings Workbench to the front
+  5. brings screen A to the front, 6. Workbench again, 7. closes both
+
+Each step is written to a log file and the file is closed again at once,
+so if the Amiga freezes, the last line of the log names the step.
+
+Set Workbench to the mode you use (1440x900, 24 bit) first, then in a Shell:
+
+  freezetest A=7A00020A B=7A000008 LOG=SYS:freezetest.log
+
+  7A00020A = 1440x900, 24 bit   (mode A, as your Workbench and Amelinium)
+  7A000008 = 960x540, 8 bit     (mode B, as you switched DOpus to)
+
+It pauses 5 seconds between steps (WAIT=2 for 2). After a freeze, reboot
+and look at the end of SYS:freezetest.log (Type SYS:freezetest.log). When
+it gets through, the last line is "PASS: no freeze".
+
+Other modes: the number is 7A00 then the depth (00 = 8 bit, 01 = 16,
+02 = 24, 03 = 32), then the size: 00 640x400, 01 640x480, 02 800x600,
+03 1024x768, 04 1280x720, 05 1280x1024, 08 960x540, 09 1920x1080,
+0A 1440x900. So 1920x1080 at 24 bit is 7A000209.
+
+It reads and writes nothing else. GPL-3.0, part of PrismRTG.
