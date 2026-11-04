@@ -1856,6 +1856,20 @@ static void P_LoadView(struct View *v __asm("a1"))
 {
     ENTER();
     c_a1(o_LoadView, GfxBase, v);
+    /* A View of PrismRTG screens only has no copper lists (MrgCop took
+     * them out): graphics then runs its blank LOFlist, but keeps SHFlist,
+     * the short-frame list of the last interlaced display - the boot's
+     * native Workbench, whose lists may be freed by now. The vertical
+     * blank still loads it on every short frame, which turns interlace
+     * back on (BPLCON0 $C204) for as long as only RTG screens are up, and
+     * has the copper run memory that may belong to something else. The
+     * blank list for both fields, and BPLCON0 without LACE. */
+    if (!v || !v->LOFCprList) {
+        Disable();
+        GfxBase->SHFlist = GfxBase->LOFlist;
+        *(volatile UWORD *)0xdff100 = (GfxBase->system_bplcon0 & ~0x0004) | 0x0200;
+        Enable();
+    }
     update_display();
     LEAVE();
 }
