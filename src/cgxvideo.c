@@ -160,10 +160,10 @@ static struct VLayer *V_CreateVLayerHandleTagList(struct Screen *screen __asm("a
      * it takes, a 16- or 32-bit screen) the frames go into its VRAM; else,
      * or when VRAM is short, fast RAM and the compositor */
     v->source = NULL;
-    /* (free VRAM only - a video layer never evicts other bitmaps - and not
-     * with screen dragging on, where the board path is never used and the
-     * compositor would read every frame back from the board) */
-    if (prism_hw_overlay() && !prism_dragging() && sp->bd->overlaySet && (sp->bpp == 2 || sp->bpp == 4) &&
+    /* (free VRAM only - a video layer never evicts other bitmaps; with
+     * screen dragging on the board shows it too, except while the screen
+     * is dragged down, when the compositor reads the frames back) */
+    if (prism_hw_overlay() && sp->bd->overlaySet && (sp->bpp == 2 || sp->bpp == 4) &&
         PF_IS_YUV(fmt) && fmt != PF_YUV_YUYV)
         v->source = pbm_new(sp->card, (w + 1) & ~1, h, 8, fmt, NULL, 2, TRUE);
     if (!v->source && !(v->source = pbm_new(sp->card, (w + 1) & ~1, h, 8, fmt, NULL, FALSE, TRUE))) {

@@ -826,7 +826,7 @@ void p96_pip_hw_tick(void)
         struct PBitMap *scr;
         struct PrismBoard *bd;
         struct PrismOverlay o;
-        LONG iw,ih,ix,iy,left,top,width,height;
+        LONG iw,ih,ix,iy,left,top,width,height,drop;
         UBYTE k;
         WORD clear=1;
         if(!p->hw || !w) continue;
@@ -836,13 +836,21 @@ void p96_pip_hw_tick(void)
         k=scr->card->index;
         if(ovOwner[k] && ovOwner[k]!=p) continue;     /* the board shows another layer: this one is composed */
         if(p->keyPen<0 && (clear=pip_window_clear(w))<0) continue;   /* layer busy: keep what is shown */
-        if(!pbm_is_shown(scr) || prism_dragging() || !clear) { pip_hw_off(p); continue; }
+        /* a screen dragged down: the overlay goes down with it (it is placed
+         * on the display) and stays on, split or composed - the compositor
+         * leaves a layer the board shows alone. Switching it off for the
+         * drag would hand the compositor frames a card writes in its own
+         * layout (ZZPlay's direct overlay: a green box) */
+        drop=prism_dragging() && w->WScreen->TopEdge>0 ? w->WScreen->TopEdge : 0;
+        if(!pbm_is_shown(scr) || !clear) { pip_hw_off(p); continue; }
         iw=w->Width-w->BorderLeft-w->BorderRight;ih=w->Height-w->BorderTop-w->BorderBottom;
         ix=w->LeftEdge+w->BorderLeft;iy=w->TopEdge+w->BorderTop;
         left=ix+p->left+((p->rel&PIPRel_Right)?iw:0);
         top=iy+p->top+((p->rel&PIPRel_Bottom)?ih:0);
         width=p->width+((p->rel&PIPRel_Width)?iw:0);
         height=p->height+((p->rel&PIPRel_Height)?ih:0);
+        /* (dragged down past the display's bottom: the compositor clips it) */
+        if(drop && top+drop+height>scr->h) { pip_hw_off(p); continue; }
         /* the board shows the whole rectangle: one reaching past the window's
          * inner box (negative indents) or starting half way into a YUV pair
          * (an odd clipleft) stays on the compositor, which clips and pairs */
@@ -861,7 +869,7 @@ void p96_pip_hw_tick(void)
         o.keyed=p->keyPen>=0;
         o.screenBpp=scr->bpp;
         if(o.keyed) pen_bytes(scr,p->keyPen,o.key);
-        o.dstX=left;o.dstY=top;o.dstW=width;o.dstH=height;
+        o.dstX=left;o.dstY=top+drop;o.dstW=width;o.dstH=height;
         if(p->hwOn && ovOwner[k]==p && !memcmp(&o,&p->ov,sizeof(o))) continue;
         if(p->hwRetry) { p->hwRetry--; continue; }
         if(bd->overlaySet(bd,&o)) {
@@ -965,9 +973,10 @@ static struct Window *P_PIP_OpenTagList(struct TagItem *tags __asm("a0"))
      * into its VRAM, as a video layer's does: Picasso96 keeps PIP sources
      * there, and a card that writes the frames on its own (ZZPlay's direct
      * overlay) finds them there only. Else, or with VRAM short, fast RAM
-     * and the compositor */
+     * and the compositor (which reads a VRAM source back when it has to
+     * draw the layer itself) */
     p->keyPen=-1;
-    if(prism_hw_overlay() && !prism_dragging() && screen->bd->overlaySet && (screen->bpp==2 || screen->bpp==4) &&
+    if(prism_hw_overlay() && screen->bd->overlaySet && (screen->bpp==2 || screen->bpp==4) &&
        PF_IS_YUV(p->source->fmt) && p->source->fmt!=PF_YUV_YUYV) {
         struct PBitMap *v=pbm_new(screen->card,sw,sh,8,p->source->fmt,NULL,2,TRUE);
         if(v) {
