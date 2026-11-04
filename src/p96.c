@@ -961,6 +961,21 @@ static struct Window *P_PIP_OpenTagList(struct TagItem *tags __asm("a0"))
     error=PIPERR_ATTACHFAIL;
     screen=pbm_get(p->window->WScreen->RastPort.BitMap);
     if(!screen || prism_screen_autoscroll(p->window->WScreen))goto fail;   /* an oversized screen is not composed */
+    /* a YUV source the board can show itself (the ZZ9000's overlay) goes
+     * into its VRAM, as a video layer's does: Picasso96 keeps PIP sources
+     * there, and a card that writes the frames on its own (ZZPlay's direct
+     * overlay) finds them there only. Else, or with VRAM short, fast RAM
+     * and the compositor */
+    p->keyPen=-1;
+    if(prism_hw_overlay() && !prism_dragging() && screen->bd->overlaySet && (screen->bpp==2 || screen->bpp==4) &&
+       PF_IS_YUV(p->source->fmt) && p->source->fmt!=PF_YUV_YUYV) {
+        struct PBitMap *v=pbm_new(screen->card,sw,sh,8,p->source->fmt,NULL,2,TRUE);
+        if(v) {
+            pbm_free(p->source);
+            p->source=v;v->rgbTab=p->palette;p->rp.BitMap=v->bm;
+        }
+    }
+    p->hw=pip_hw_possible(p,screen);
     LOCK();
     if (!present_reserve(p->window->WScreen)) {
         ReleaseSemaphore(&lock);error=PIPERR_NOMEMORY;goto fail;
@@ -1047,6 +1062,7 @@ static BOOL P_PIP_Close(struct Window *w __asm("a0"))
     for(link=&pips;*link && (*link)->window!=w;link=&(*link)->next);
     p=*link;
     if(!p || p->source->locks) { ReleaseSemaphore(&lock);return FALSE; }
+    pip_hw_off(p);
     *link=p->next;pipGen++;
     ReleaseSemaphore(&lock);
     CloseWindow(w);pbm_free(p->source);FreeVec(p);
