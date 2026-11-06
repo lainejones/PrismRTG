@@ -4143,23 +4143,24 @@ int main(void)
 #endif
     printf("PrismD: running (Ctrl-C to quit)\n");
     STAGE("running");
+    /* This start is a good one: the board came up, the modes are published
+     * and the semaphore is in. Clear the boot failsafe now (see prismmon.c)
+     * rather than after a time window - a window is beatable by a quick
+     * reboot, so an ordinary reboot kept looking like a boot-time hang and
+     * skipped the next boot (worst on a pure RTG display like UAE/uaegfx,
+     * where GfxBase->VBCounter need not tick and the window never ended).
+     * A start that hangs the machine before here never clears the flag, so
+     * the failsafe still fires for it; a saved display mode that hangs the
+     * machine when IPrefs switches to it (later, after this point) is
+     * recovered by holding the left mouse button at boot, which prismmon
+     * already honours. */
+    DeleteFile(PRISM_BOOTFLAG);
 
     for (;;) {
         ULONG tick = 0;
-        static ULONG vb0;
-        static BOOL settled;
         secStop = FALSE;                      /* a quit that didn't happen: PRISM2 again */
-        if (!vb0)
-            vb0 = GfxBase->VBCounter | 1;
         dbgMain = FindTask(NULL);
         while (!(SetSignal(0, 0) & SIGBREAKF_CTRL_C)) {
-            /* up for a minute (3600 vertical blanks): this start is a good
-             * one (see prismmon.c). Checked first: LOG=SYNC below sleeps,
-             * and every second boot was skipped while it did (1.1 beta 4) */
-            if (!settled && GfxBase->VBCounter - vb0 > 3600) {
-                settled = TRUE;
-                DeleteFile(PRISM_BOOTFLAG);
-            }
             /* the log switched on while running (prismlog ON or SYNC, ARexx
              * LOG ON): its ring comes now - dbg() drops every line until it
              * exists, and before 1.1 beta 9 it only ever came at the start */

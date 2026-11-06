@@ -521,8 +521,14 @@ Prism now boots the A2000: `C:PrismD`, `DEVS:Monitors/Prism`, `SYS:Prefs/PrismPr
 `SYS:Storage/Monitors` (and its ScreenMode prefs kept as `ENVARC:Sys/screenmode.prefs.p96`).
 
 * **Boot failsafe.** `DEVS:Monitors/Prism` creates `ENVARC:Prism.booting` before starting PrismD;
-  PrismD deletes it after a minute (3600 vertical blanks). Found at boot, the launcher deletes it and
-  skips Prism once, so a machine with nobody at the keyboard comes up native with its network.
+  PrismD deletes it the moment its board is up and its modes are published (not after a time window -
+  a window is beatable by a quick reboot, and on a pure RTG display such as UAE/uaegfx the old
+  `GfxBase->VBCounter` clock need not tick at all, so the flag was never cleared and ordinary reboots
+  kept skipping the next boot). Found at boot, the launcher deletes it and
+  skips Prism once, so a machine with nobody at the keyboard comes up native with its network. A start
+  that hangs the machine before PrismD finishes coming up never clears the flag, so the failsafe still
+  fires; a saved display mode that hangs the machine when IPrefs switches to it (later) is skipped by
+  holding the left mouse button at boot.
 * **32-bit on the GD5434** (the true-colour slot now tries each format the board has, per size:
   24-bit where the triple clock allows, 32-bit above that).
 * **CoerceMode patched.** Intuition asks graphics which mode shows each screen on the front screen's

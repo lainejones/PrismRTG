@@ -241,7 +241,7 @@ static void report(FILE *f)
         BPTR flag = Lock((STRPTR)PRISM_BOOTFLAG, ACCESS_READ);
         if (flag) {
             UnLock(flag);
-            fprintf(f, "%s is there: a start that never ran a minute; the next boot skips PrismRTG once\n",
+            fprintf(f, "%s is there: a start that never finished starting up; the next boot skips PrismRTG once\n",
                     PRISM_BOOTFLAG);
         }
     }
