@@ -44,6 +44,27 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.3 (everything since 1.2.3, in short; the betas follow below)
+  Two boards, two monitors: the second monitor shows a screen of its own,
+  a mirror of the first, or one Workbench spanning both; the pointer moves
+  across. Smooth screen dragging on the Cirrus cards and the ZZ9000 with
+  the card's own split display. Video on the ZZ9000's overlay (ZZPlay,
+  cgxvideo players), dragging on or off.
+  PrismPrefs is one tabbed window with menus that fits a 640x200
+  Workbench. When PrismRTG doesn't start it says why (PrismPrefs' bottom
+  line, PrismProbe's report), and a failed start no longer skips the next
+  boot. A Workbench saved in a mode that is gone opens in the closest one.
+  Fixed: kerned text as wide as graphics.library draws it (Amelinium);
+  Vampire and Apollo boards through vampiregfx.card start with the
+  installer's settings, without made-up refresh rates.
+  Since beta 10: with only PrismRTG screens open, the Amiga's own video
+  output gets a plain display instead of the boot Workbench's interlaced
+  one, and Check for updates says that the Installer asks its questions in
+  a window of its own on the Workbench screen (the update window looked
+  hung while it waited).
+  Thanks to HANSolo-0007 and nihirash for the Vampire and A6000 reports,
+  and to luVWagn for the Amiberry ones.
+
 New in 1.3 beta 10
   Video windows (ZZPlay, cgxvideo players) go on the ZZ9000's video
   overlay with screen dragging on too. Before, with dragging on, ZZPlay
