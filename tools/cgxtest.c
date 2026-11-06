@@ -159,7 +159,10 @@ int main(void)
     for (i = 0; i < 64; i++) argb[i] = (i & 7) < 4 ? 0xff0000ff : 0x00000000;
     WPAAlpha(argb, 0, 0, 32, rp, 110, 10, 8, 8, 0xffffffff);
     check("WritePixelArrayAlpha per-pixel alpha", near(rp, 111, 13, 0x0000ff) && near(rp, 116, 13, 0x404040));
-    n = WPAAlpha(argb, 0, 0, 32, rp, 636, 476, 8, 8, 0xffffffff);
+    /* 4x4 of the 8x8 inside the bitmap's corner: the screen can be bigger
+     * than the 640x480 asked for (the mode's own size), so its real size */
+    n = WPAAlpha(argb, 0, 0, 32, rp, GetCyberMapAttr(rp->BitMap, CYBRMATTR_WIDTH) - 4,
+                 GetCyberMapAttr(rp->BitMap, CYBRMATTR_HEIGHT) - 4, 8, 8, 0xffffffff);
     check("WritePixelArrayAlpha clipped at the edge", n == 16);
 
     /* BltTemplateAlpha: the foreground pen's colour */
