@@ -654,6 +654,11 @@ static BOOL get_and_install(const struct Latest *l, BOOL install)
     Write(out, script, strlen(script));
     Close(out);
     say(UPD_TOOL ": starting the installer (%s)\n", installer);
+    /* the Installer asks its questions in a window of its own, which can
+     * open behind this one; meanwhile this window shows nothing new and
+     * looked hung (Amiberry, 2026-11-05) */
+    say(UPD_TOOL ": the Installer opens its own window on the Workbench screen - follow it there;\n"
+        UPD_TOOL ": this window waits until the installation is finished\n");
     return run("Execute " SCRIPT);
 }
 
