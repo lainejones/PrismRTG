@@ -25,6 +25,7 @@
 #include <intuition/screens.h>
 #include <graphics/view.h>
 #include <utility/tagitem.h>
+#include <dos/dos.h>
 #include <proto/exec.h>
 #include <proto/graphics.h>
 #include <proto/utility.h>
