@@ -52,6 +52,9 @@ $CC $CFLAGS -s -o out/PrismPrefs tools/prismprefs.c tools/tabs.c src/prefs.c src
 AMISSL_INC=${AMISSL_INC:-$HOME/amissl-sdk/include}
 if [ -d "$AMISSL_INC" ]; then
   $CC $CFLAGS -I"$AMISSL_INC" -s -o out/PrismUpdate tools/update/update.c tools/update/upd_prismrtg.c src/prefs.c
+  # the same, calling itself 1.0, for the gate's updatecheck: it always finds a newer release, so
+  # GET goes on through the fetch to the Installer (not packaged)
+  $CC $CFLAGS -DUPD_VERSION='"1.0"' -I"$AMISSL_INC" -s -o out/PrismUpdate.old tools/update/update.c tools/update/upd_prismrtg.c src/prefs.c
 else
   echo "PrismUpdate skipped: no AmiSSL SDK headers at $AMISSL_INC"
 fi
@@ -74,6 +77,7 @@ $CC $CFLAGS -s -o out/cmreq tools/cmreq.c
 $CC $CFLAGS -s -o out/lastalert tools/lastalert.c
 $CC $CFLAGS -s -o out/wintest tools/wintest.c
 $CC $CFLAGS -s -o out/prismlog tools/prismlog.c
+$CC $CFLAGS -s -o out/copperlists tools/copperlists.c
 
 echo "== Picasso96API.library (Prism's own) =="
 $CC -nostartfiles -nostdlib -s -o out/Picasso96API.library tools/p96stub.S
