@@ -3,7 +3,8 @@
 /*
  * drv_saga.c - the Apollo Vampire V4's SAGA video, driven natively.
  *
- * TEST DRIVER, not yet run on a Vampire: written from the register
+ * In the package from 1.4b1: ran on HANSolo-0007's A6000 (test 3,
+ * 2026-11-01). Written from the register
  * descriptions in the Apollo team's SAGA.card source (flype44/Vampire,
  * VIDEO/sagacard, MPL-2.0 - facts only, no code taken over) and from what
  * vampiregfx.card 1.56 was seen to do (docs/saga-hw-card156.md - facts
