@@ -44,6 +44,21 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.4 beta 1
+  The Apollo Vampire V4's SAGA video, driven by PrismRTG itself: in
+  PrismPrefs' Board tab choose "Other", with BOARD=SAGA in
+  ENVARC:Prism.prefs. It is not picked automatically yet. Thanks to
+  HANSolo-0007 for running the tests on his A6000.
+  A quick reboot no longer makes the next boot skip PrismRTG. The boot
+  failsafe used to wait a minute counted in video frames, which do not
+  always count with only RTG screens up. A full release now clears it as
+  soon as PrismD is running; a beta waits 20 seconds on the system clock,
+  past the switch to your saved screen mode. Thanks to solskogen.
+  Check for updates works on a stock A1200 (68020 at 14 MHz): the secure
+  connection to GitHub took so long there that GitHub gave up on it. It
+  now asks for the kind of certificate that is quick to check, and is
+  ready in about 8 seconds instead of 19.
+
 New in 1.3 (everything since 1.2.3, in short; the betas follow below)
   Two boards, two monitors: the second monitor shows a screen of its own,
   a mirror of the first, or one Workbench spanning both; the pointer moves

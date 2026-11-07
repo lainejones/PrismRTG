@@ -170,12 +170,21 @@ struct Fetch {
 
 static SSL_CTX *ctx;
 static BOOL verify;                      /* the peer's certificate is checked */
+static BOOL rsa_only = TRUE;             /* RSA signatures only offered, for now */
+/* the signatures offered: RSA alone first (cheap to check on a 68020), every
+ * one after a server that has no RSA certificate */
+#define SIGALGS_RSA "rsa_pss_rsae_sha256:rsa_pss_rsae_sha384:rsa_pss_rsae_sha512:RSA+SHA256:RSA+SHA384:RSA+SHA512"
+#define SIGALGS_ALL SIGALGS_RSA ":ECDSA+SHA256:ECDSA+SHA384:ECDSA+SHA512:ed25519"
 
 /* Ctrl-C in a Shell, or the Prefs window closing: stop waiting */
 static BOOL broken(void)
 {
     return (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0;
 }
+
+#ifdef UPD_DIAG
+static struct DateStamp diag_t0;             /* the TLS handshake's start */
+#endif
 
 static LONG tcp_connect(const char *host, int port)
 {
@@ -198,6 +207,10 @@ static LONG tcp_connect(const char *host, int port)
     sa.sin_family = AF_INET;
     sa.sin_port = htons(port);
     memcpy(&sa.sin_addr, he->h_addr_list[0], sizeof(sa.sin_addr));
+#ifdef UPD_DIAG
+    say("diag: %s = %ld.%ld.%ld.%ld\n", host, (long)(UBYTE)he->h_addr_list[0][0], (long)(UBYTE)he->h_addr_list[0][1],
+        (long)(UBYTE)he->h_addr_list[0][2], (long)(UBYTE)he->h_addr_list[0][3]);
+#endif
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     if (connect(s, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
@@ -207,6 +220,9 @@ static LONG tcp_connect(const char *host, int port)
         CloseSocket(s);
         return -1;
     }
+#ifdef UPD_DIAG
+    say("diag: connected to %s port %d (socket %ld)\n", host, port, (long)s);
+#endif
     return s;
 }
 
@@ -273,7 +289,18 @@ static BOOL fetch_once(const struct Url *u, struct Fetch *f)
     }
     SSL_set_tlsext_host_name(ssl, u->host);
     SSL_set_fd(ssl, s);
+#ifdef UPD_DIAG
+    DateStamp(&diag_t0);
+#endif
     if (SSL_connect(ssl) != 1) {
+        if (rsa_only) {
+            /* a server without an RSA certificate: once more with ECDSA */
+            rsa_only = FALSE;
+            SSL_CTX_set1_sigalgs_list(ctx, SIGALGS_ALL);
+            SSL_free(ssl);
+            CloseSocket(s);
+            return fetch_once(u, f);
+        }
         if (verify) {
             /* the handshake with the certificate check on failed: most
              * likely no certificates to check against (AmiSSL:Certs is
@@ -293,10 +320,40 @@ static BOOL fetch_once(const struct Url *u, struct Fetch *f)
     }
     sprintf(req, "GET %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: " AGENT "\r\n"
                  "Accept: */*\r\nConnection: close\r\n\r\n", u->path, u->host);
-    if (!ssl_write_all(ssl, req, strlen(req)))
+#ifdef UPD_DIAG
+    {
+        struct DateStamp d1;
+        DateStamp(&d1);
+        say("diag: TLS up: %s, %s, handshake %ld ticks (50/s)\n", SSL_get_version(ssl), SSL_get_cipher_name(ssl),
+            (long)((d1.ds_Minute - diag_t0.ds_Minute) * 3000 + d1.ds_Tick - diag_t0.ds_Tick));
+    }
+#endif
+    if (!ssl_write_all(ssl, req, strlen(req))) {
+#ifdef UPD_DIAG
+        say("diag: request write failed (errno %ld)\n", (long)Errno());
+#endif
         goto out;
+    }
+#ifdef UPD_DIAG
+    {
+        char c;
+        int r = SSL_read(ssl, &c, 1);
+        if (r != 1) {
+            say("diag: first read: %ld, SSL_get_error %ld, errno %ld\n", (long)r, (long)SSL_get_error(ssl, r),
+                (long)Errno());
+            goto out;
+        }
+        line[0] = c;
+        if (!ssl_line(ssl, line + 1, sizeof(line) - 1))
+            goto out;
+        say("diag: status line: %s\n", line);
+    }
+    if (strncmp(line, "HTTP/", 5) || strlen(line) < 12)
+        goto out;
+#else
     if (!ssl_line(ssl, line, sizeof(line)) || strncmp(line, "HTTP/", 5) || strlen(line) < 12)
         goto out;
+#endif
     f->status = atoi(line + 9);
     while (ssl_line(ssl, line, sizeof(line)) && line[0]) {
         if (!strnicmp(line, "Content-Length:", 15))
@@ -758,6 +815,17 @@ static int upd_main(void)
         say(UPD_TOOL ": no SSL context\n");
         goto done;
     }
+    /* A cheap handshake: RSA signatures only (a server with two
+     * certificates then shows its RSA one, quick to check with e=65537;
+     * ECDSA checks are slow on a 68020) and X25519 first for the key
+     * exchange. The handshake with GitHub took 18.6 s on a stock 14 MHz
+     * 68020 and GitHub had closed the connection by then; 7.8 s this way
+     * (2026-11-06). GitHub shows its ECDSA certificate whenever ECDSA is
+     * offered at all, whatever the order, so it is not offered at first;
+     * a server with only ECDSA fails that handshake and fetch_once tries
+     * once more with every signature (rsa_only). */
+    SSL_CTX_set1_sigalgs_list(ctx, SIGALGS_RSA);
+    SSL_CTX_set1_groups_list(ctx, "X25519:P-256:P-384");
     /* the server's certificate against the ones AmiSSL ships (AmiSSL:Certs);
      * an offload checks on its own side. The host name is not matched
      * against the certificate (an offload has no call for it). */
