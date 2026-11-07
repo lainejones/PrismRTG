@@ -4146,19 +4146,32 @@ int main(void)
 
     for (;;) {
         ULONG tick = 0;
-        static ULONG vb0;
+        static struct DateStamp ds0;
         static BOOL settled;
         secStop = FALSE;                      /* a quit that didn't happen: PRISM2 again */
-        if (!vb0)
-            vb0 = GfxBase->VBCounter | 1;
+        if (!ds0.ds_Days && !ds0.ds_Minute && !ds0.ds_Tick)
+            DateStamp(&ds0);
         dbgMain = FindTask(NULL);
         while (!(SetSignal(0, 0) & SIGBREAKF_CTRL_C)) {
-            /* up for a minute (3600 vertical blanks): this start is a good
-             * one (see prismmon.c). Checked first: LOG=SYNC below sleeps,
-             * and every second boot was skipped while it did (1.1 beta 4) */
-            if (!settled && GfxBase->VBCounter - vb0 > 3600) {
-                settled = TRUE;
-                DeleteFile(PRISM_BOOTFLAG);
+            /* up for PRISM_SETTLE_SECS (a beta: 20 s, past IPrefs switching
+             * the Workbench to the saved mode, the hang the failsafe is for;
+             * a full release: at once): this start is a good one (see
+             * prismmon.c). By the system clock: the
+             * vertical blank count it used to go by need not tick with only
+             * RTG screens up (uaegfx), and its minute let an ordinary quick
+             * reboot skip the next boot (solskogen, PR #27). Checked first:
+             * LOG=SYNC below sleeps, and every second boot was skipped while
+             * it did (1.1 beta 4) */
+            if (!settled) {
+                struct DateStamp now;
+                LONG secs;
+                DateStamp(&now);
+                secs = ((now.ds_Days - ds0.ds_Days) * 1440 + now.ds_Minute - ds0.ds_Minute) * 60 +
+                       (now.ds_Tick - ds0.ds_Tick) / TICKS_PER_SECOND;
+                if (secs >= PRISM_SETTLE_SECS || secs < 0) {   /* < 0: the clock was set back */
+                    settled = TRUE;
+                    DeleteFile(PRISM_BOOTFLAG);
+                }
             }
             /* the log switched on while running (prismlog ON or SYNC, ARexx
              * LOG ON): its ring comes now - dbg() drops every line until it

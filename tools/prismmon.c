@@ -55,8 +55,9 @@ int main(void)
     if (prism_up())
         return 0;
     /* Failsafe for a machine with nobody at the keyboard: if the last
-     * start of Prism never reached a minute of running (PrismD deletes the
-     * flag then), don't start it this time. Workbench then falls back to a
+     * start of Prism never got going (PrismD deletes the flag once it runs
+     * in a release, after 20 s in a beta: PRISM_SETTLE_SECS), don't start
+     * it this time. Workbench then falls back to a
      * native mode and the rest of the boot - network included - goes on. */
     if ((lock = Lock(PRISM_BOOTFLAG, ACCESS_READ))) {
         UnLock(lock);

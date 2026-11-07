@@ -33,6 +33,10 @@
  * and PrismD deletes it after a minute, or when it gives up. Found at boot,
  * it means the last start hung: Prism is skipped once. */
 #define PRISM_BOOTFLAG    "ENVARC:Prism.booting"
+/* PrismD up this long: the boot flag goes. A beta (PRISM_RELEASE "1.4b1")
+ * waits 20 s, past IPrefs switching to the saved mode, where new display
+ * code may hang; a full release clears it as soon as it runs. */
+#define PRISM_SETTLE_SECS (strchr(PRISM_RELEASE, 'b') ? 20 : 0)
 
 /* Prism ModeIDs: one "monitor" per board, 0x7A00xxxx for the first and
  * 0x7A01xxxx for a second; low bits = depth slot << 8 | size slot
