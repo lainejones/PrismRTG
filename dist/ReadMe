@@ -45,6 +45,11 @@ Using it
   own built-in cybergraphics.library and Picasso96API.library.
 
 New in 1.4 beta 1
+  15-bit screen modes (thousands of colours as RGB555), on the boards
+  that can show them: the ZZ9000 and Z3660, and the Cirrus boards such as
+  the Picasso II. They start off; turn them on in PrismPrefs. The ZZ9000
+  and Z3660 show the same pixel layout as a Mac's thousands of colours,
+  which saves ShapeShifter its conversion there.
   The Apollo Vampire V4's SAGA video, driven by PrismRTG itself: in
   PrismPrefs' Board tab choose "Other", with BOARD=SAGA in
   ENVARC:Prism.prefs. It is not picked automatically yet. Thanks to
