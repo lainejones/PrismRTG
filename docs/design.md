@@ -796,6 +796,31 @@ copies (24) or blitter text and fills (32). Picasso II: 24 only. ZZ9000: 32
 only - its true-colour ModeIDs moved from $7A0002xx to $7A0003xx. The prefs
 file gains MODE=...x32 lines; older files load (missing lines = on).
 
+### 15-bit screen modes (2026-11-07)
+
+`prefs_depths` is now 8, 16, 24, 32, 15: a fifth depth slot, ModeIDs
+`$7A0004xx` (640x480 15-bit is `$7A000401`, `MODE=640x480x15` in the prefs).
+Slot 15 takes only 555 formats, big-endian first (`PF_RGB555BE`, then
+`PF_RGB555LE`, `PF_BGR555LE`), slot 16 stays 565. A board offers 15-bit
+modes only where its driver lists a 555 format it can show: ZZ9000 and
+Z3660 (big-endian), the Cirrus boards (little-endian); UAE RTG has none.
+cgx reports depth 15 and `PIXFMT_RGB15` / `PIXFMT_RGB15PC`.
+
+Why: a Mac emulator draws "thousands" as big-endian RGB555. ShapeShifter
+(source build, `C:\projects\ShapeShifter`) writes a `PIXFMT_RGB15` screen
+directly, with no refresh task, so on a ZZ9000 the 15-bit mode is the fast
+one; on 565 it has to convert every refresh.
+
+The slots start OFF (like the larger sizes): they are new, and on would put
+a second thousands-of-colours list in every requester. PrismPrefs switches
+them on. No span modes at 15 bits (PrismSetup takes spans at 8 and 16).
+
+Tested on the emulated Picasso II+ (WinUAE `SS060 prism`, 68060): the modes
+appear as `PRISM:640x480 15bit` / `800x600 15bit`, PrismBench at
+`$7A000401` has 0 wrong in every check (speeds within a few percent of
+16-bit), ShapeShifter boots Mac OS 8 in thousands on it (`PIXFMT_RGB15PC`).
+ZZ9000 and Z3660 not yet tried on the A4000.
+
 ### One unexplained crash on the A2000 (2026-10-04, ~01:50)
 
 After a power cycle with the first 24/32-slot build, the A2000 answered the

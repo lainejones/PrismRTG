@@ -388,10 +388,12 @@ static UBYTE board_format(struct PrismBoard *b, UBYTE bits, UBYTE nth)
     static const UBYTE f16[] = { PF_RGB565BE, PF_RGB565LE, PF_BGR565LE };
     static const UBYTE f24[] = { PF_BGR24, PF_RGB24 };
     static const UBYTE f32[] = { PF_BGRA32, PF_ARGB32, PF_RGBA32 };
+    static const UBYTE f15[] = { PF_RGB555BE, PF_RGB555LE, PF_BGR555LE };
     /* (a board lists only the formats it can really show, so the order
      * here only matters for a board that has more than one per depth) */
-    const UBYTE *f = bits == 16 ? f16 : bits == 32 ? f32 : f24;
-    UBYTE i, n = bits == 16 ? sizeof(f16) : bits == 32 ? sizeof(f32) : sizeof(f24);
+    const UBYTE *f = bits == 16 ? f16 : bits == 32 ? f32 : bits == 15 ? f15 : f24;
+    UBYTE i, n = bits == 16 ? sizeof(f16) : bits == 32 ? sizeof(f32) :
+                 bits == 15 ? sizeof(f15) : sizeof(f24);
 
     if (bits == 8)
         return nth ? PF_COUNT : PF_CLUT8;
@@ -465,8 +467,8 @@ static void build_span_modes(void)
     for (i = 0; i < n && a->nmodes < MAX_MODES; i++) {
         struct ModeRec *m0 = &a->modes[i], *r = &a->modes[a->nmodes];
         struct PrismMode t;
-        if (m0->bpp > 2 || (m0->id & 0xff) >= SPAN_ID)
-            continue;
+        if (m0->bpp > 2 || m0->dimDepth == 15 || (m0->id & 0xff) >= SPAN_ID)
+            continue;                         /* (PrismSetup takes spans at 8 and 16 only) */
         for (j = 0; j < b->nmodes; j++)
             if (b->modes[j].m.width == m0->m.width && b->modes[j].m.height == m0->m.height &&
                 b->modes[j].bpp == m0->bpp)

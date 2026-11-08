@@ -36,7 +36,11 @@ const UWORD prefs_extra[PREFS_NEXTRA][2] = {
 };
 /* New depths go at the END too. 24 = 3 bytes a pixel, 32 = 4: a card may
  * have either or both (see board_format in prismd.c). */
-const UBYTE prefs_depths[PREFS_NDEPTHS] = { 8, 16, 24, 32 };
+/* 15 = RGB555, two bytes a pixel like 16 (565): added after 32, so its
+ * ModeIDs are $7A0004xx. A board offers it only if its driver can show a
+ * 555 format (ZZ9000, Z3660: big-endian, which is what a Mac emulator
+ * draws; the Cirrus boards: little-endian). */
+const UBYTE prefs_depths[PREFS_NDEPTHS] = { 8, 16, 24, 32, 15 };
 const UBYTE prefs_rates[PREFS_NRATES] = { 0, 60, 70, 72, 75 };
 
 static const char *const boardNames[PB_COUNT] = { "AUTO", "PICASSO2", "ZZ9000", "P96", "UAEGFX", "" };
@@ -57,8 +61,10 @@ void prefs_default(struct PrismPrefs *p)
          * MODE= line for them, and nobody has seen them on every board yet */
         int i;
         for (i = 0; i < PREFS_NMODES; i++)
-            if (PREFS_SIZE(i) >= PREFS_NFIXED + PREFS_NCUSTOM)
-                p->on[i] = 0;
+            if (PREFS_SIZE(i) >= PREFS_NFIXED + PREFS_NCUSTOM ||
+                prefs_depths[PREFS_DEPTH(i)] == 15)
+                p->on[i] = 0;      /* 15-bit too: new, and a second "thousands"
+                                      list in every requester; on in PrismPrefs */
     }
 }
 

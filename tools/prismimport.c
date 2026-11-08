@@ -33,7 +33,7 @@ static const char version[] __attribute__((used)) = "$VER: PrismImport " PRISM_R
 #define MAXBLOCKS 8
 #define MAXRES    64
 
-struct Res { UWORD w, h; UBYTE depths; };   /* depths: 1 = 8, 2 = 16, 4 = 24, 8 = 32 bits */
+struct Res { UWORD w, h; UBYTE depths; };   /* depths: bit n = prefs_depths[n] (8, 16, 24, 32, 15) */
 struct Block {
     char name[32], board[32];
     struct Res res[MAXRES];
@@ -89,7 +89,7 @@ static BOOL parse(const UBYTE *d, ULONG len)
             /* OpenCount, Active, Width, Height, Depth, ... */
             UBYTE depth = c[8];
             if (be16(c + 2))
-                r->depths |= depth <= 8 ? 1 : depth <= 16 ? 2 : depth <= 24 ? 4 : 8;
+                r->depths |= depth <= 8 ? 1 : depth == 15 ? 16 : depth <= 16 ? 2 : depth <= 24 ? 4 : 8;
         }
         p += 8 + size + (size & 1);
     }
@@ -115,7 +115,6 @@ static BOOL like(const char *part, const char *whole)
 
 int main(void)
 {
-    static const UBYTE bitsOf[4] = { 8, 16, 24, 32 };
     struct RDArgs *ra;
     LONG args[4] = { 0, 0, 0, 0 };
     const char *from = "DEVS:Picasso96Settings";
@@ -209,7 +208,7 @@ int main(void)
         for (i = 0; i < PREFS_NDEPTHS; i++)
             if (r->depths & (1 << i)) {
                 prefs.on[i * PREFS_NSIZES + slot] = 1;
-                printf(" %u", bitsOf[i]);
+                printf(" %u", prefs_depths[i]);
                 on++;
             }
         printf(" bits\n");

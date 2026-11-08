@@ -66,13 +66,13 @@
 #define PREFS_NEXTRA  7              /* the larger fixed sizes (#14), off at first */
 #define PREFS_NSIZES  (PREFS_NFIXED + PREFS_NCUSTOM + PREFS_NEXTRA)
 #define PREFS_IS_CUSTOM(s) ((s) >= PREFS_NFIXED && (s) < PREFS_NFIXED + PREFS_NCUSTOM)
-#define PREFS_NDEPTHS 4
+#define PREFS_NDEPTHS 5
 #define PREFS_NMODES  (PREFS_NSIZES * PREFS_NDEPTHS)
 #define PREFS_NRATES  5
 
 extern const UWORD prefs_sizes[PREFS_NFIXED][2];
 extern const UWORD prefs_extra[PREFS_NEXTRA][2];
-extern const UBYTE prefs_depths[PREFS_NDEPTHS];  /* bits per pixel: 8, 16, 24, 32 */
+extern const UBYTE prefs_depths[PREFS_NDEPTHS];  /* bits per pixel: 8, 16, 24, 32, 15 */
 extern const UBYTE prefs_rates[PREFS_NRATES];    /* 0 = driver's default   */
 
 /* slot i: size i % PREFS_NSIZES, depth i / PREFS_NSIZES. The low ModeID
