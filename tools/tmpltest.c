@@ -32,6 +32,21 @@ struct Library *CyberGfxBase;
 #define TW 96
 #define TH 96
 
+/* The planar reference is drawn by graphics.library with the blitter. In
+ * chip RAM the blitter can't reach (an OCS Agnus sees 512 KB, an ECS one
+ * 1 MB or 2 MB) nothing lands, and every reference pixel would read 0:
+ * fill it once and read it back before comparing anything against it. */
+static int ref_ok(struct RastPort *nrp, int w, int h)
+{
+    SetRast(nrp, 3);
+    WaitBlit();
+    if (ReadPixel(nrp, 0, 0) == 3 && ReadPixel(nrp, w - 1, h - 1) == 3)
+        return 1;
+    printf("  the planar reference at $%08lx can't be drawn (chip RAM the blitter can't reach?): not compared\n",
+           (unsigned long)nrp->BitMap->Planes[0]);
+    return 0;
+}
+
 int main(void)
 {
     LONG args[1] = { 0 };
@@ -111,9 +126,11 @@ int main(void)
         struct RastPort nrp, *q;
         int off, k;
 
-        if (nb && r0 && r1) {
-            InitRastPort(&nrp);
-            nrp.BitMap = nb;
+        InitRastPort(&nrp);
+        nrp.BitMap = nb;
+        if (!nb || !r0 || !r1)
+            printf("triangle: no memory for the planar reference, not tested\n");
+        else if (ref_ok(&nrp, 160, 100)) {
             InitArea(&ai[0], abuf[0], 8); InitTmpRas(&tr[0], r0, RASSIZE(640, 480));
             InitArea(&ai[1], abuf[1], 8); InitTmpRas(&tr[1], r1, RASSIZE(160, 100));
             rp->AreaInfo = &ai[0]; rp->TmpRas = &tr[0];
@@ -121,6 +138,7 @@ int main(void)
             for (off = 300; off < 304; off++) {
                 SetRast(rp, 0);
                 SetRast(&nrp, 0);
+                LONG fail[2];
                 for (k = 0; k < 2; k++) {
                     int ox = k ? off : 0, oy = k ? 200 : 0;
                     q = k ? rp : &nrp;
@@ -128,9 +146,14 @@ int main(void)
                     AreaMove(q, ox + 90, oy + 5);
                     AreaDraw(q, ox + 155, oy + 60);
                     AreaDraw(q, ox + 70, oy + 95);
-                    AreaEnd(q);
+                    fail[k] = AreaEnd(q);
                 }
                 WaitBlit();
+                if (fail[0] || fail[1]) {
+                    printf("triangle at x offset %d: AreaEnd failed (planar %ld, screen %ld), not compared\n",
+                           off, (long)fail[0], (long)fail[1]);
+                    continue;
+                }
                 for (bad = shown = 0, y = 0; y < 100; y++)
                     for (x = 0; x < 160; x++) {
                         LONG a = ReadPixel(&nrp, x, y), b = ReadPixel(rp, off + x, 200 + y);
@@ -158,9 +181,11 @@ int main(void)
         static const UBYTE dms[] = { JAM1, JAM2, COMPLEMENT, JAM2 | INVERSVID };
         int m, k, off;
 
-        if (nb) {
-            InitRastPort(&nrp);
-            nrp.BitMap = nb;
+        InitRastPort(&nrp);
+        nrp.BitMap = nb;
+        if (!nb)
+            printf("patterned RectFill: no memory for the planar reference, not tested\n");
+        else if (ref_ok(&nrp, 160, 100)) {
             for (m = 0; m < 4; m++)
                 for (off = 320; off < 323; off += 2) {
                     SetRast(rp, 3);
@@ -194,9 +219,9 @@ int main(void)
                     if (!(off & 15))
                         printf("patterned RectFill, draw mode %d: %d wrong\n", dms[m], bad);
                 }
-            FreeBitMap(nb);
             SetDrMd(rp, JAM1);
         }
+        if (nb) FreeBitMap(nb);
     }
     /* BitMapScale between two friends of the screen (a magnifier: Lupe):
      * a 16x16 piece of the screen, 4 times as wide and 3 times as high */
