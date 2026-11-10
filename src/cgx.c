@@ -753,9 +753,10 @@ static APTR C_LockBitMapTagList(APTR bm __asm("a0"), struct TagItem *tags __asm(
 static void unlock_pbm(APTR handle)
 {
     struct PBitMap *p = handle;
-    ObtainSemaphore(&lock);              /* unlocking touches no pixels */
+    ObtainSemaphore(&lock);              /* unlocking touches no pixels... */
     if (p && pbm_live(p) && p->locks)    /* (a freed handle is never read) */
         p->locks--;
+    pixelGen++;                          /* ...but the client may have written them */
     ReleaseSemaphore(&lock);
 }
 

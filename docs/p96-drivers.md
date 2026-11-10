@@ -93,8 +93,18 @@ in shadow mode (they did until 1.4b1): they only decide when the core draws
 the software pointer instead of using the card's sprite (below).
 
 Shadow uploads send changed row spans, including writes through retained
-bitmap pointers; after an accelerated operation only the rows of the
-destination region are read back.
+bitmap pointers. Before an accelerated operation only the rows it touches
+are uploaded; the shown bitmap is compared and uploaded on PrismD's tick
+when something may have drawn into it (a drawing call, a client's
+`UnlockBitMap`, a client holding it locked), and every two seconds in any
+case; after a comparison PrismD waits four times as long as it took before
+the next one, so a program that draws without a pause can't keep the CPU
+comparing. The history buffer comes from fast RAM only, and only while
+512 KB of it stays free afterwards; without it uploads go out in 4 KB
+pieces, the requested rows only. After a fill or a copy the card has done, the CPU repeats it in the
+shadow and its history instead of reading the rows back; after other
+accelerated operations only the rows of the destination region are read
+back.
 The comparison history consumes an additional CPU buffer. Banked mappings
 are supported when `CalculateMemory` exposes each requested byte, using
 conservative transfers and CPU rendering. Custom allocators can wrap the

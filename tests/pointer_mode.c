@@ -7,6 +7,7 @@
 struct PrismBoard board;
 struct PrismCard cards[MAX_CARDS] = { { &board, 0, 0 } };
 struct SignalSemaphore lock;
+volatile ULONG pixelGen;        /* bitmap.c */
 struct GfxBase *GfxBase=NULL; /* not common: keeps libnix from auto-opening it */
 static ULONG uploads, moves, shows, hides;
 BOOL present_ready(struct PrismCard *c) { (void)c; return FALSE; }

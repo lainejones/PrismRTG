@@ -10,6 +10,7 @@
 struct PrismBoard board;
 struct PrismCard cards[MAX_CARDS] = { { &board, 0, 0 } };
 struct SignalSemaphore lock;
+volatile ULONG pixelGen;        /* bitmap.c */
 struct GfxBase *GfxBase=NULL; /* not common: keeps libnix from auto-opening it */
 struct IntuitionBase *IntuitionBase;
 APTR o_MoveSprite,o_ChangeSprite,o_ChangeExtSpriteA;

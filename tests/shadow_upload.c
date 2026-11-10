@@ -14,17 +14,26 @@ static BOOL no_memory;
 static ULONG freed;
 static APTR mock_alloc(ULONG size, ULONG flags)
 {
-    return no_memory ? NULL : AllocVec(size,flags);
+    (void)flags;                         /* vamos: one kind of memory */
+    return no_memory ? NULL : AllocVec(size,MEMF_ANY);
 }
 static void mock_free(APTR p)
 {
     freed++;
     FreeVec(p);
 }
+static ULONG avail_cap;              /* nonzero: AvailMem says this much */
+static ULONG mock_avail(ULONG flags)
+{
+    (void)flags;
+    return avail_cap ? avail_cap : AvailMem(MEMF_ANY);
+}
 #undef AllocVec
 #undef FreeVec
+#undef AvailMem
 #define AllocVec mock_alloc
 #define FreeVec mock_free
+#define AvailMem mock_avail
 #include "../src/bitmap.c"
 
 struct PrismBoard board;
@@ -68,7 +77,34 @@ static BOOL read_device(struct PrismBoard *b, const struct PrismSurface *s,
     if (change>=0) { pixels[change]++; change=-1; }
     return TRUE;
 }
-static const struct PrismOps ops = { .read=read_device, .write=write_device };
+static ULONG reads;
+static enum PrismResult fill_device(struct PrismBoard *b, const struct PrismSurface *s,
+    UWORD x, UWORD y, UWORD w, UWORD h, ULONG c)
+{
+    UWORD r;
+    (void)b;
+    for (r=0; r<h; r++) memset(device+(ULONG)(y+r)*s->pitch+x,(UBYTE)c,w);
+    return PR_DONE;
+}
+static enum PrismResult copy_device(struct PrismBoard *b, const struct PrismSurface *s,
+    const struct PrismSurface *d, UWORD sx, UWORD sy, UWORD dx, UWORD dy, UWORD w, UWORD h)
+{
+    UWORD r;
+    (void)b; (void)d;
+    for (r=0; r<h; r++) {
+        UWORD row = dy>sy ? h-1-r : r;
+        memmove(device+(ULONG)(dy+row)*s->pitch+dx,device+(ULONG)(sy+row)*s->pitch+sx,w);
+    }
+    return PR_DONE;
+}
+static BOOL counting_read(struct PrismBoard *b, const struct PrismSurface *s,
+    ULONG off, APTR data, ULONG count)
+{
+    reads++;
+    return read_device(b,s,off,data,count);
+}
+static const struct PrismOps ops = { .read=counting_read, .write=write_device,
+    .fill=fill_device, .copy=copy_device };
 
 static void equal_history(void)
 {
@@ -134,6 +170,59 @@ static void test_eviction(void)
     assert(freed==before+1 && released==3);
     fail_write=FALSE;
 }
+/* Uploads before an operation cover its rows only; the rest waits */
+static void test_rows(void)
+{
+    assert(pbm_upload(&bitmap));
+    equal_history();
+    pixels[10]=20; pixels[256+10]=21;      /* a change in each row */
+    assert(pbm_upload_rows(&bitmap,1,1));
+    assert(device[256+10]==21 && device[10]!=20);
+    assert(pbm_upload_rows(&bitmap,-5,6));  /* clipped to row 0 */
+    assert(device[10]==20);
+    assert(pbm_upload_rows(&bitmap,2,5) && pbm_upload_rows(&bitmap,0,0));
+    equal_history();
+}
+/* A fill or a copy on the card is repeated in the shadow and the history,
+ * with no readback: the shadow, the history and VRAM agree afterwards */
+static void test_mirror(void)
+{
+    ULONG before;
+    assert(pbm_upload(&bitmap));
+    equal_history();
+    pixels[256+100]=0x5a;                  /* pending in row 1, inside the copy */
+    before=reads;
+    assert(pbm_hw_fill(&bitmap,1,3,0,40,2,0x77)==PR_DONE);
+    assert(reads==before);
+    assert(pixels[3]==0x77 && pixels[42]==0x77 && pixels[256+3]==0x77 && pixels[43]!=0x77);
+    equal_history();
+    assert(!memcmp(device,pixels,sizeof(device)));
+    pixels[256+100]=0x5b;
+    assert(pbm_hw_copy(&bitmap,&bitmap,90,0,95,1,20,1)==PR_DONE);
+    assert(reads==before);
+    assert(pixels[256+95]==pixels[90] && pixels[256+114]==pixels[109]);
+    equal_history();
+    assert(!memcmp(device,pixels,sizeof(device)));
+    /* without a history (low memory) the rows are read back as before */
+    no_memory=TRUE;
+    FreeVec(bitmap.uploaded); bitmap.uploaded=NULL; bitmap.uploadValid=FALSE;
+    assert(pbm_hw_fill(&bitmap,1,0,1,8,1,0x11)==PR_DONE);
+    assert(reads==before+1 && pixels[256]==0x11 && device[256]==0x11);
+    no_memory=FALSE;
+}
+/* The history is not taken when it would leave less than the reserve */
+static void test_reserve(void)
+{
+    FreeVec(bitmap.uploaded); bitmap.uploaded=NULL; bitmap.uploadValid=FALSE;
+    avail_cap=SHADOW_RESERVE+sizeof(pixels)-1;
+    pixels[7]=0x33;
+    assert(pbm_upload(&bitmap) && !bitmap.uploaded && device[7]==0x33);
+    avail_cap=SHADOW_RESERVE+sizeof(pixels);
+    assert(pbm_upload(&bitmap) && bitmap.uploaded);
+    equal_history();
+    avail_cap=0;
+    FreeVec(bitmap.uploaded); bitmap.uploaded=NULL; bitmap.uploadValid=FALSE;
+}
 static void test_low_memory(void)
 {
     no_memory=TRUE;
@@ -153,9 +242,14 @@ int main(void)
     bitmap.card=&cards[0]; bitmap.bd=&board;
     bitmap.w=bitmap.bpr=256; bitmap.h=2; bitmap.bpp=1;
     bitmap.fmt=PF_CLUT8; bitmap.inVram=TRUE;
+    board.opsSize=sizeof(ops);
     test_upload_races();
     test_readback();
     test_eviction();
+    assert(pbm_to_vram(&bitmap));
+    test_rows();
+    test_mirror();
+    test_reserve();
     test_low_memory();
     puts("shadow upload snapshots and eviction passed");
     return 0;
