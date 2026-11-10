@@ -82,11 +82,15 @@ pixel format through rendering calls. The adapter advertises every pixel
 format the driver accepts. When all of them share one direct linear
 mapping, bitmaps use direct VRAM pointers. If any accepted format needs a
 displaced aperture, a memory-mode switch or has no direct access, or the
-driver supplies its own allocator, soft-sprite handling or `ReInitMemory`,
+driver supplies its own allocator or `ReInitMemory`,
 the whole board runs in shadow mode (#9): bitmaps keep stable CPU shadow
 buffers and the direct fast paths are not used. The adapter waits for the blitter, selects
 the memory mode and translates addresses for each transfer. Applications
 keep stable bitmap pointers while the adapter changes device mappings.
+
+A card's `SoftSpriteFlags` or its own `EnableSoftSprite` do not put the board
+in shadow mode (they did until 1.4b1): they only decide when the core draws
+the software pointer instead of using the card's sprite (below).
 
 Shadow uploads send changed row spans, including writes through retained
 bitmap pointers; after an accelerated operation only the rows of the
