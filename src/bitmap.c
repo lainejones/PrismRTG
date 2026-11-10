@@ -303,7 +303,15 @@ struct PBitMap *pbm_new(struct PrismCard *c, UWORD w, UWORD h, UBYTE depth, UBYT
         }
     }
     if ((B->flags & PBF_PRESENT) || !p->inVram || (B->flags & PBF_SHADOW)) {
-        if (!(p->mem = AllocVec(size, MEMF_ANY | (clear ? MEMF_CLEAR : 0))))
+        /* A shadow board keeps every bitmap in this memory for good, so it
+         * comes from fast RAM only: from any memory, a 1280x720 16-bit
+         * Workbench shadow (1.8 MB in one block) that didn't fit a 3 MB
+         * A2000's fast RAM took chip RAM, and Workbench hung half drawn with
+         * no chip left for its gadgets. Not fitting fails the bitmap, so the
+         * screen doesn't open; a machine without fast RAM has only chip. */
+        ULONG where = (B->flags & PBF_SHADOW) && AvailMem(MEMF_FAST | MEMF_TOTAL) ?
+                      MEMF_FAST : MEMF_ANY;
+        if (!(p->mem = AllocVec(size, where | (clear ? MEMF_CLEAR : 0))))
             goto fail;
         p->pix = p->mem;
     }
