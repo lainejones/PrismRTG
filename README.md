@@ -579,7 +579,12 @@ noted in every commit. With thanks to:
   through mask" minterm, and blits that change only the source's planes,
   with the `icondraw` and `pencheck` tools to compare them with a native
   screen (#24) - found while adding Picasso II emulation to his
-  [rp2350-amiga](https://github.com/fboldog/rp2350-amiga).
+  [rp2350-amiga](https://github.com/fboldog/rp2350-amiga); and boards that
+  need a shadow copy of the screen: no shadow for a card that only has a
+  software pointer, faster shadow uploads, the shadow kept in fast RAM, and
+  a Workbench mode that fits a machine with little of it, with the test
+  cards to check them (#29, #30), plus a fix to `tmpltest`'s reference
+  checks (#28).
 * **kadibamler** - found FS-UAE's 640x480 limit (#21) and the Workbench 3.2
   freeze on an icon dropped on the title bar (#22).
 * **Individual Computers**, **Alexander Kneer**, **Tobias Abt** and **Thomas
