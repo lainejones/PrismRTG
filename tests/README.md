@@ -37,7 +37,7 @@ one of these files, the test needs a matching stub.
 | `presentation.c` | `present.c` + `pointer.c`: no composition for the pointer alone, PIP/dragging composition, shadow-mode in-place scanout, split screens, the cursor on a span screen, damage-only writes, allocation/upload failure keeps the hardware sprite, software sprite with save-under, CLUT remapping |
 | `driver_module.c` | Driver module request: ABI, size, board layout and ops ABI mismatches are rejected |
 | `stack_audit.sh` + `stack_audit.py` | PrismD's patches run on the calling program's stack: compiles PrismD and the drivers to assembly with `-fstack-usage`, follows every call (render callbacks charged to the function that hands them to `clip_rp`, register calls into the drivers' installed hooks), and fails if any patch's deepest chain plus the stub's frame exceeds 1,536 bytes (`STACK_BUDGET`). Extra edges the assembly cannot show go in `stack_indirect.txt` |
-| `p96_adapter.c` (`p96-adapter.sh`) | `drv_p96.c` through the real 68k register ABI: fills, overlapping blits, templates, mode setup order, card memory pool and aperture, banked memory, planar probe |
+| `p96_adapter.c` (`p96-adapter.sh`) | `drv_p96.c` through the real 68k register ABI: fills, overlapping blits, templates, mode setup order, card memory pool and aperture, banked memory, planar probe, what selects shadow mode (a card's own allocator does, its soft sprite doesn't) |
 
 ## Guest exercisers (built, not run: reported as SKIP)
 
@@ -54,6 +54,8 @@ dedicated boot with serial output captured, never on a working system.
 | `driver_module_guest` | `driver_module_guest.c` | Boot task: runs `C:ModuleCheck >RAM:module.log` and checks the log for each expected message |
 | `ModuleCheck` | `driver_module_guest.c -DMODULE_CHECK` + `src/driver_loader.c src/boardops.c` | Loads `MissingFixture` (absent), `OldFixture`, `FailedFixture`, `Fixture` (twice) and the fake `TEMPLATE` through `driver_open`; checks the template's name, VRAM size and the minimal callback set after `board_defaults` |
 | `Drivers/TEMPLATE.driver` | `src/drv_template.c -DTEMPLATE_FAKE` via `tools/mkdriver.sh` | The new-driver template as a board that is 4 MB of fast RAM: the minimal contract (mode set + display start, the rest defaulted). PrismD runs on it in an emulator with `BOARD=TEMPLATE` |
+| `shadow_guest` | `shadow_guest.c` | `shadow_guest CARD=LIBS:Picasso96/softsprite.card SHADOW=0` (or `ownfree.card SHADOW=1`): starts `C:PrismD BOARD=P96 P96CARD=<card>`, checks the board is in shadow mode or not, runs `C:p96test` and `C:tmpltest MODEID=$7A000301` (each must pass; their times are reported), stops PrismD. Needs UAE Zorro III RTG and a boot without PrismD |
+| `softsprite.card`, `ownfree.card` | `shim_card.c -DSHIM_SOFTSPRITE` / `-DSHIM_OWNFREE` | Test P96 cards for `shadow_guest`: pass every call to UAE's resident `uaegfx.card`, then set `SoftSpriteFlags` (no shadow mode since 1.4b1) or install a `FreeCardMem` of their own that jumps on to the original (shadow mode). Copy them to `LIBS:Picasso96/` |
 | `scroll_guest` | `scroll_guest.c` | ScrollRaster in a smart-refresh window another window partly covers (content crosses ClipRects and backing store); checks every pixel after the cover closes. Run on a Prism Workbench |
 | `Drivers/Fixture.driver` | `module_fixture.c` | Module that answers READY, reports its stack size as `vramSize`, writes final output on STOP |
 | `Drivers/FailedFixture.driver` | `module_fixture.c -DFIXTURE_NOT_FOUND` | Module whose probe fails (`PRD_NOT_FOUND`) |

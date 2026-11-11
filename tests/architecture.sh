@@ -49,6 +49,11 @@ done
 $CC $GUEST_FLAGS -o $G/driver_guest tests/driver_guest.c
 $CC $GUEST_FLAGS -o $G/driver_module_guest tests/driver_module_guest.c
 $CC $GUEST_FLAGS -o $G/scroll_guest tests/scroll_guest.c
+$CC $GUEST_FLAGS -o $G/shadow_guest tests/shadow_guest.c
+# the test cards shadow_guest runs: uaegfx.card with one change each (shim_card.c)
+SHIM_FLAGS="$GUEST_FLAGS -m68020 -nostartfiles -nostdlib -fno-toplevel-reorder -s"
+$CC $SHIM_FLAGS -DSHIM_SOFTSPRITE -o $G/softsprite.card tests/shim_card.c
+$CC $SHIM_FLAGS -DSHIM_OWNFREE -o $G/ownfree.card tests/shim_card.c
 $CC $GUEST_FLAGS -DMODULE_CHECK -o $G/ModuleCheck tests/driver_module_guest.c src/driver_loader.c src/boardops.c
 $CC $GUEST_FLAGS -o $G/Drivers/Fixture.driver tests/module_fixture.c
 $CC $GUEST_FLAGS -DFIXTURE_NOT_FOUND -o $G/Drivers/FailedFixture.driver tests/module_fixture.c
@@ -57,6 +62,7 @@ $CC $GUEST_FLAGS -DPRISM_DRIVER_ABI=2 -o $G/Drivers/OldFixture.driver tests/modu
 CFLAGS="$GUEST_FLAGS" DRIVER_CFLAGS=-DTEMPLATE_FAKE OUT=$G/Drivers sh tools/mkdriver.sh TEMPLATE src/drv_template.c
 echo "== SKIP p96_guest, uaegfx_guest: need uaegfx.card / UAE RTG in a dedicated WinUAE boot (built in $G)"
 echo "== SKIP scroll_guest: needs PrismD running on a Prism Workbench (built in $G)"
+echo "== SKIP shadow_guest: needs UAE RTG, softsprite.card / ownfree.card and no PrismD running (built in $G)"
 echo "== SKIP driver_guest: needs C:PrismD, C:p96test and a board in a dedicated boot (built in $G)"
 echo "== SKIP driver_module_guest + ModuleCheck: vamos has no CreateNewProc, so a driver"
 echo "        process cannot be started on the host (built in $G with Drivers/*Fixture.driver)"
