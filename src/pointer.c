@@ -136,6 +136,7 @@ void sw_hide(void)
     if (!p)
         return;
     swOn = NULL;
+    pixelGen++;                          /* a shadow board uploads the restored pixels */
     if (p->bd->waitBlit)
         p->bd->waitBlit(p->bd);
     n = (ULONG)swW * p->bpp;
@@ -204,6 +205,7 @@ static void sw_draw(struct PBitMap *p)
                     row[x * bpp + k] = pixels[pen][k];
     }
     swOn = p;
+    pixelGen++;                          /* a shadow board uploads the pointer */
     swPX = posX; swPY = posY;                 /* as read: sw_tick compares with posX/posY */
 }
 

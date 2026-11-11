@@ -431,6 +431,53 @@ static void test_rop(void)
     b.flags = flags;
 }
 
+/* What puts a board in shadow mode (attach_board): a card's own allocator
+ * does, a card's soft sprite doesn't (it did until 1.4b1, and a card that
+ * set SoftSpriteFlags drew Workbench for minutes). The same cards as
+ * tests/shim_card.c makes of uaegfx.card for shadow_guest. */
+static APTR flat_memory(struct BoardInfo *bi __asm("a0"), APTR mem __asm("a1"),
+                        struct RenderInfo *ri __asm("d0"), RGBFTYPE f __asm("d7"))
+{
+    (void)bi; (void)ri; (void)f;
+    return mem;
+}
+static BOOL own_sprite(struct BoardInfo *bi __asm("a0"), ULONG flags __asm("d0"),
+                       struct ModeInfo *mi __asm("a1"))
+{
+    (void)bi; (void)flags; (void)mi;
+    return TRUE;
+}
+static BOOL shadow_for(int card)
+{
+    memset(&p, 0, sizeof(p));
+    memset(&b, 0, sizeof(b));
+    init_boardinfo(&p);
+    p.bi.WaitBlitter = mock_wait;
+    p.bi.MemoryBase = pixels;
+    p.bi.MemorySize = 4 * 1024 * 1024;
+    p.bi.RGBFormats = RGBFF_CLUT | RGBFF_R5G6B5;
+    p.bi.GetCompatibleFormats = mock_compatible;
+    p.bi.CalculateMemory = flat_memory;
+    p.bi.CalculateBytesPerRow = mock_pitch;
+    p.bi.SetGC = mock_gc; p.bi.SetDAC = mock_dac;
+    p.bi.SetDisplay = mock_display; p.bi.SetSwitch = mock_switch;
+    p.bi.SetPanning = mock_pan; p.bi.SetColorArray = mock_palette;
+    if (card == 1) p.bi.SoftSpriteFlags = RGBFF_CLUT | RGBFF_R5G6B5;
+    if (card == 2) p.bi.EnableSoftSprite = own_sprite;
+    if (card == 3) p.bi.FreeCardMem = custom_free;
+    if (card == 4) p.bi.AllocCardMem = custom_alloc;
+    assert(attach_board(&p, &b));
+    return (b.flags & PBF_SHADOW) != 0;
+}
+static void test_shadow_rules(void)
+{
+    assert(!shadow_for(0));            /* a plain card: direct          */
+    assert(!shadow_for(1));            /* SoftSpriteFlags: still direct */
+    assert(!shadow_for(2));            /* its own EnableSoftSprite: too */
+    assert(shadow_for(3));             /* its own FreeCardMem: shadow   */
+    assert(shadow_for(4));             /* its own AllocCardMem: shadow  */
+}
+
 int main(void)
 {
     setup();
@@ -446,6 +493,7 @@ int main(void)
     test_rop();
     test_vampire_tooltypes();
     assert(waits != 0);
+    test_shadow_rules();
     puts("P96 adapter: ABI, formats, drawing fallbacks and mode setup passed");
     return 0;
 }

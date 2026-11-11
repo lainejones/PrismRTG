@@ -82,15 +82,29 @@ pixel format through rendering calls. The adapter advertises every pixel
 format the driver accepts. When all of them share one direct linear
 mapping, bitmaps use direct VRAM pointers. If any accepted format needs a
 displaced aperture, a memory-mode switch or has no direct access, or the
-driver supplies its own allocator, soft-sprite handling or `ReInitMemory`,
+driver supplies its own allocator or `ReInitMemory`,
 the whole board runs in shadow mode (#9): bitmaps keep stable CPU shadow
 buffers and the direct fast paths are not used. The adapter waits for the blitter, selects
 the memory mode and translates addresses for each transfer. Applications
 keep stable bitmap pointers while the adapter changes device mappings.
 
+A card's `SoftSpriteFlags` or its own `EnableSoftSprite` do not put the board
+in shadow mode (they did until 1.4b1): they only decide when the core draws
+the software pointer instead of using the card's sprite (below).
+
 Shadow uploads send changed row spans, including writes through retained
-bitmap pointers; after an accelerated operation only the rows of the
-destination region are read back.
+bitmap pointers. Before an accelerated operation only the rows it touches
+are uploaded; the shown bitmap is compared and uploaded on PrismD's tick
+when something may have drawn into it (a drawing call, a client's
+`UnlockBitMap`, a client holding it locked), and every two seconds in any
+case; after a comparison PrismD waits four times as long as it took before
+the next one, so a program that draws without a pause can't keep the CPU
+comparing. The history buffer comes from fast RAM only, and only while
+512 KB of it stays free afterwards; without it uploads go out in 4 KB
+pieces, the requested rows only. After a fill or a copy the card has done, the CPU repeats it in the
+shadow and its history instead of reading the rows back; after other
+accelerated operations only the rows of the destination region are read
+back.
 The comparison history consumes an additional CPU buffer. Banked mappings
 are supported when `CalculateMemory` exposes each requested byte, using
 conservative transfers and CPU rendering. Custom allocators can wrap the

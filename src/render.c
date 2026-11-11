@@ -1212,6 +1212,7 @@ static inline BOOL draw_lock(struct Layer *L, BOOL quick, struct PBitMap *p,
         QUICK_FORBID();
         if ((!L || sem_ours(&L->Lock, me)) && sem_ours(&lock, me)) {
             prismActivity++;             /* the compositor and the pointer watch it */
+            pixelGen++;
             if (p) p->modified = prismActivity;
             SW_CLEAR(p, x0, y0, x1, y1);
             return TRUE;
@@ -1221,6 +1222,7 @@ static inline BOOL draw_lock(struct Layer *L, BOOL quick, struct PBitMap *p,
     if (L) LockLayerRom(L);
     ObtainSemaphore(&lock);
     prismActivity++;
+    pixelGen++;
     if (p) p->modified = prismActivity;
     SW_CLEAR(p, x0, y0, x1, y1);
     return FALSE;
@@ -1662,6 +1664,7 @@ LONG f_WritePixel(struct RastPort *rp, LONG ax, LONG ay)
     }
     /* one read of the volatile counter, not two (under QUICK_FORBID) */
     p->modified = prismActivity = prismActivity + 1;
+    pixelGen++;
     SW_CLEAR(p, x, y, x, y);
     {
         UBYTE *row = p->pix + (ULONG)y * p->bpr;
@@ -2791,6 +2794,7 @@ LONG h_BltBitMap(struct Regs *r)
         blit_settle();                       /* a planar side: let the blitter finish with it */
     ObtainSemaphore(&lock);
     prismActivity++;
+    pixelGen++;
     /* again under the lock: VRAM paging may have moved either bitmap
      * while this task waited (a screen coming to the front) */
     surf_of(sb, &s);
@@ -2851,6 +2855,7 @@ LONG h_BitMapScale(struct Regs *r)
         blit_settle();                       /* a planar side: let the blitter finish with it */
     ObtainSemaphore(&lock);
     prismActivity++;
+    pixelGen++;
     surf_of(sb, &s);                         /* again under the lock (VRAM paging) */
     surf_of(db, &d);
     SW_CLEAR(s.p, a->bsa_SrcX, a->bsa_SrcY, a->bsa_SrcX + sw - 1, a->bsa_SrcY + sh - 1);
@@ -3287,6 +3292,7 @@ LONG h_ClipBlit(struct Regs *r)
             clip_rp(srp, sx, sy, sx + w - 1, sy + h - 1, grab_cb, &g);
             blit_settle();                       /* the planar side: the blitter's */
             ObtainSemaphore(&lock);
+            pixelGen++;
             surf_of(drp->BitMap, &d);
             blit(&tmp, 0, 0, &d, dx, dy, w, h, (UBYTE)r->d[6], drp->Mask);
             ReleaseSemaphore(&lock);
@@ -3314,6 +3320,7 @@ LONG h_ClipBlit(struct Regs *r)
             struct Surf s;
             ObtainSemaphore(&lock);
             prismActivity++;
+            pixelGen++;
             surf_from(srp->BitMap, sp, &s);  /* under the lock (VRAM paging) */
             SW_CLEAR(s.p, sx + ox, sy + oy, sx + ox + w - 1, sy + oy + h - 1);
             SW_CLEAR(s.p, dx + ox, dy + oy, dx + ox + w - 1, dy + oy + h - 1);

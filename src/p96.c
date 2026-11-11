@@ -259,9 +259,10 @@ static LONG P_LockBitMap(struct BitMap *bm __asm("a0"), UBYTE *buf __asm("a1"),
 static void P_UnlockBitMap(struct BitMap *bm __asm("a0"), LONG handle __asm("d0"))
 {
     struct PBitMap *p = (struct PBitMap *)handle;
-    ObtainSemaphore(&lock);              /* unlocking touches no pixels */
+    ObtainSemaphore(&lock);              /* unlocking touches no pixels... */
     if (p && pbm_get(bm) == p && p->locks)
         p->locks--;
+    pixelGen++;                          /* ...but the client may have written them */
     ReleaseSemaphore(&lock);
 }
 

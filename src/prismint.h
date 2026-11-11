@@ -47,7 +47,11 @@ UBYTE pen_nearest(const ULONG *rgbTab, ULONG rgb);   /* render.c */
 /* Drawing into `p` (bitmap coordinates, inclusive): take the pointer out
  * if it is in the way; p == NULL: always. Caller holds the lock or Forbid. */
 void sw_clear(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1);
-#define LOCK() do { ObtainSemaphore(&lock); prismActivity++; \
+/* Bumped whenever pixels may change (every drawing lock, a client's
+ * UnlockBitMap): a shadow board's tick compares and uploads the shown
+ * bitmap only then (bitmap.c pbm_flush_shown), not 50 times a second. */
+extern volatile ULONG pixelGen;
+#define LOCK() do { ObtainSemaphore(&lock); prismActivity++; pixelGen++; \
                     if (swOn) sw_hit(); } while (0)
 /* The lock for work that touches no pixels (palette tables, queries): the
  * software pointer stays where it is. */
@@ -55,7 +59,7 @@ void sw_clear(struct PBitMap *p, WORD x0, WORD y0, WORD x1, WORD y1);
 /* The lock for work on one known bitmap: the pointer leaves only if that is
  * the bitmap it is drawn into (a game locking its back buffer every frame
  * must not keep it away). */
-#define LOCK_FOR(p) do { ObtainSemaphore(&lock); \
+#define LOCK_FOR(p) do { ObtainSemaphore(&lock); pixelGen++; \
                          if (mirSrc && (p) == mirSrc) mon2_mark(0, 0, 32767, 32767); \
                          if (swOn && (p) == swOn) { prismActivity++; sw_hide(); } } while (0)
 extern volatile ULONG paletteGen;
@@ -198,6 +202,9 @@ BOOL            pbm_to_fast(struct PBitMap *p);
 BOOL            pbm_to_vram0(struct PBitMap *f);   /* f to VRAM offset 0 (a split's front) */
 void pbm_surface(const struct PBitMap *, struct PrismSurface *);
 BOOL pbm_upload(struct PBitMap *);
+/* rows y .. y+h-1 only (the rest stays for the tick); the whole bitmap when
+ * its upload history isn't valid */
+BOOL pbm_upload_rows(struct PBitMap *, LONG y, LONG h);
 BOOL pbm_prepare_mode(struct PrismCard *c);
 void pbm_flush_shown(void);
 enum PrismResult pbm_hw_fill(struct PBitMap *, UBYTE, UWORD, UWORD, UWORD, UWORD, ULONG);

@@ -794,8 +794,15 @@ static BOOL attach_board(struct P96Priv *p, struct PrismBoard *b)
         !strncmp(p->card->lib_IdString,"UAE Graphics Card",17) &&
         !rtg_probe_planar(bi, b->formats)) bi->BlitPlanar2Direct = rtg_planar_direct;
     b->ops = &p96_alloc_ops;
-    if (bi->AllocCardMem != card_alloc || bi->FreeCardMem != card_free ||
-        bi->SoftSpriteFlags || bi->EnableSoftSprite != soft_sprite) b->flags |= PBF_SHADOW;
+    /* A card's own allocator: its blocks may sit anywhere, shadow them.
+     * SoftSpriteFlags or a card's own EnableSoftSprite only say when its
+     * hardware sprite can't be used: p96_mode then leaves PBF_HW_CURSOR
+     * off and pointer.c draws the pointer into the shown bitmap, which
+     * needs no shadow. (Until 2026-11-10 they put the whole board in
+     * shadow mode as well - from #9, when a software pointer still went
+     * through the compositor: a P96 card with SoftSpriteFlags set
+     * took two minutes to draw Workbench on a 68060.) */
+    if (bi->AllocCardMem != card_alloc || bi->FreeCardMem != card_free) b->flags |= PBF_SHADOW;
     if (bi->ReInitMemory && bi->ReInitMemory != card_reinit)
         b->flags |= PBF_SHADOW | PBF_REINIT;
     b->priv = p;

@@ -10,11 +10,13 @@
 #include <graphics/gfx.h>
 #include <proto/exec.h>
 #include <proto/graphics.h>
+#include <proto/dos.h>
 #include <string.h>
 #include "prismint.h"
 #include "damage.h"
 
 struct PBitMap *pbmTable[PBM_MAX];     /* pbm_get (prismint.h) reads it inline */
+volatile ULONG pixelGen;               /* prismint.h */
 #define table pbmTable
 static ULONG used;
 
@@ -510,23 +512,38 @@ static BOOL pbm_write(struct PBitMap *p,struct PrismSurface *s,ULONG off,
     CopyMem((APTR)data,B->vram+p->vramOff+off,count);
     return TRUE;
 }
-BOOL pbm_upload(struct PBitMap *p)
+#define SHADOW_RESERVE (512UL * 1024)
+static BOOL upload(struct PBitMap *p, LONG y0, LONG h)
 {
     struct PrismBoard *B = p->bd;
     struct PrismSurface s;
-    ULONG y;
+    ULONG y, y1;
     if (!p->inVram || !(B->flags & PBF_SHADOW)) return TRUE;
+    /* only the rows asked for: the others stay different from VRAM (or
+     * from the history) and go up when they are next asked for (the tick
+     * asks for all) */
+    if (y0 < 0) { h += y0; y0 = 0; }
+    if (h <= 0 || y0 >= p->h) return TRUE;
+    y1 = (ULONG)y0 + h > p->h ? p->h : (ULONG)y0 + h;
     pbm_surface(p,&s);
-    if (!p->uploaded) p->uploaded = AllocVec(s.allocation, MEMF_ANY);
+    /* The history doubles what a shadowed bitmap costs, and it is only an
+     * optimisation: fast RAM only, and only while at least SHADOW_RESERVE
+     * of it stays free. Taken from any memory whenever it could be, on a
+     * 2 MB A2000 an 800x600 16-bit screen's shadow and history filled chip
+     * RAM, and Workbench hung half drawn in the low-memory handlers. */
+    if (!p->uploaded && AvailMem(MEMF_FAST) >= s.allocation + SHADOW_RESERVE)
+        p->uploaded = AllocVec(s.allocation, MEMF_FAST);
     if (!p->uploaded) {
-        /* static: the board lock is held (this runs on any caller's stack) */
-        static UBYTE snapshot[256];
-        ULONG off;
+        /* static: the board lock is held (this runs on any caller's stack).
+         * 4 KB a transfer: at 256 bytes, each a WaitBlitter of its own, a
+         * 1280x720 16-bit screen took 7200 of them (a Zorro II card, 2 MB A2000) */
+        static UBYTE snapshot[4096];
+        ULONG off, end=y1*p->bpr;
         /* Low memory still permits presentation, without damage history.
          * Never pass a buffer that clients can change during the transfer. */
         p->uploadValid = FALSE;
-        for (off=0; off<s.allocation; off+=sizeof(snapshot)) {
-            ULONG count=s.allocation-off;
+        for (off=(ULONG)y0*p->bpr; off<end; off+=sizeof(snapshot)) {
+            ULONG count=end-off;
             if (count>sizeof(snapshot)) count=sizeof(snapshot);
             CopyMem(p->pix+off,snapshot,count);
             if (!pbm_write(p,&s,off,snapshot,count)) return FALSE;
@@ -539,7 +556,7 @@ BOOL pbm_upload(struct PBitMap *p)
         p->uploadValid = TRUE;
         return TRUE;
     }
-    for (y=0; y<p->h; y++) {
+    for (y=y0; y<y1; y++) {
         ULONG first, count, off=y*p->bpr;
         if (changed_span(p->pix+off,p->uploaded+off,p->bpr,&first,&count)) {
             off += first;
@@ -553,6 +570,14 @@ BOOL pbm_upload(struct PBitMap *p)
         }
     }
     return TRUE;
+}
+BOOL pbm_upload(struct PBitMap *p)
+{
+    return upload(p, 0, p->h);
+}
+BOOL pbm_upload_rows(struct PBitMap *p, LONG y, LONG h)
+{
+    return upload(p, y, h);
 }
 static enum PrismResult pbm_result(struct PBitMap *p,enum PrismResult result,
     ULONG xbytes,UWORD y,ULONG rowbytes,UWORD h)
@@ -582,9 +607,50 @@ static enum PrismResult pbm_result(struct PBitMap *p,enum PrismResult result,
     if (result == PR_FAILED) dbg("driver: operation failed; acceleration disabled\n");
     return result;
 }
+/* A fill or copy the card has done on a shadowed bitmap, done again on the
+ * CPU in the shadow and its upload history, instead of reading the rows
+ * back: over Zorro II a 1280x720 16-bit SetRast read 1.8 MB back at about
+ * 2 MB/s. Only with a valid history (the rows were just uploaded, so the
+ * shadow equals VRAM there); else pbm_result reads back as before. */
+static BOOL mirrorable(const struct PBitMap *p)
+{
+    return p->uploaded && p->uploadValid;
+}
+static void mirror_fill(struct PBitMap *p,UBYTE bpp,UWORD x,UWORD y,UWORD w,UWORD h,ULONG c)
+{
+    UWORD r, i;
+    for (r=0; r<h; r++) {
+        ULONG off=(ULONG)(y+r)*p->bpr+(ULONG)x*bpp;
+        UBYTE *d=p->pix+off;
+        switch (bpp) {
+        case 1: memset(d,(UBYTE)c,w); break;
+        case 2: for (i=0;i<w;i++) ((UWORD *)d)[i]=(UWORD)c; break;
+        case 4: for (i=0;i<w;i++) ((ULONG *)d)[i]=c; break;
+        default: for (i=0;i<w;i++,d+=3) { d[0]=c>>16; d[1]=c>>8; d[2]=c; } break;
+        }
+        CopyMem(p->pix+off,p->uploaded+off,(ULONG)w*bpp);
+    }
+}
+static void mirror_copy(struct PBitMap *s,struct PBitMap *d,UWORD sx,UWORD sy,
+    UWORD dx,UWORD dy,UWORD w,UWORD h)
+{
+    ULONG n=(ULONG)w*d->bpp;
+    WORD r, r1, step;
+    /* bottom-up when a bitmap copies down onto itself */
+    if (s==d && dy>sy) { r=h-1; r1=-1; step=-1; } else { r=0; r1=h; step=1; }
+    for (; r!=r1; r+=step) {
+        ULONG so=(ULONG)(sy+r)*s->bpr+(ULONG)sx*s->bpp, doff=(ULONG)(dy+r)*d->bpr+(ULONG)dx*d->bpp;
+        memmove(d->pix+doff,s->pix+so,n);
+        CopyMem(d->pix+doff,d->uploaded+doff,n);
+    }
+}
 void pbm_flush_shown(void)
 {
+    static ULONG flushedGen, idleTicks, gap = 1;
+    struct DateStamp t0, t1;
+    LONG spent;
     UWORD i;
+    BOOL locked = FALSE;
     /* nothing to upload without a shadow board (Picasso II, ZZ9000): no
      * lock, no walk of the table, fifty times a second */
     if (!prism_any_shadow())
@@ -592,10 +658,35 @@ void pbm_flush_shown(void)
     ObtainSemaphore(&lock);
     for (i=0;i<PBM_MAX;i++) {
         struct PBitMap *q = table[i];
+        if (q && q->locks && (q->bd->flags & PBF_SHADOW) && pbm_is_shown(q))
+            locked = TRUE;
+    }
+    /* Comparing a shown 1280x720 16-bit bitmap with its history reads
+     * 3.6 MB: every tick, that was all a 68030 did. Only when something
+     * may have drawn (pixelGen), while a client holds the bitmap locked
+     * and writes into it, and every two seconds for a client that kept
+     * its pointer after UnlockBitMap. And no sooner than four times as
+     * long as the last comparison took after it: while a program draws
+     * without a pause (tmpltest on a 68060: 2.5 of its 3.75 minutes) the
+     * screen catches up a few times a second instead. */
+    ++idleTicks;
+    if ((pixelGen == flushedGen && !locked && idleTicks < 100) || idleTicks < gap) {
+        ReleaseSemaphore(&lock);
+        return;
+    }
+    flushedGen = pixelGen;
+    idleTicks = 0;
+    DateStamp(&t0);
+    for (i=0;i<PBM_MAX;i++) {
+        struct PBitMap *q = table[i];
         if (q && (q->bd->flags & PBF_SHADOW) && !(q->bd->flags & PBF_PRESENT) && pbm_is_shown(q))
             if (!pbm_upload(q)) dbg("driver: aperture upload failed\n");
     }
     ReleaseSemaphore(&lock);
+    DateStamp(&t1);
+    /* ticks of 1/50 s; a frame of PrismD's loop is about one */
+    spent = (t1.ds_Minute - t0.ds_Minute) * 60 * TICKS_PER_SECOND + t1.ds_Tick - t0.ds_Tick;
+    gap = spent <= 0 ? 1 : spent > 25 ? 100 : 4 * (ULONG)spent;
 }
 /* Surface-operation fast path (boards whose drivers only have ops): build
  * the surface here and call the driver directly. The direct-hook fast
@@ -634,7 +725,7 @@ enum PrismResult pbm_hw_fill(struct PBitMap *p,UBYTE bpp,UWORD x,UWORD y,UWORD w
         hw_surface(p,&s);
         return hw_finish(B,B->ops->fill(B,&s,x,y,w,h,c));
     }
-    if ((B->flags & PBF_PRESENT) || !p->inVram || !pbm_upload(p)) return PR_DECLINED;
+    if ((B->flags & PBF_PRESENT) || !p->inVram || !pbm_upload_rows(p,y,h)) return PR_DECLINED;
     pbm_surface(p,&s);
     if (bpp==1 && p->bpp!=1) {
         if (B->flags & PBF_SHADOW) return PR_DECLINED;
@@ -643,6 +734,12 @@ enum PrismResult pbm_hw_fill(struct PBitMap *p,UBYTE bpp,UWORD x,UWORD y,UWORD w
     else if (bpp!=p->bpp) return PR_DECLINED;
     /* Byte clears include row padding. */
     if (bpp==1) s.width=s.pitch;
+    if ((B->flags & PBF_SHADOW) && mirrorable(p) && hw_rect(p,x,y,w,h)) {
+        enum PrismResult r=board_fill(B,&s,x,y,w,h,c);
+        if (r==PR_DONE) mirror_fill(p,bpp,x,y,w,h,c);
+        else if (r!=PR_DECLINED) return pbm_result(p,r,(ULONG)x*bpp,y,(ULONG)w*bpp,h);
+        return r;
+    }
     return pbm_result(p,board_fill(B,&s,x,y,w,h,c),(ULONG)x*bpp,y,(ULONG)w*bpp,h);
 }
 enum PrismResult pbm_hw_copy(struct PBitMap *s,struct PBitMap *d,UWORD sx,UWORD sy,
@@ -660,8 +757,16 @@ enum PrismResult pbm_hw_copy(struct PBitMap *s,struct PBitMap *d,UWORD sx,UWORD 
         hw_surface(d,&b);
         return hw_finish(B,B->ops->copy(B,&a,&b,sx,sy,dx,dy,w,h));
     }
-    if ((B->flags & PBF_PRESENT) || !s->inVram || !d->inVram || !pbm_upload(s) || (s!=d && !pbm_upload(d))) return PR_DECLINED;
+    if ((B->flags & PBF_PRESENT) || !s->inVram || !d->inVram || !pbm_upload_rows(s,sy,h) ||
+        !pbm_upload_rows(d,dy,h)) return PR_DECLINED;
     pbm_surface(s,&a); pbm_surface(d,&b);
+    if ((B->flags & PBF_SHADOW) && mirrorable(s) && mirrorable(d) && s->bpp==d->bpp &&
+        hw_rect(s,sx,sy,w,h) && hw_rect(d,dx,dy,w,h)) {
+        enum PrismResult r=board_copy(B,&a,&b,sx,sy,dx,dy,w,h);
+        if (r==PR_DONE) mirror_copy(s,d,sx,sy,dx,dy,w,h);
+        else if (r!=PR_DECLINED) return pbm_result(d,r,(ULONG)dx*d->bpp,dy,(ULONG)w*d->bpp,h);
+        return r;
+    }
     return pbm_result(d,board_copy(B,&a,&b,sx,sy,dx,dy,w,h),(ULONG)dx*d->bpp,dy,(ULONG)w*d->bpp,h);
 }
 /* A minterm blit (not a copy, not clear/set) between two of the board's
@@ -694,7 +799,7 @@ enum PrismResult pbm_hw_expand(struct PBitMap *p,UWORD x,UWORD y,UWORD w,UWORD h
         hw_surface(p,&s);
         return hw_finish(B,B->ops->expand(B,&s,x,y,w,h,src,mod,fg,bg,tr));
     }
-    if ((B->flags & PBF_PRESENT) || !p->inVram || !pbm_upload(p)) return PR_DECLINED;
+    if ((B->flags & PBF_PRESENT) || !p->inVram || !pbm_upload_rows(p,y,h)) return PR_DECLINED;
     pbm_surface(p,&s);
     return pbm_result(p,board_expand(B,&s,x,y,w,h,src,mod,fg,bg,tr),(ULONG)x*p->bpp,y,(ULONG)w*p->bpp,h);
 }
@@ -702,7 +807,8 @@ enum PrismResult pbm_hw_line(struct PBitMap *p,WORD x,WORD y,WORD dx,WORD dy,ULO
 {
     struct PrismBoard *B = p->bd;
     struct PrismSurface s;
-    if ((B->flags & PBF_PRESENT) || !p->inVram || !pbm_upload(p)) return PR_DECLINED;
+    if ((B->flags & PBF_PRESENT) || !p->inVram ||
+        !pbm_upload_rows(p,dy<0 ? y+dy : y,dy<0 ? 1-dy : dy+1)) return PR_DECLINED;
     pbm_surface(p,&s);
     return pbm_result(p,board_line(B,&s,x,y,dx,dy,c),
         (ULONG)(dx<0 ? x+dx : x)*p->bpp,dy<0 ? y+dy : y,
@@ -713,7 +819,7 @@ enum PrismResult pbm_hw_planar(const struct PrismPlanar *src,struct PBitMap *p,
 {
     struct PrismBoard *B = p->bd;
     struct PrismSurface d;
-    if ((B->flags & PBF_PRESENT) || !p->inVram || !B->ops || !B->ops->planar || !pbm_upload(p)) return PR_DECLINED;
+    if ((B->flags & PBF_PRESENT) || !p->inVram || !B->ops || !B->ops->planar || !pbm_upload_rows(p,dy,h)) return PR_DECLINED;
     pbm_surface(p,&d);
     return pbm_result(p,board_planar(B,src,&d,sx,sy,dx,dy,w,h,mt,mask),
         (ULONG)dx*p->bpp,dy,(ULONG)w*p->bpp,h);
