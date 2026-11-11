@@ -511,13 +511,38 @@ static BOOL have_mode(ULONG id)
  * one on the first board without span, else the first of that depth, else
  * the first mode - so Workbench opens on the card. ENVARC: keeps the choice,
  * so it comes back once the board does. Run after install(): IPrefs may
- * reset Workbench as soon as the file changes. */
+ * reset Workbench as soon as the file changes.
+ *
+ * On a shadow board a mode is only there if its screen's shadow fits:
+ * shadows come from fast RAM only (bitmap.c), so a 1280x720 16-bit
+ * Workbench (1.8 MB in one block) can't open on a 2 MB A2000, and Workbench
+ * didn't come up at all. A mode then needs a fast block that large, with
+ * WB_FAST_SPARE left for Workbench's own; if no Prism mode fits, Workbench
+ * goes to the chipset display (hires). */
+#define WB_FAST_SPARE (128UL * 1024)
+
+static BOOL wb_fits(ULONG id)
+{
+    struct ModeRec *r = mode_by_id(id);
+    ULONG bpr;
+
+    if (!r)
+        return FALSE;
+    if (!(r->card->b->flags & PBF_SHADOW) || !AvailMem(MEMF_FAST | MEMF_TOTAL))
+        return TRUE;
+    bpr = ((ULONG)r->m.width * r->bpp + 7) & ~7UL;
+    if (r->m.bytesPerRow > bpr)
+        bpr = r->m.bytesPerRow;
+    return AvailMem(MEMF_FAST | MEMF_LARGEST) >= bpr * r->m.height + WB_FAST_SPARE;
+}
+
 static void wb_mode_fallback(void)
 {
     UBYTE buf[256];
     BPTR fh;
     LONG size, i;
     ULONG id, use = 0, base, n;
+    BOOL here;
 
     if (!cst[0].nmodes || !(fh = Open((STRPTR)"ENV:Sys/screenmode.prefs", MODE_OLDFILE)))
         return;
@@ -531,23 +556,34 @@ static void wb_mode_fallback(void)
         return;
     i += 8 + 16;                        /* the DisplayID, after 4 reserved LONGs */
     id = RD32(buf + i);
-    if (!IS_PRISM_ID(id) || have_mode(id))
+    if (!IS_PRISM_ID(id))
+        return;
+    here = have_mode(id);
+    if (here && wb_fits(id))
         return;
     base = PRISM_CARD_ID(0) | (id & 0xff7f);  /* the first board, no span */
-    if (have_mode(base))
+    if (wb_fits(base))
         use = base;
     for (n = 0; !use && n < cst[0].nmodes; n++)
-        if ((cst[0].modes[n].id & 0xff00) == (id & 0xff00) && (cst[0].modes[n].id & 0xff) < SPAN_ID)
+        if ((cst[0].modes[n].id & 0xff00) == (id & 0xff00) && (cst[0].modes[n].id & 0xff) < SPAN_ID &&
+            wb_fits(cst[0].modes[n].id))
             use = cst[0].modes[n].id;  /* the same depth */
+    for (n = 0; !use && n < cst[0].nmodes; n++)
+        if ((cst[0].modes[n].id & 0xff) < SPAN_ID && wb_fits(cst[0].modes[n].id))
+            use = cst[0].modes[n].id;
     if (!use)
-        use = cst[0].modes[0].id;
+        use = 0x00008000UL;           /* default monitor, hires: the chipset */
     buf[i] = use >> 24; buf[i + 1] = use >> 16; buf[i + 2] = use >> 8; buf[i + 3] = use;
     if (!(fh = Open((STRPTR)"ENV:Sys/screenmode.prefs", MODE_NEWFILE)))
         return;
     Write(fh, buf, size);
     Close(fh);
-    printf("PrismD: the Workbench mode $%08lx is not here this boot (a board missing?); "
-           "using $%08lx until it is\n", (unsigned long)id, (unsigned long)use);
+    if (here)
+        printf("PrismD: the Workbench mode $%08lx needs more fast RAM in one block than there is "
+               "(shadow mode); using $%08lx\n", (unsigned long)id, (unsigned long)use);
+    else
+        printf("PrismD: the Workbench mode $%08lx is not here this boot (a board missing?); "
+               "using $%08lx until it is\n", (unsigned long)id, (unsigned long)use);
 }
 
 /* ---- VRAM allocator: first fit over a sorted list of used blocks --- */

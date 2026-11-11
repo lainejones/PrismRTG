@@ -84,7 +84,14 @@ mapping, bitmaps use direct VRAM pointers. If any accepted format needs a
 displaced aperture, a memory-mode switch or has no direct access, or the
 driver supplies its own allocator or `ReInitMemory`,
 the whole board runs in shadow mode (#9): bitmaps keep stable CPU shadow
-buffers and the direct fast paths are not used. The adapter waits for the blitter, selects
+buffers and the direct fast paths are not used. The shadows come from fast
+RAM only (chip RAM only on a machine without fast RAM); a bitmap whose
+shadow doesn't fit isn't allocated, so its screen doesn't open, rather than
+filling chip RAM. At start PrismD checks the saved Workbench mode the same
+way: if its shadow doesn't fit the largest fast RAM block (with 128 KB to
+spare), `ENV:Sys/screenmode.prefs` gets the first mode of that depth that
+fits, else any mode that fits, else the chipset's hires. `ENVARC:` keeps the
+saved mode for when there is the memory. The adapter waits for the blitter, selects
 the memory mode and translates addresses for each transfer. Applications
 keep stable bitmap pointers while the adapter changes device mappings.
 
