@@ -44,6 +44,16 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.4 beta 2
+  Cards that need a copy of the screen in fast RAM (shadow mode, through
+  the Picasso96 card adapter) are quicker: only what changed is sent to
+  the card, and a card that has only a software pointer no longer goes
+  into shadow mode at all. Thanks to fboldog.
+  On a machine with little fast RAM, a shadow-mode Workbench that does not
+  fit no longer fills chip RAM: PrismD opens Workbench in a mode that fits
+  for that boot and keeps your saved choice in ENVARC: for when there is
+  room. Thanks to fboldog.
+
 New in 1.4 beta 1
   15-bit screen modes (thousands of colours as RGB555), on the boards
   that can show them: the ZZ9000 and Z3660, and the Cirrus boards such as
