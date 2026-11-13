@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PrismRTG Clean Install</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: one reading column of numbered stages; each stage = short steps + the screen it produces. Workbench-blue accent, warm Amiga-orange for warnings. */
+:root {
+  --bg: #f3f4f7;
+  --surface: #ffffff;
+  --fg: #1b2230;
+  --muted: #5b6577;
+  --line: #d9dde6;
+  --accent: #3b5f9c;
+  --accent-soft: #e3eaf6;
+  --warn: #b35a14;
+  --warn-soft: #fbeedf;
+  --code-bg: #eceff5;
+  --f-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161e; --surface: #1a202b; --fg: #e4e8f0; --muted: #9aa4b6; --line: #2c3442;
+    --accent: #8fb0e6; --accent-soft: #1f2c42; --warn: #f0a865; --warn-soft: #33261a; --code-bg: #232a37;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161e; --surface: #1a202b; --fg: #e4e8f0; --muted: #9aa4b6; --line: #2c3442;
+  --accent: #8fb0e6; --accent-soft: #1f2c42; --warn: #f0a865; --warn-soft: #33261a; --code-bg: #232a37;
+  color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--fg);
+  font: 16px/1.6 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 64px;
+}
+.wrap { max-width: 860px; margin: 0 auto; display: grid; gap: 40px; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: clamp(1.9rem, 4vw, 2.6rem); font-weight: 700; }
+h2 { font-size: 1.5rem; font-weight: 700; }
+h3 { font-size: 1.05rem; font-weight: 500; }
+p, ol, ul { margin: 0; }
+.lede { color: var(--muted); max-width: 65ch; }
+header { display: grid; gap: 12px; }
+.eyebrow { font: 500 0.78rem/1 var(--f-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+code, kbd { font-family: var(--f-mono); font-size: 0.88em; background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+pre { font-family: var(--f-mono); font-size: 0.88rem; background: var(--code-bg); padding: 12px 14px; border-radius: 6px; overflow-x: auto; margin: 0; }
+.kit { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.kit > div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.kit ul { padding-left: 1.1em; display: grid; gap: 2px; font-size: 0.95rem; }
+nav ol { padding-left: 1.4em; display: grid; gap: 4px; columns: 2; }
+nav a { color: var(--accent); text-decoration: none; }
+nav a:hover, nav a:focus-visible { text-decoration: underline; }
+section.stage { display: grid; gap: 18px; padding-top: 28px; border-top: 1px solid var(--line); }
+.stage-head { display: flex; gap: 14px; align-items: baseline; }
+.num { font: 700 1.5rem/1 var(--f-display); color: var(--accent); font-variant-numeric: tabular-nums; min-width: 1.6em; }
+.steps { display: grid; gap: 22px; }
+.step { display: grid; gap: 10px; }
+.step > p, .step > ol, .step > ul { max-width: 65ch; }
+.step ol, .step ul { padding-left: 1.3em; display: grid; gap: 4px; }
+figure { margin: 0; display: grid; gap: 6px; }
+figure img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; display: block; }
+figcaption { font-size: 0.85rem; color: var(--muted); }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.note { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: 0 6px 6px 0; max-width: 65ch; font-size: 0.95rem; }
+.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+.note b { font-weight: 600; }
+footer { color: var(--muted); font-size: 0.9rem; display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 20px; }
+footer ul { padding-left: 1.2em; display: grid; gap: 4px; }
+@media (max-width: 560px) { nav ol { columns: 1; } }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <span class="eyebrow">AmigaOS 3.2.3 · PrismRTG 1.4 beta 3</span>
+  <h1>A clean A1200 from floppies to an RTG Workbench</h1>
+  <p class="lede">Every step of a fresh install, recorded in WinUAE on 13 November 2026: partition an empty hard drive, install AmigaOS 3.2 from its floppies, update to 3.2.3, add the CPU libraries, then install PrismRTG from its release ADF. The screens are the real ones from the run; where the emulator needs something a real Amiga doesn't, the step says so. Networking is in the PrismNet repo's guide.</p>
+</header>
+<div class="kit">
+  <div>
+    <h3>The machine</h3>
+    <ul>
+      <li>A1200, Kickstart 3.2.3 (47.115)</li>
+      <li>68030 + 68882, 2 MB chip, 4 MB + 64 MB fast</li>
+      <li>UAE RTG card (UAEGFX), 16 MB, Zorro III</li>
+      <li>An empty 1 GB hard drive image</li>
+    </ul>
+  </div>
+  <div>
+    <h3>The disks</h3>
+    <ul>
+      <li>AmigaOS 3.2: Install, Workbench, DiskDoctor, Locale, Locale-EN, Extras, Classes, Fonts, Storage, Backdrops, GlowIcons, MMULibs</li>
+      <li>Update 3.2.3: Update3.2.3, Classes, DiskDoctor, Extras, Locale-EN</li>
+      <li><code>PrismRTG-1.4b3.adf</code> (or the .lha) from the GitHub release</li>
+    </ul>
+  </div>
+</div>
+<nav aria-label="Stages">
+  <ol>
+    <li><a href="#partition">Partition the drive</a></li>
+    <li><a href="#format">Format the partitions</a></li>
+    <li><a href="#os32">Install AmigaOS 3.2</a></li>
+    <li><a href="#update">Update to 3.2.3</a></li>
+    <li><a href="#cpulibs">Add the CPU libraries</a></li>
+    <li><a href="#prismrtg">Install PrismRTG</a></li>
+  </ol>
+</nav>
+<div class="note"><b>Changing floppies in WinUAE:</b> press <kbd>F12</kbd>, open <i>Floppy drives</i>, click the <i>…</i> button next to DF0, choose the ADF and click OK. Then click <i>Proceed</i> in the installer. On a real Amiga you insert the disk it names.</div>
+
+<!-- 1 -->
+<section class="stage" id="partition">
+  <div class="stage-head"><span class="num">1</span><h2>Partition the drive</h2></div>
+  <div class="steps">
+    <div class="step">
+      <p>Boot from the <b>Install3.2</b> floppy. Workbench opens with the Install3.2 disk; open it.</p>
+      <figure><img src="shots/01-install-disk.png" alt="Workbench 3.2 booted from the Install floppy, with the Install3.2 disk window open showing ActivateCDROM, HDTools, Install, Storage and Shell" loading="lazy"><figcaption>The Install3.2 disk: HDTools holds HDToolBox, Install holds the installer.</figcaption></figure>
+    </div>
+    <div class="step">
+      <p>On a real A1200, open <b>HDTools</b> and double-click <b>HDToolBox</b>; it lists the IDE drive. In WinUAE the drive sits on WinUAE's own controller, so start HDToolBox from the Install disk's <b>Shell</b> and name that controller:</p>
+      <pre>hdtools/hdtoolbox uaehf.device</pre>
+      <figure><img src="shots/03-hdtoolbox-shell.png" alt="AmigaShell window with the command hdtools/hdtoolbox uaehf.device typed" loading="lazy"><figcaption>WinUAE only: HDToolBox on <code>uaehf.device</code>.</figcaption></figure>
+    </div>
+    <div class="step">
+      <p>Select the empty drive (status <i>Unknown</i>) and click <b>Change Drive Type</b>, then <b>Define New…</b>, then <b>Read Configuration</b> and <b>Continue</b>. HDToolBox fills in the drive's own geometry. Click <b>Ok</b> twice.</p>
+      <div class="note warn"><b>Pick the right unit in WinUAE.</b> If a WinUAE host folder is attached (here <i>Transfer</i>), it shows up as another unit. Read Configuration on that one reports a drive the size of the PC's disk (953 GB here), and saving fails with <i>Error 33 on write</i>. The real drive reads as <i>UAE a1200.hdf</i>.</div>
+      <div class="pair">
+        <figure><img src="shots/04-hdtoolbox-unit1.png" alt="HDToolBox listing two SCSI units, unit 1 selected" loading="lazy"><figcaption>Unit 1 is the 1 GB drive image.</figcaption></figure>
+        <figure><img src="shots/05-read-config.png" alt="Define a New Drive Type window filled by Read Configuration: UAE, a1200.hdf, 520 cylinders, 64 heads, 63 blocks per track, 1022 MB" loading="lazy"><figcaption>Read Configuration: 520 × 64 × 63, 1022 MB.</figcaption></figure>
+      </div>
+    </div>
+    <div class="step">
+      <p>Click <b>Partition Drive</b>. The default setup makes two halves, the first one bootable. Rename them in <i>Partition Device Name</i> to <code>DH0</code> and <code>DH1</code> (click a partition in the bar to select it), keep <i>International (FFS)</i> and click <b>Ok</b>.</p>
+      <figure><img src="shots/06-partition.png" alt="Partitioning window with two 510 MB partitions, the second named DH1, file system International FFS" loading="lazy"><figcaption>Two 510 MB partitions: DH0 (bootable) and DH1.</figcaption></figure>
+    </div>
+    <div class="step">
+      <p>Click <b>Save Changes to Drive</b>. The status changes to <i>Not Changed</i>, which means it is written. Click <b>Exit</b> and reboot (in WinUAE: <kbd>F12</kbd> → <i>Reset</i>). After the reboot the two partitions appear as <i>DH0:Uninitialized</i> and <i>DH1:Uninitialized</i>.</p>
+      <div class="pair">
+        <figure><img src="shots/07-save-changes.png" alt="HDToolBox main window, unit 1 status Not Changed, drive type UAE a1200.hdf" loading="lazy"><figcaption>Saved.</figcaption></figure>
+        <figure><img src="shots/09-rebooted.png" alt="Workbench after reboot showing DH0:Uninitialized and DH1:Uninitialized icons" loading="lazy"><figcaption>After the reboot.</figcaption></figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="stage" id="format">
+  <div class="stage-head"><span class="num">2</span><h2>Format the partitions</h2></div>
+  <div class="steps">
+    <div class="step">
+      <p>The 3.2 installer only installs onto a formatted partition, so format both first. Either select the icon and use <i>Icons → Format Disk…</i>, or in the Install disk's Shell (Format is in <code>SYS:System</code>, not <code>C:</code>):</p>
+      <pre>SYS:System/Format DRIVE DH0: NAME Workbench FFS INTL QUICK
+SYS:System/Format DRIVE DH1: NAME Work FFS INTL QUICK</pre>
+      <p>Press Return at each <i>Press RETURN to begin formatting</i> prompt.</p>
+      <div class="pair">
+        <figure><img src="shots/14-format-cmd.png" alt="Shell with the Format command for DH0 typed" loading="lazy"><figcaption>The Format command.</figcaption></figure>
+        <figure><img src="shots/15-formatted.png" alt="Shell showing both formats completed, Workbench and Work icons on the desktop" loading="lazy"><figcaption>Workbench and Work are ready.</figcaption></figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="stage" id="os32">
+  <div class="stage-head"><span class="num">3</span><h2>Install AmigaOS 3.2</h2></div>
+  <div class="steps">
+    <div class="step">
+      <p>Close the Shell (<code>EndCLI</code>), open <b>Install</b> on the Install3.2 disk and double-click <b>English</b>. Click <b>Proceed</b>, keep <i>Install Release 3.2</i>, and choose <b>Intermediate User</b> so the installer asks before it decides.</p>
+      <div class="pair">
+        <figure><img src="shots/11-installer-welcome.png" alt="AmigaOS 3.2 installer welcome text" loading="lazy"><figcaption>The OS installer.</figcaption></figure>
+        <figure><img src="shots/13-installer-mode.png" alt="Set Installation Mode with Intermediate User selected" loading="lazy"><figcaption>Intermediate User.</figcaption></figure>
+      </div>
+    </div>
+    <div class="step">
+      <p>Keep <i>Install for Real</i>. The installer finds the new <b>Workbench:</b> partition by itself; answer <b>Yes</b>. Then pick languages (English), printer drivers and keymaps (defaults are fine) and say <b>Yes</b> to GlowIcons, which look right on an RTG screen.</p>
+      <figure><img src="shots/16-install-target.png" alt="Installer asking whether to install Release 3.2 in the Workbench: partition" loading="lazy"><figcaption>It offers Workbench: on its own.</figcaption></figure>
+    </div>
+    <div class="step">
+      <p>Insert each disk it asks for, in this order: <b>Workbench</b>, <b>DiskDoctor</b>, <b>Locale</b>, <b>Locale-EN</b>, <b>Extras</b>, <b>Classes</b>, <b>Fonts</b>, <b>Storage</b>, <b>Backdrops</b>, <b>GlowIcons</b>. It did not ask for a Modules disk, because the ROM is already 3.2.3.</p>
+      <div class="note warn"><b>Locale and Locale-EN are two disks.</b> The installer first wants the disk named <i>Locale</i> and only then <i>Locale-EN</i>; inserting Locale-EN first gets <i>Please insert correct disk</i>.</div>
+      <div class="pair">
+        <figure><img src="shots/17-os-install-100.png" alt="Installer at 100% with a note about CPU libraries for 32-bit processors" loading="lazy"><figcaption>100%, with a note about CPU libraries (stage 5).</figcaption></figure>
+        <figure><img src="shots/18-os-install-complete.png" alt="Installation complete, Workbench 3.2 is in the Workbench: partition" loading="lazy"><figcaption>Installation complete.</figcaption></figure>
+      </div>
+    </div>
+    <div class="step">
+      <p>Eject the floppy and reboot. The first boot stops at a message that the 68030's CPU library is missing; press Return. Workbench 3.2 comes up from the hard drive.</p>
+      <figure><img src="shots/20-workbench32.png" alt="Workbench 3.2 booted from the hard drive with GlowIcons: RAM Disk, Transfer, Workbench, Work" loading="lazy"><figcaption>Workbench 3.2 from DH0.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="stage" id="update">
+  <div class="stage-head"><span class="num">4</span><h2>Update to 3.2.3</h2></div>
+  <div class="steps">
+    <div class="step">
+      <p>Insert <b>Update3.2.3</b>, open the disk, then <b>Install → English</b>. Choose <b>Intermediate User</b>, <i>Install for Real</i>, <b>Yes</b> to Workbench:, English, and <b>Move</b> when it offers to keep the old Startup-Sequence in <code>Workbench:OLD</code>.</p>
+      <div class="pair">
+        <figure><img src="shots/22-update-window.png" alt="Update3.2.3 disk window with Install and IconUpdate drawers" loading="lazy"><figcaption>The update disk.</figcaption></figure>
+        <figure><img src="shots/23-update-welcome.png" alt="Updater text: updates hard drive installations of 3.2(.1-2) to Release 3.2.3" loading="lazy"><figcaption>The 3.2.3 updater.</figcaption></figure>
+      </div>
+    </div>
+    <div class="step">
+      <p>It asks for the 3.2.3 disks <b>Classes</b>, <b>DiskDoctor</b>, <b>Extras</b> and <b>Locale 3.2.3-EN</b>. Remove the floppy and click <b>Proceed</b>; it reboots. The screen title now reads <i>Workbench Release 3.2.3</i>.</p>
+      <div class="pair">
+        <figure><img src="shots/24-update-complete.png" alt="The installation of Update 3.2.3 is now complete, remove disks and Proceed to reboot" loading="lazy"><figcaption>Update complete.</figcaption></figure>
+        <figure><img src="shots/25-workbench323.png" alt="Workbench with Install3.2 disk inserted" loading="lazy"><figcaption>Back on Workbench, now 3.2.3.</figcaption></figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="stage" id="cpulibs">
+  <div class="stage-head"><span class="num">5</span><h2>Add the CPU libraries</h2></div>
+  <div class="steps">
+    <div class="step">
+      <p>To stop the CPU-library warning at every boot, insert <b>Install3.2</b> again, run <b>Install → English</b> and pick <b>Install CPU Support Libraries</b>. Answer <b>Yes</b> to MMULibs 46.21 in Workbench:, insert <b>MMULibs</b>, choose <i>Other</i> as the CPU card maker (an emulator, or a card not listed), and reboot without the floppy.</p>
+      <div class="pair">
+        <figure><img src="shots/26-cpu-libs-choice.png" alt="Installer with Install CPU Support Libraries selected" loading="lazy"><figcaption>Install CPU Support Libraries.</figcaption></figure>
+        <figure><img src="shots/27-clean-323.png" alt="Workbench 3.2.3 after a clean boot with no warning" loading="lazy"><figcaption>A clean 3.2.3 boot, no warning.</figcaption></figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="stage" id="prismrtg">
+  <div class="stage-head"><span class="num">6</span><h2>Install PrismRTG</h2></div>
+  <div class="steps">
+    <div class="step">
+      <p>Insert <code>PrismRTG-1.4b3.adf</code>. The <b>PrismRTG</b> disk holds PrismPrefs, PrismProbe, the guide, the ReadMe and <b>Install_PrismRTG</b>; double-click the installer. It starts in <i>Intermediate User</i>; click <b>Proceed With Install</b>, then <b>Proceed</b>.</p>
+      <div class="pair">
+        <figure><img src="shots/31-prismrtg-window.png" alt="PrismRTG disk window with PrismPrefs, PrismRTG.guide, PrismProbe, ReadMe and Install_PrismRTG" loading="lazy"><figcaption>The PrismRTG disk.</figcaption></figure>
+        <figure><img src="shots/33-prismrtg-welcome.png" alt="Welcome to PrismRTG text listing supported cards" loading="lazy"><figcaption>It says up front that Picasso96 is never deleted.</figcaption></figure>
+      </div>
+    </div>
+    <div class="step">
+      <p>The installer identifies the card on its own (here the UAE RTG card, which PrismRTG drives directly) and asks which screen Workbench should open on after the reboot. <b>800 × 600, 16-bit</b> is the default.</p>
+      <div class="pair">
+        <figure><img src="shots/34-prismrtg-detect.png" alt="This Amiga is an emulator with UAE's RTG card. PrismRTG drives it directly; Picasso96 is not needed" loading="lazy"><figcaption>Card found.</figcaption></figure>
+        <figure><img src="shots/35-prismrtg-screenmode.png" alt="Which screen should Workbench open on: Prism 640x480 256, 800x600 256, 800x600 16-bit selected, 1024x768 16-bit, Leave it" loading="lazy"><figcaption>The Workbench screen.</figcaption></figure>
+      </div>
+    </div>
+    <div class="step">
+      <p>Next comes a page of tips for a start that goes wrong: hold the <b>left mouse button</b> while booting to skip PrismRTG, then change the modes in <code>Prefs/PrismPrefs</code>; if Workbench comes back on a small Amiga screen, the bottom line of PrismPrefs says why. Click <b>Proceed</b> twice, eject the floppy and reboot. Workbench comes up on the RTG screen.</p>
+      <div class="pair">
+        <figure><img src="shots/53-prismrtg-tips.png" alt="If something goes wrong after the reboot: tips page" loading="lazy"><figcaption>The tips page.</figcaption></figure>
+        <figure><img src="shots/54-prismrtg-final.png" alt="PrismRTG is updated for the UAE RTG card. Reboot to start it." loading="lazy"><figcaption>The last page (shown here from an update run).</figcaption></figure>
+      </div>
+      <figure><img src="shots/37-prismrtg-boot.png" alt="Workbench on an 800x600 16-bit RTG screen with GlowIcons" loading="lazy"><figcaption>Workbench on PrismRTG, 800 × 600 16-bit.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>Recorded on WinUAE with an A1200 / KS 3.2.3 configuration, floppies swapped through the Floppy drives page. Differences from real hardware:</p>
+  <ul>
+    <li>On a real A1200 HDToolBox finds the IDE drive when double-clicked; the <code>uaehf.device</code> command is only for WinUAE's controller.</li>
+        <li>Floppy speed was set to turbo, so the copy times are not representative of real drives.</li>
+  </ul>
+</footer>
+</div>
+</body>
+</html>
