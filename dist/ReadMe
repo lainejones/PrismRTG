@@ -44,6 +44,12 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.4 beta 3
+  The installer's last page is easier to read: the tips for a start that
+  goes wrong (a small Amiga screen, a dark screen, PrismProbe) are now a
+  page of their own, so none of the text is hidden behind the Proceed
+  button.
+
 New in 1.4 beta 2
   Cards that need a copy of the screen in fast RAM (shadow mode, through
   the Picasso96 card adapter) are quicker: only what changed is sent to
