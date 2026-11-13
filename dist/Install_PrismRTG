@@ -378,15 +378,18 @@
           "NOT start: this Amiga goes on using Picasso96.\n\n"
           "Run Install_PrismRTG again and choose \"Back it up\" when you want to switch."
           (quiet)))
+; the after-reboot tips get their own page: together with ssmsg they no longer fit the
+; Installer's window on one (the last line was hidden behind Proceed)
+(message "If something goes wrong after the reboot\n\n"
+         "Workbench back on a small Amiga screen? PrismRTG did not start: the bottom "
+         "line of Prefs/PrismPrefs says why. Change what it says and reboot again; if "
+         "that doesn't help, double-click PrismProbe here for a report to send.\n\n"
+         "Screen dark or wrong? Hold the LEFT MOUSE BUTTON while booting and PrismRTG "
+         "does not start (a start that hangs is also skipped by itself on the next "
+         "boot). Then change the modes in Prefs/PrismPrefs."
+         (all))
 (exit (if fresh "PrismRTG is installed" "PrismRTG is updated")
       (if (<> cardname "") (cat " for the " cardname) "")
       "." ssmsg "\n\n"
-      "Reboot to start it.\n\n"
-      "If Workbench comes back on a small Amiga screen, PrismRTG did not start: "
-      "Prefs/PrismPrefs says why on its bottom line. Change what it says and "
-      "reboot again; if that doesn't help, double-click PrismProbe here for a "
-      "report to send.\n\n"
-      "If the screen stays dark or looks wrong: hold the LEFT MOUSE BUTTON while "
-      "booting and PrismRTG does not start. A start that hangs is also skipped by "
-      "itself on the next boot. Then use Prefs/PrismPrefs to change the modes."
+      "Reboot to start it."
       (quiet))      ; no "can be found in your ... drawer" page: nothing lives in one drawer
