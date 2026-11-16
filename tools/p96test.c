@@ -338,6 +338,48 @@ int main(void)
         check(names[f], bad == 0);
     }
 
+    /* One line read into 32-bit formats at widths that are not a multiple
+     * of 4, from odd and even columns (luVWagn, 2026-11-16: Picasso96
+     * corrupted the remainder pixels reading a single line of an RGB565
+     * screen as ARGB32). Each pixel must equal p96ReadPixel's, and nothing
+     * after the line may be written. */
+    {
+        static const ULONG rfmts[2] = { RGBFB_A8R8G8B8, RGBFB_B8G8R8A8 };
+        static const char *const rnames[2] = { "p96ReadPixelArray 1 line, odd widths, A8R8G8B8",
+                                               "p96ReadPixelArray 1 line, odd widths, B8G8R8A8" };
+        static const UWORD widths[8] = { 1, 2, 3, 5, 6, 7, 13, 30 };
+        int k, wi, x0;
+        for (k = 0; k < 2; k++) {
+            for (bad = 0, wi = 0; wi < 8; wi++)
+                for (x0 = 400; x0 <= 401; x0++) {
+                    UWORD w = widths[wi], ry = 200 + wi * 3 + (x0 & 1);
+                    memset(back, 0x55, 64 * 4);
+                    ri.Memory = back; ri.BytesPerRow = 64 * 4; ri.RGBFormat = rfmts[k];
+                    arr(108, &ri, 0, 0, rp, x0, ry, w, 1);
+                    for (x = 0; x < w; x++) {
+                        UBYTE *q = back + x * 4;
+                        ULONG got = k == 0 ? ((ULONG)q[1] << 16) | ((ULONG)q[2] << 8) | q[3]
+                                           : ((ULONG)q[2] << 16) | ((ULONG)q[1] << 8) | q[0];
+                        if (got != (p96ReadPixel(rp, x0 + x, ry) & 0xffffff)) {
+                            if (bad < 4)
+                                printf("    width %u at %d: pixel %d %06lx, ReadPixel %06lx\n", w, x0, x,
+                                       (unsigned long)got,
+                                       (unsigned long)(p96ReadPixel(rp, x0 + x, ry) & 0xffffff));
+                            bad++;
+                        }
+                    }
+                    for (x = w * 4; x < 64 * 4; x++)
+                        if (back[x] != 0x55) {
+                            if (bad < 4)
+                                printf("    width %u at %d: byte %d after the line written\n", w, x0, x);
+                            bad++;
+                            break;
+                        }
+                }
+            check(rnames[k], bad == 0);
+        }
+    }
+
     /* part of an array, at an offset inside the source */
     ri.Memory = buf; ri.BytesPerRow = 32 * 2; ri.RGBFormat = RGBFB_R5G6B5;
     p96RectFill(rp, 240, 250, 300, 300, 0);
