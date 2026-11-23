@@ -44,6 +44,21 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.4 (everything since 1.3.1, in short; the betas follow below)
+  15-bit screen modes (thousands of colours as RGB555) on the ZZ9000,
+  Z3660 and the Cirrus boards; off until you turn them on in PrismPrefs.
+  The Apollo Vampire V4's SAGA video, driven by PrismRTG itself
+  (BOARD=SAGA, not picked automatically yet).
+  A quick reboot no longer makes the next boot skip PrismRTG: a release
+  clears the boot failsafe as soon as PrismD is running.
+  Shadow-mode cards (through the Picasso96 card adapter) only send what
+  changed, and a shadow-mode Workbench that does not fit in fast RAM opens
+  in a mode that does instead of filling chip RAM.
+  The installer's after-reboot tips are a page of their own, so none of
+  the text is hidden behind the Proceed button.
+  Thanks to fboldog for the shadow-mode work, to solskogen for the boot
+  failsafe report, and to HANSolo-0007 for the SAGA tests.
+
 New in 1.4 beta 3
   The installer's last page is easier to read: the tips for a start that
   goes wrong (a small Amiga screen, a dark screen, PrismProbe) are now a
