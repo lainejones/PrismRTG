@@ -28,6 +28,7 @@ the native drivers do not need them.
 | Piccolo, Zorro II | Cirrus GD5426 | WinUAE only | Emulation only. 8/16-bit, 24-bit 640x480. |
 | GVP Spectrum 28/24, Zorro II | Cirrus GD5428 | WinUAE only | Emulation only. 8/16-bit, 24-bit 640x480. |
 | Village Tronic Picasso IV, Zorro II and III | Cirrus GD5446, 4 MB (2 MB used) | WinUAE only | Emulation only, with WinUAE's model of the card (it needs the card's flash ROM). Native driver from 1.1 beta 8: blitter fills, copies, text (8/16/32-bit); hardware pointer; 8/16-bit up to 1280x720, 24-bit 640x480, 32-bit 800x600. |
+| MiSTer Minimig-AGA core, RTG frame buffer (Zorro III board, or fixed addresses on older cores) | CPU set to 68020 or 68030 (with the 68EC020 the core has no RTG); releases before November 2026 too (fixed addresses) | none | Real hardware: the fixed addresses on the AP060 fork's 68060 (PrismBench exact at 8/16/24/32-bit); the Zorro III board of newer cores is untested. The installer finds it and Auto selects it (`BOARD=MINIMIG` forces it). 8/15/16/24/32-bit up to 2048x2048 in 8 MB; the output timing comes from MiSTer.ini, so no refresh rates. No blitter or hardware pointer; 15-bit is derived from the scaler source only. |
 | MNT ZZ9000, Zorro II mode | | none | Untested. No blitter or pointer support in this mode. |
 | Apollo Vampire (SAGA), through its P96 driver | `vampiregfx.card` 1.61 | Vampire, reported by a user (#1) | Real hardware, not tested here. 1.1 beta 3 with `BOARD=P96`: every drawing test passes at 8, 16, 24 and 32 bits, `p96test` 0 of 29 failed, screens up to 1280x720 24-bit. One failure, planar blits at 16 bits, is handled from beta 5 (the card's own planar blit is checked first and replaced if wrong). |
 
@@ -67,8 +68,8 @@ half of that.
 
 PrismD loads the selected backend from `LIBS:Prism/<name>.driver`, with
 `PROGDIR:Drivers` as a fallback for running a build in place. The installer
-copies the supplied PICASSO2, ZZ9000, Z3660, P96 and UAEGFX modules. From 1.1
-beta 8 the driver interface is frozen: a module built for one release keeps
+copies the supplied PICASSO2, ZZ9000, Z3660, P96, UAEGFX, SAGA and MINIMIG
+modules. From 1.1 beta 8 the driver interface is frozen: a module built for one release keeps
 loading in every later one, and only a module newer than PrismD is refused
 ("doesn't fit this PrismD"). Earlier modules (protocol 3) need rebuilding once.
 
@@ -619,6 +620,13 @@ brackets; the exact files and revisions are listed in
   **Jason S. McMullan** - [ezrec/saga-drivers](https://github.com/ezrec/saga-drivers)
   (MIT): the Vampire V4's SAGA video registers, for the SAGA test driver
   ([docs/saga-hw.md](docs/saga-hw.md)).
+* **The Minimig-AGA MiSTer core's authors** -
+  [MiSTer-devel/Minimig-AGA_MiSTer](https://github.com/MiSTer-devel/Minimig-AGA_MiSTer)
+  (GPL; the scaler `ascal.vhd` by TEMLIB), and **Alastair M. Robinson**
+  with the FPGAArcade Replay.card contributors (Jakub Bednarski, Mike
+  Johnson, Jim Drew, Erik Hemming, Nicolas Hamel) for its MiSTer.card
+  (LGPL-2.1): the core's RTG registers and pixel formats, for the MINIMIG
+  driver ([docs/minimig-hw.md](docs/minimig-hw.md)).
 
 Programs talk to PrismRTG through the cybergraphics and Picasso96
 interfaces: their function and tag numbers are reproduced so that existing

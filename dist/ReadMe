@@ -7,6 +7,7 @@ A from-scratch retargetable-graphics system for two boards:
     emulator-tested only
   * MNT ZZ9000, Zorro III
   * Z3660 accelerator's RTG output (A4000)
+  * MiSTer Minimig-AGA core's RTG (CPU set to 68020 or 68030)
 
 It takes the place of Picasso96: the two cannot both be active on one
 Amiga, and PrismRTG does not start while Picasso96's monitor files are in
@@ -49,6 +50,9 @@ New in 1.4 (everything since 1.3.1, in short; the betas follow below)
   Z3660 and the Cirrus boards; off until you turn them on in PrismPrefs.
   The Apollo Vampire V4's SAGA video, driven by PrismRTG itself
   (BOARD=SAGA, not picked automatically yet).
+  The MiSTer Minimig-AGA core's RTG output, found by the installer and
+  by Auto (the core's CPU must be the 68020 or 68030: with the 68EC020
+  the core has no RTG).
   A quick reboot no longer makes the next boot skip PrismRTG: a release
   clears the boot failsafe as soon as PrismD is running.
   Shadow-mode cards (through the Picasso96 card adapter) only send what

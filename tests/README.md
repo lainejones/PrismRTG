@@ -29,6 +29,7 @@ one of these files, the test needs a matching stub.
 | `z3660_modes.c` | Z3660 modes: every PrismPrefs size at 8/15/16/32-bit maps to a firmware mode, the 320-wide ones doubled, refresh-specific ids, refusals (`drv_z3660.c`) |
 | `z3660_switch.c` | Z3660 monitor switch: `monitor_switch` line and level bits to CIA-B port A and DDRA, other port bits kept (`drv_z3660.c`) |
 | `z3660_blit.c` | Z3660 mailbox fills, copies, text, lines and planar blits: the 565 command and colour placement for 15/16-bit, 8/32-bit colours, same-surface byte copies vs. between-surface copies from 32-bit words, declines (`drv_z3660.c`) |
+| `minimig_modes.c` | MiSTer Minimig RTG: legacy core blitter operations decline without VRAM writes, FORMAT value per depth, 16-byte row stride, size and VRAM limits, refusals (refresh, autoscroll), display start address with the high word written only on change, CLUT, monitor switch and shutdown (`drv_minimig.c`) |
 | `zz_surfaces.c` | ZZ9000 mailbox commands: 15-bit fills/lines via the 565 colour mode, same-surface vs. between-surface byte copies, declines (`drv_zz9000.c`) |
 | `render_replay.c` | `render.c` fill/line/template/blit: CPU replay after a failed or retried hardware op, read-modify-write guards |
 | `damage.c` | `changed_span` (shadow damage spans) |

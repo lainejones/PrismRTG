@@ -29,6 +29,7 @@
 #include <string.h>
 #include <exec/semaphores.h>
 #include "../src/prism.h"
+#include "../src/minimig_mmu.h"
 
 static const char version[] __attribute__((used)) = "$VER: PrismProbe " PRISM_RELEASE " (" PRISM_RELDATE ")";
 
@@ -60,10 +61,60 @@ static const char *known(UWORD mfr, UBYTE prod)
     if (mfr == 2092 && prod == 33)   return "Graffity registers -> picasso2 driver (emulation-tested)";
     if (mfr == 0x1398 && prod == 5)  return "SAGA (Vampire V4) -> saga driver (test, BOARD=SAGA)";
     if (mfr == 0x1398 && prod == 8)  return "SAGA (Apollo A6000) -> saga driver (test, BOARD=SAGA)";
+    if (mfr == 0x139c && prod == 0x30) return "MiSTer Minimig RTG -> minimig driver (BOARD=MINIMIG)";
     return NULL;
 }
 
 /* is PrismD driving this board now (its PrismSem names its boards)? */
+/* The MiSTer Minimig core: each step of the MINIMIG driver's test
+ * (src/drv_minimig.c, mm_probe/mm_legacy), so a core it doesn't find says
+ * which step failed. $B80100 is read only when one of the core's own
+ * boards is there. Prints nothing on other machines; TRUE = usable. */
+static BOOL minimig_lines(FILE *f)
+{
+    const volatile ULONG *fb = (const volatile ULONG *)0x02000000;
+    const volatile ULONG *chip = (const volatile ULONG *)0;
+    BOOL z3 = FindConfigDev(NULL, 0x139c, -1) != NULL;
+    BOOL z2 = FindConfigDev(NULL, 2011, 0x51) != NULL;
+    BOOL toc = FindConfigDev(NULL, 18260, 12) != NULL;
+    UWORD id, i, diff = 0;
+    if (FindConfigDev(NULL, 0x139c, 0x30)) {
+        fprintf(f, "MiSTer Minimig: RTG board found (newer core)\n");
+        return TRUE;
+    }
+    if (!z3 && !z2 && !toc)
+        return FALSE;
+    fprintf(f, "MiSTer Minimig? core boards:%s%s%s; no RTG board, trying the fixed addresses\n",
+            z3 ? " Z3 RAM" : "", z2 ? " Z2 RAM" : "", toc ? " Toccata" : "");
+    if (!(SysBase->AttnFlags & AFF_68020)) {
+        fprintf(f, "  CPU: a 68000/68010 - the core has RTG only with a 68020 or 68030\n");
+        return FALSE;
+    }
+    {
+        static const char *what[] = { "no mmu.library, nothing to map",
+                                      "both windows mapped already",
+                                      "mapped both windows (they were blank or cached)",
+                                      "mmu.library refused to map them" };
+        ULONG was[2] = { 0, 0 };
+        int m = mm_mmu_map(was);
+        if (m == MM_MMU_NONE)
+            fprintf(f, "  MMU: %s\n", what[m]);
+        else
+            fprintf(f, "  MMU: $B80000 was $%08lx, $02000000 was $%08lx: %s\n",
+                    (unsigned long)was[0], (unsigned long)was[1], what[m]);
+    }
+    id = *(volatile UWORD *)0xB8010E;
+    fprintf(f, "  ID at $B8010E: $%04x (%s)\n", id, id == 0x5001 ? "right" : "should be $5001");
+    if (id != 0x5001)
+        return FALSE;
+    for (i = 2; i < 64; i++)
+        if (fb[i] != chip[i])
+            diff++;
+    fprintf(f, "  $02000000: %s\n", diff ? "its own memory (right)" :
+            "a copy of chip RAM - a 68EC020 (24-bit) sees no RTG memory; choose 68020 or 68030");
+    return diff != 0;
+}
+
 static BOOL prism_drives(const struct ConfigDev *cd)
 {
     struct PrismSem *ps;
@@ -210,6 +261,7 @@ static void report(FILE *f)
         n++;
     }
     fprintf(f, "%d board(s)\n", n);
+    minimig_lines(f);
 
     fprintf(f, "\n== PrismRTG\n");
     Forbid();
@@ -301,6 +353,8 @@ int main(int argc, char **argv)
         n++;
         if (k) ours++;
     }
+    if (minimig_lines(stdout) && !FindConfigDev(NULL, 0x139c, 0x30))
+        ours++;
     printf("%d board(s), %d usable by Prism\n", n, ours);
 
     if (rep) {

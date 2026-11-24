@@ -19,6 +19,9 @@
  *                               monitor names a BOARDTYPE whose
  *                               LIBS:Picasso96/<it>.card is there: a
  *                               PiStorm's VideoCore, a Vampire)
+ *                            13 MiSTer Minimig RTG (the core's Zorro III
+ *                               board, or its fixed addresses on older
+ *                               cores; any CPU but the 68EC020)
  *                            - 11 and 12 only when none of ours is there
  *         ENV:PrismCardName  the card's name, or ""
  *         ENV:PrismP96Mon    the Picasso96 monitor file's name, or ""
@@ -86,6 +89,7 @@
 #include "../src/prism.h"
 #include "../src/prefs.h"
 #include "../src/catalog.h"
+#include "../src/minimig_mmu.h"
 
 static const char version[] __attribute__((used)) = "$VER: PrismSetup " PRISM_RELEASE " (" PRISM_RELDATE ")";
 
@@ -131,6 +135,8 @@ static BOOL boardtype_matches(const char *bt, int card)
         return same_nocase(bt, "Z3660");
     if (card == 10)
         return same_nocase(bt, "PicassoIV");
+    if (card == 13)
+        return same_nocase(bt, "MiSTer");
     return FALSE;
 }
 
@@ -429,12 +435,37 @@ static int p96_restore(void)
     return left ? 5 : 0;
 }
 
+/* The MiSTer Minimig core before its Zorro III RTG board (every release
+ * before November 2026): registers at $B80100, frame buffer at $02000000.
+ * The same test as PrismD's MINIMIG driver (src/drv_minimig.c, mm_legacy):
+ * one of the core's own boards, a 68020 or better, ID $5001, and
+ * $02000000 not a copy of chip RAM (a 68EC020's 24-bit bus). */
+static BOOL minimig_fixed(void)
+{
+    const volatile ULONG *fb = (const volatile ULONG *)0x02000000;
+    const volatile ULONG *chip = (const volatile ULONG *)0;
+    UWORD i;
+    if (!(SysBase->AttnFlags & AFF_68020))
+        return FALSE;
+    if (!FindConfigDev(NULL, 0x139c, -1) && !FindConfigDev(NULL, 2011, 0x51) &&
+        !FindConfigDev(NULL, 18260, 12))
+        return FALSE;
+    mm_mmu_map(NULL);
+    if (*(volatile UWORD *)0xB8010E != 0x5001)
+        return FALSE;
+    for (i = 2; i < 64; i++)
+        if (fb[i] != chip[i])
+            return TRUE;
+    return FALSE;
+}
+
 static int detect(void)
 {
     static const char *names[] = { "", "Picasso II", "GBAPII++", "ZZ9000 (Zorro III)",
                                    "ZZ9000 (Zorro II)", "Piccolo SD64", "Piccolo",
                                    "Spectrum 28/24", "Graffity",
-                                   "Z3660", "Picasso IV", "UAE RTG card", "" };
+                                   "Z3660", "Picasso IV", "UAE RTG card", "",
+                                   "MiSTer Minimig RTG" };
     static char p96name[100];
     char p96card[100], monDir[40];
     int card = 0;
@@ -453,16 +484,17 @@ static int detect(void)
         else if (FindConfigDev(NULL, 0x144b, 1))                           card = 9;
         else if ((p4 = FindConfigDev(NULL, 2167, 24)) && p4->cd_BoardSize >= 0x1000000) card = 10;   /* Z3 mode */
         else if (FindConfigDev(NULL, 2167, 23) && FindConfigDev(NULL, 2167, 21))  card = 10;   /* Z2 mode */
+        else if (FindConfigDev(NULL, 0x139c, 0x30) || minimig_fixed())     card = 13;
         CloseLibrary((struct Library *)ExpansionBase);
     }
     {
         /* test hook for the installer script: ENV:PrismFakeCard = 1..10
-         * stands in for a card this machine doesn't have (11 and 12 are
-         * found by what is installed, not faked) */
+         * or 13 stands in for a card this machine doesn't have (11 and 12
+         * are found by what is installed, not faked) */
         char fake[8];
         int fc;
         if (GetVar("PrismFakeCard", fake, sizeof(fake), GVF_GLOBAL_ONLY) > 0 &&
-            sscanf(fake, "%d", &fc) == 1 && fc >= 1 && fc <= 10)
+            sscanf(fake, "%d", &fc) == 1 && ((fc >= 1 && fc <= 10) || fc == 13))
             card = fc;
     }
     p96card[0] = 0;
