@@ -32,7 +32,6 @@
 #include <libraries/configvars.h>
 #include <proto/exec.h>
 #include <proto/expansion.h>
-#include <stdio.h>
 #include <string.h>
 #include "boardops.h"
 #ifdef PRISM_DRIVER_MODULE
@@ -166,10 +165,10 @@ static BOOL mm_SetMode(struct PrismBoard *b, struct PrismMode *m)
     W16(p, R_HSIZE, m->width);
     W16(p, R_VSIZE, m->height);
     W16(p, R_STRIDE, m->bytesPerRow);
+    /* No printf here: a mode set runs in whoever called LoadView, which can
+     * be input.device's task, and a DOS Write() from a task never returns. */
     if (!p->down)
         W16(p, R_ENABLE, 1);
-    printf("PrismD: Minimig RTG %ux%u, FORMAT $%02x, %lu bytes per row\n",
-           m->width, m->height, p->format, (unsigned long)m->bytesPerRow);
     return TRUE;
 }
 
