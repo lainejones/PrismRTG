@@ -77,13 +77,16 @@ static BOOL rp_ours(struct RastPort *rp)
 }
 
 /* Nearest pen to an RGB colour on an 8-bit bitmap, with a 12-bit cache
- * (rebuilt per call: palettes change). Caller holds the lock. */
+ * (rebuilt per call: palettes change). Caller holds the lock. A hit is
+ * inlined into the per-pixel loops; only a miss calls out. */
 static UWORD penCache[4096];
 static ULONG *cacheTab;
 
-static UBYTE nearest(struct PBitMap *p, ULONG rgb)
+#define PEN_KEY(rgb) ((((rgb) >> 12) & 0xf00) | (((rgb) >> 8) & 0xf0) | (((rgb) >> 4) & 0xf))
+
+static UBYTE nearest_search(struct PBitMap *p, ULONG rgb)
 {
-    UWORD key = ((rgb >> 12) & 0xf00) | ((rgb >> 8) & 0xf0) | ((rgb >> 4) & 0xf), i, best = 0;
+    UWORD key = PEN_KEY(rgb), i, best = 0;
     LONG bd = 0x7fffffff;
     if (!p->rgbTab)
         return 0;
@@ -103,6 +106,14 @@ static UBYTE nearest(struct PBitMap *p, ULONG rgb)
     }
     penCache[key] = best;
     return best;
+}
+
+static inline UBYTE nearest(struct PBitMap *p, ULONG rgb)
+{
+    UWORD c = penCache[PEN_KEY(rgb)];
+    if (cacheTab == p->rgbTab && p->rgbTab && c != 0xffff)
+        return c;
+    return nearest_search(p, rgb);
 }
 
 /* One source pixel to 0x00RRGGBB. */
@@ -175,8 +186,29 @@ static void row_to_deep(UBYTE fmt, const UBYTE *s, UBYTE sb, UBYTE ro, UBYTE go,
         else for (x = 0; x < n; x++, s += sb, d += B) \
             pf_put(F, ((ULONG)s[ro] << 16) | ((ULONG)s[go] << 8) | s[bo], d); \
         break;
+/* 0x00RRGGBB as one 32-bit pixel, the unused byte 0 as pf_put leaves it */
+#define L32(F, c) ((F) == PF_ARGB32 ? (c) : (F) == PF_RGBA32 ? (c) << 8 : \
+                   (((c) & 0xff) << 24) | (((c) & 0xff00) << 8) | (((c) >> 8) & 0xff00))
+#define LL(F) case F: \
+        if (tab) for (x = 0; x < n; x++) { ULONG c = tab[s[x]]; l[x] = L32(F, c); } \
+        else for (x = 0; x < n; x++, s += sb) { \
+            ULONG c = ((ULONG)s[ro] << 16) | ((ULONG)s[go] << 8) | s[bo]; l[x] = L32(F, c); } \
+        break;
+    if (fmt == PF_ARGB32 || fmt == PF_BGRA32 || fmt == PF_RGBA32) {
+        ULONG *l = (ULONG *)d;
+        if (fmt == PF_ARGB32 && !tab && sb == 4 && ro == 1) {   /* ARGB in: its layout, alpha cleared */
+            for (x = 0; x < n; x++) l[x] = ((const ULONG *)s)[x] & 0x00ffffff;
+            return;
+        }
+        switch (fmt) {
+        LL(PF_ARGB32) LL(PF_BGRA32) LL(PF_RGBA32)
+        }
+        return;
+    }
+#undef LL
+#undef L32
     switch (fmt) {
-    LD(PF_RGB24, 3) LD(PF_BGR24, 3) LD(PF_ARGB32, 4) LD(PF_BGRA32, 4) LD(PF_RGBA32, 4)
+    LD(PF_RGB24, 3) LD(PF_BGR24, 3)
     }
 #undef LD
 }
@@ -229,41 +261,71 @@ static void write_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
     }
 }
 
+/* A row of VRAM as 0x00RRGGBB: read in one CopyMem (longs, not a byte
+ * or a word a pixel off a slow board), into the top of out, and widened
+ * there in place - a pixel is read before its wider result is written over
+ * it. n is at most 4096. */
+static void row_rgb(struct PBitMap *p, const UBYTE *vram, ULONG *out, WORD n)
+{
+    UBYTE b = p->bpp, *raw = (UBYTE *)out + (ULONG)(4 - b) * n;
+    WORD x;
+    CopyMem((APTR)vram, raw, (ULONG)n * b);
+    if (b == 1) {
+        if (p->rgbTab) for (x = 0; x < n; x++) out[x] = p->rgbTab[raw[x]];
+        else           memset(out, 0, (ULONG)n * 4);
+        return;
+    }
+#define RG(F, B) case F: for (x = 0; x < n; x++) out[x] = pf_get(F, raw + x * B); return;
+    switch (p->fmt) {
+    RG(PF_RGB24, 3) RG(PF_BGR24, 3) RG(PF_ARGB32, 4) RG(PF_BGRA32, 4) RG(PF_RGBA32, 4)
+    RG(PF_RGB565BE, 2) RG(PF_RGB565LE, 2) RG(PF_BGR565LE, 2)
+    RG(PF_RGB555BE, 2) RG(PF_RGB555LE, 2) RG(PF_BGR555LE, 2)
+    }
+#undef RG
+    for (x = 0; x < n; x++) out[x] = pf_get(p->fmt, raw + x * b);
+}
+
 static void read_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
                     WORD ox, WORD oy, void *ctx)
 {
     struct ArrayCtx *a = ctx;
     UBYTE db = src_bpp(a->rf, p);
-    WORD y, x, n = bx1 - bx0 + 1;
+    WORD y, x, x0, n = bx1 - bx0 + 1;
+    const ULONG *c = rgbRow;
 
     for (y = by0; y <= by1; y++) {
         UBYTE *d = a->dst + (LONG)(a->sy + (y - oy - a->dy)) * a->srcMod +
                    (LONG)(a->sx + (bx0 - ox - a->dx)) * db;
         const UBYTE *row = p->pix + (ULONG)y * p->bpr + bx0 * p->bpp;
+        a->count += n;
         if (a->rf == RECTFMT_RAW) {
             CopyMem((APTR)row, d, (ULONG)n * p->bpp);
-            a->count += n;
             continue;
         }
-        for (x = 0; x < n; x++, d += db) {
-            ULONG c;
-            UBYTE pen = 0;
-            if (p->bpp >= 2) {
-                c = pf_get(p->fmt, row + x * p->bpp);
-            } else {
-                pen = row[x];
-                c = p->rgbTab ? p->rgbTab[pen] : 0;
-            }
+        if (a->rf == RECTFMT_LUT8) {           /* pens; none on a direct-colour bitmap */
+            if (p->bpp == 1) CopyMem((APTR)row, d, n);
+            else             memset(d, 0, n);
+            continue;
+        }
+        for (x0 = 0; x0 < n; x0 += 4096, row += 4096 * p->bpp) {
+            WORD m = n - x0 > 4096 ? 4096 : n - x0;
+            row_rgb(p, row, rgbRow, m);
             switch (a->rf) {
-            case RECTFMT_RGB:  d[0] = c >> 16; d[1] = c >> 8; d[2] = c; break;
-            case RECTFMT_RGBA: d[0] = c >> 16; d[1] = c >> 8; d[2] = c; d[3] = 0; break;
-            case RECTFMT_ARGB: d[0] = 0; d[1] = c >> 16; d[2] = c >> 8; d[3] = c; break;
-            case RECTFMT_LUT8: d[0] = pen; break;
-            default:           d[0] = (((c >> 16) & 255) * 77 + ((c >> 8) & 255) * 151 +
-                                       (c & 255) * 28) >> 8;
+            case RECTFMT_RGB:
+                for (x = 0; x < m; x++, d += 3) { d[0] = c[x] >> 16; d[1] = c[x] >> 8; d[2] = c[x]; }
+                break;
+            case RECTFMT_RGBA:
+                for (x = 0; x < m; x++, d += 4) { d[0] = c[x] >> 16; d[1] = c[x] >> 8; d[2] = c[x]; d[3] = 0; }
+                break;
+            case RECTFMT_ARGB:                 /* 0x00RRGGBB is already its layout */
+                CopyMem((APTR)c, d, (ULONG)m * 4);
+                d += (ULONG)m * 4;
+                break;
+            default:
+                for (x = 0; x < m; x++, d++)
+                    *d = (((c[x] >> 16) & 255) * 77 + ((c[x] >> 8) & 255) * 151 + (c[x] & 255) * 28) >> 8;
             }
         }
-        a->count += n;
     }
 }
 
@@ -290,17 +352,38 @@ static void fill_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
     WORD y, x, n = bx1 - bx0 + 1;
     UWORD v16 = rgb16(p->fmt, f->rgb >> 16, f->rgb >> 8, f->rgb);
     UBYTE v8 = f->invert ? 0 : nearest(p, f->rgb);
+    ULONG v32 = 0, m32 = p->fmt == PF_ARGB32 ? 0x00ffffff : 0xffffff00;
+    WORD m = n > 4096 ? 4096 : n;
 
+    /* 32-bit: a long a pixel, never read for a fill; inverting clears the
+     * unused byte as pf_put does. 24-bit: through rowbuf, a row's worth
+     * of the colour built once, and an inverted row read in one CopyMem. */
+    if (p->bpp == 4)
+        pf_put(p->fmt, f->rgb, (UBYTE *)&v32);
+    else if (p->bpp == 3 && !f->invert)
+        for (x = 0; x < m; x++)
+            pf_put(p->fmt, f->rgb, rowbuf + x * 3);
     for (y = by0; y <= by1; y++) {
         UBYTE *row = p->pix + (ULONG)y * p->bpr + bx0 * p->bpp;
         if (p->bpp == 2) {
             UWORD *w = (UWORD *)row;
             if (f->invert) for (x = 0; x < n; x++) w[x] ^= 0xffff;
             else           for (x = 0; x < n; x++) w[x] = v16;
-        } else if (p->bpp >= 3) {
-            UBYTE *dp = row;
-            for (x = 0; x < n; x++, dp += p->bpp)
-                pf_put(p->fmt, f->invert ? pf_get(p->fmt, dp) ^ 0xffffff : f->rgb, dp);
+        } else if (p->bpp == 4) {
+            ULONG *w = (ULONG *)row;
+            if (f->invert) for (x = 0; x < n; x++) w[x] = ~w[x] & m32;
+            else           for (x = 0; x < n; x++) w[x] = v32;
+        } else if (p->bpp == 3) {
+            WORD x0;
+            for (x0 = 0; x0 < n; x0 += m, row += (ULONG)m * 3) {
+                ULONG k = (ULONG)(n - x0 > m ? m : n - x0) * 3;
+                if (f->invert) {
+                    ULONG *l = (ULONG *)rowbuf;
+                    CopyMem(row, rowbuf, k);
+                    for (x = 0; x < (WORD)((k + 3) >> 2); x++) l[x] = ~l[x];
+                }
+                CopyMem(rowbuf, row, k);
+            }
         } else {
             if (f->invert) for (x = 0; x < n; x++) row[x] ^= 0xff;
             else           memset(row, v8, n);
@@ -593,8 +676,9 @@ static LONG C_ScalePixelArray(UBYTE *src __asm("a0"), UWORD sw __asm("d0"), UWOR
                               UWORD dh __asm("d6"), UBYTE fmt __asm("d7"))
 {
     UBYTE sb, *line;
-    UWORD x, y, *col;
-    LONG n = 0, last = -1;
+    UWORD x, *col;
+    ULONG y, y2;
+    LONG n = 0;
 
     LOG(F_ScalePixelArray, "ScalePixelArray %dx%d -> %dx%d fmt %u\n", sw, sh, dw, dh, fmt);
     if (!rp_ours(rp) || !src || !sw || !sh || !dw || !dh)
@@ -610,11 +694,15 @@ static LONG C_ScalePixelArray(UBYTE *src __asm("a0"), UWORD sw __asm("d0"), UWOR
     col = (UWORD *)(line + (((ULONG)dw * sb + 1) & ~1UL));
     for (x = 0; x < dw; x++)
         col[x] = (ULONG)x * sw / dw;
-    for (y = 0; y < dh; y++) {
-        LONG srow = (ULONG)y * sh / dh;
-        if (srow != last) {
-            const UBYTE *s = src + (ULONG)srow * smod;
-            last = srow;
+    /* the destination lines one source line fills are written in one call,
+     * the line repeated with a modulo of 0 (not a clip walk per line) */
+    for (y = 0; y < dh; y = y2) {
+        ULONG srow = y * sh / dh;
+        y2 = ((srow + 1) * dh + sh - 1) / sh;
+        if (y2 > dh)
+            y2 = dh;
+        {
+            const UBYTE *s = src + srow * smod;
             if (sb == 1) {
                 for (x = 0; x < dw; x++) line[x] = s[col[x]];
             } else if (sb == 2) {
@@ -629,7 +717,7 @@ static LONG C_ScalePixelArray(UBYTE *src __asm("a0"), UWORD sw __asm("d0"), UWOR
                 }
             }
         }
-        n += write_array(line, 0, 0, dw * sb, rp, dx, dy + y, dw, 1, fmt, NULL);
+        n += write_array(line, 0, 0, 0, rp, dx, dy + y, dw, y2 - y, fmt, NULL);
     }
     FreeVec(line);
     return n;

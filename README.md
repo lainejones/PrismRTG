@@ -541,6 +541,7 @@ finished `.info` files in `dist/`.
 | `cgxtest`, `arexxtest.rexx` | Checks of the CyberGraphX 43 calls (`MODEID=`) and of the ARexx port (`rx arexxtest.rexx`). |
 | `mirrortest`, `muitime` | A chipset screen with its own bitmap, drawn into the planes (`DEPTH= EHB SECS= MOVE=`), for MIRRORCHIPSET; the time MUI takes to open a busy window (`N=`). |
 | `PrismBench` | Benchmark and pixel-exactness checks: `MODEID=$7A00xxxx`, `LIST`. |
+| `cgxbench` | Times Fill/Invert/Write/Read/ScalePixelArray at 8, 16, 24 and 32 bits and prints checksums of a fixed sequence of them, to compare two builds: `DEPTH=n NOVERIFY NOBENCH`. |
 | `PrismTest` | A driver on its own, without PrismD: loads `BOARD=NAME` (any `.driver`), sets a mode, draws a pattern, checks the driver's fills and copies against the CPU (`BLIT`). |
 | `PrismScreen`, `PrismShow`, `PrismMouse`, `prismdiag` | Test clients: screens, pictures, pointer, display database dump. |
 | `ddcprobe`, `zztime`, `iotime`, `memwhere`, `p2peek` | Hardware probes and timing tools. |
