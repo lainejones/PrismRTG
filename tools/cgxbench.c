@@ -86,8 +86,8 @@ static void run(const char *name, testfn fn, LONG kpix)
     } while (el < f);
     {
         ULONG r10 = (ULONG)((double)n * f * 10 / el);
-        printf("  %-24s %6lu.%lu /s  (%lu Kpix/s)\n", name, r10 / 10, r10 % 10,
-               (ULONG)((double)n * f / el * kpix / 1000));
+        printf("  %-24s %6lu.%lu /s  (%lu Kpix/s)\n", name, (unsigned long)(r10 / 10), (unsigned long)(r10 % 10),
+               (unsigned long)((double)n * f / el * kpix / 1000));
     }
 }
 
@@ -107,7 +107,7 @@ static ULONG verify(struct RastPort *r, BOOL show)
 #define STEP(label) do { \
         ReadPixelArray(buf, 0, 0, raw, r, 0, 0, 300, 220, RECTFMT_RAW); \
         h = fnv(2166136261UL, buf, raw * 220); all = fnv(all, (UBYTE *)&h, 4); \
-        if (show) printf("    %-20s %08lx\n", label, h); } while (0)
+        if (show) printf("    %-20s %08lx\n", label, (unsigned long)h); } while (0)
 
     FillPixelArray(r, 0, 0, 300, 220, 0x00123456);
     STEP("fill");
@@ -136,7 +136,7 @@ static ULONG verify(struct RastPort *r, BOOL show)
         ReadPixelArray(buf, 1, 1, 300 * bpp, r, 3, 2, 290, 210, fmts[k]);
         h = fnv(2166136261UL, buf, 300 * bpp * 220);
         all = fnv(all, (UBYTE *)&h, 4);
-        if (show) printf("    read %-15s %08lx\n", fnames[k], h);
+        if (show) printf("    read %-15s %08lx\n", fnames[k], (unsigned long)h);
     }
     return all;
 #undef STEP
@@ -171,7 +171,10 @@ static void one_depth(LONG depth, BOOL doVerify, BOOL doBench)
     }
     w = OpenWindowTags(NULL, WA_CustomScreen, (ULONG)s, WA_Left, 0, WA_Top, 0, WA_Width, 640,
                        WA_Height, 480, WA_Borderless, TRUE, WA_SmartRefresh, TRUE, TAG_DONE);
-    if (w) {
+    if (w && GetCyberMapAttr(w->RPort->BitMap, CYBRMATTR_DEPTH) != depth) {
+        printf("cgxbench: no %ld-bit mode (got %lu bits) - skipped\n", (long)depth,
+               (unsigned long)GetCyberMapAttr(w->RPort->BitMap, CYBRMATTR_DEPTH));
+    } else if (w) {
         rp = w->RPort;
         printf("cgxbench: mode $%08lx, %ld bits, pixfmt %lu\n", (unsigned long)id, (long)depth,
                (unsigned long)GetCyberMapAttr(rp->BitMap, CYBRMATTR_PIXFMT));
@@ -211,8 +214,9 @@ static void one_depth(LONG depth, BOOL doVerify, BOOL doBench)
                 run(n, t_scale, SW * SH * 4);
             }
         }
-        CloseWindow(w);
     }
+    if (w)
+        CloseWindow(w);
     CloseScreen(s);
 }
 

@@ -189,10 +189,14 @@ static void row_to_deep(UBYTE fmt, const UBYTE *s, UBYTE sb, UBYTE ro, UBYTE go,
 /* 0x00RRGGBB as one 32-bit pixel, the unused byte 0 as pf_put leaves it */
 #define L32(F, c) ((F) == PF_ARGB32 ? (c) : (F) == PF_RGBA32 ? (c) << 8 : \
                    (((c) & 0xff) << 24) | (((c) & 0xff00) << 8) | (((c) >> 8) & 0xff00))
+/* from source bytes in the pixel's own byte order, shifting by 8 at a
+ * time (an immediate shift on the 68k; 16 and 24 are not) */
+#define B3(a, b, c) ((((ULONG)(a) << 8 | (b)) << 8) | (c))
+#define S32(F) ((F) == PF_ARGB32 ? B3(s[ro], s[go], s[bo]) : \
+                (F) == PF_RGBA32 ? B3(s[ro], s[go], s[bo]) << 8 : B3(s[bo], s[go], s[ro]) << 8)
 #define LL(F) case F: \
         if (tab) for (x = 0; x < n; x++) { ULONG c = tab[s[x]]; l[x] = L32(F, c); } \
-        else for (x = 0; x < n; x++, s += sb) { \
-            ULONG c = ((ULONG)s[ro] << 16) | ((ULONG)s[go] << 8) | s[bo]; l[x] = L32(F, c); } \
+        else for (x = 0; x < n; x++, s += sb) l[x] = S32(F); \
         break;
     if (fmt == PF_ARGB32 || fmt == PF_BGRA32 || fmt == PF_RGBA32) {
         ULONG *l = (ULONG *)d;
@@ -206,6 +210,8 @@ static void row_to_deep(UBYTE fmt, const UBYTE *s, UBYTE sb, UBYTE ro, UBYTE go,
         return;
     }
 #undef LL
+#undef S32
+#undef B3
 #undef L32
     switch (fmt) {
     LD(PF_RGB24, 3) LD(PF_BGR24, 3)
@@ -345,45 +351,62 @@ static LONG write_array(const UBYTE *src, WORD sx, WORD sy, LONG mod, struct Ras
 
 struct FillCtx { ULONG rgb; BOOL invert; };
 
+/* 24 and 32 bits, out of line so that fill_cb's 8- and 16-bit loops keep
+ * their registers. 32-bit: a long a pixel, never read for a fill;
+ * inverting clears the unused byte as pf_put does. 24-bit: through rowbuf,
+ * a row's worth of the colour built once, an inverted row read in one
+ * CopyMem. */
+static __attribute__((noinline)) void fill_deep(struct PBitMap *p, struct FillCtx *f,
+                                                WORD bx0, WORD by0, WORD by1, WORD n)
+{
+    WORD y, x, x0, m = n > 4096 ? 4096 : n;
+    ULONG v32 = 0, m32 = p->fmt == PF_ARGB32 ? 0x00ffffff : 0xffffff00;
+
+    if (p->bpp == 4)
+        pf_put(p->fmt, f->rgb, (UBYTE *)&v32);
+    else if (!f->invert)
+        for (x = 0; x < m; x++)
+            pf_put(p->fmt, f->rgb, rowbuf + x * 3);
+    for (y = by0; y <= by1; y++) {
+        UBYTE *row = p->pix + (ULONG)y * p->bpr + bx0 * p->bpp;
+        if (p->bpp == 4) {
+            ULONG *w = (ULONG *)row;
+            if (f->invert) for (x = 0; x < n; x++) w[x] = ~w[x] & m32;
+            else           for (x = 0; x < n; x++) w[x] = v32;
+            continue;
+        }
+        for (x0 = 0; x0 < n; x0 += m, row += (ULONG)m * 3) {
+            ULONG k = (ULONG)(n - x0 > m ? m : n - x0) * 3;
+            if (f->invert) {
+                ULONG *l = (ULONG *)rowbuf;
+                CopyMem(row, rowbuf, k);
+                for (x = 0; x < (WORD)((k + 3) >> 2); x++) l[x] = ~l[x];
+            }
+            CopyMem(rowbuf, row, k);
+        }
+    }
+}
+
 static void fill_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
                     WORD ox, WORD oy, void *ctx)
 {
     struct FillCtx *f = ctx;
     WORD y, x, n = bx1 - bx0 + 1;
-    UWORD v16 = rgb16(p->fmt, f->rgb >> 16, f->rgb >> 8, f->rgb);
-    UBYTE v8 = f->invert ? 0 : nearest(p, f->rgb);
-    ULONG v32 = 0, m32 = p->fmt == PF_ARGB32 ? 0x00ffffff : 0xffffff00;
-    WORD m = n > 4096 ? 4096 : n;
+    UWORD v16;
+    UBYTE v8;
 
-    /* 32-bit: a long a pixel, never read for a fill; inverting clears the
-     * unused byte as pf_put does. 24-bit: through rowbuf, a row's worth
-     * of the colour built once, and an inverted row read in one CopyMem. */
-    if (p->bpp == 4)
-        pf_put(p->fmt, f->rgb, (UBYTE *)&v32);
-    else if (p->bpp == 3 && !f->invert)
-        for (x = 0; x < m; x++)
-            pf_put(p->fmt, f->rgb, rowbuf + x * 3);
+    if (p->bpp >= 3) {
+        fill_deep(p, f, bx0, by0, by1, n);
+        return;
+    }
+    v16 = rgb16(p->fmt, f->rgb >> 16, f->rgb >> 8, f->rgb);
+    v8 = f->invert ? 0 : nearest(p, f->rgb);
     for (y = by0; y <= by1; y++) {
         UBYTE *row = p->pix + (ULONG)y * p->bpr + bx0 * p->bpp;
         if (p->bpp == 2) {
             UWORD *w = (UWORD *)row;
             if (f->invert) for (x = 0; x < n; x++) w[x] ^= 0xffff;
             else           for (x = 0; x < n; x++) w[x] = v16;
-        } else if (p->bpp == 4) {
-            ULONG *w = (ULONG *)row;
-            if (f->invert) for (x = 0; x < n; x++) w[x] = ~w[x] & m32;
-            else           for (x = 0; x < n; x++) w[x] = v32;
-        } else if (p->bpp == 3) {
-            WORD x0;
-            for (x0 = 0; x0 < n; x0 += m, row += (ULONG)m * 3) {
-                ULONG k = (ULONG)(n - x0 > m ? m : n - x0) * 3;
-                if (f->invert) {
-                    ULONG *l = (ULONG *)rowbuf;
-                    CopyMem(row, rowbuf, k);
-                    for (x = 0; x < (WORD)((k + 3) >> 2); x++) l[x] = ~l[x];
-                }
-                CopyMem(rowbuf, row, k);
-            }
         } else {
             if (f->invert) for (x = 0; x < n; x++) row[x] ^= 0xff;
             else           memset(row, v8, n);
