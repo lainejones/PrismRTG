@@ -588,6 +588,11 @@ noted in every commit. With thanks to:
   checks (#28).
 * **kadibamler** - found FS-UAE's 640x480 limit (#21) and the Workbench 3.2
   freeze on an icon dropped on the title bar (#22).
+* **solskogen** - the MINIMIG driver for the MiSTer Minimig-AGA core's RTG,
+  written and tested on a real MiSTer (#32), the boot failsafe report behind
+  1.4's quick-reboot fix, and the newer-NDK build fix (#26).
+* **codewiz** - found and fixed the low-memory read in the `FreeBitMap()` and `GetBitMapAttr()`
+  patches on a NULL bitmap that MuForce reported (#33, #34).
 * **Individual Computers**, **Alexander Kneer**, **Tobias Abt** and **Thomas
   Richter** - the P96 driver development headers in `src/p96sdk` (CC-BY),
   which the P96 card-driver adapter is built with.

@@ -45,6 +45,13 @@ Using it
   Programs that ask for CyberGraphX or for the Picasso96 API get PrismRTG's
   own built-in cybergraphics.library and Picasso96API.library.
 
+New in 1.4.1
+  The MiSTer Minimig-AGA core's RTG is a board of its own (MINIMIG.driver),
+  found and picked automatically; set the core's CPU to 68020 or 68030.
+  FreeBitMap(NULL), which programs may call, no longer reads low memory
+  (an Enforcer/MuForce hit from DOpus5, IPrefs and Pointer prefs).
+  Thanks to solskogen for the MiSTer driver and to codewiz for the fix.
+
 New in 1.4 (everything since 1.3.1, in short; the betas follow below)
   15-bit screen modes (thousands of colours as RGB555) on the ZZ9000,
   Z3660 and the Cirrus boards; off until you turn them on in PrismPrefs.
