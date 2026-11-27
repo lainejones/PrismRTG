@@ -3,7 +3,8 @@
 # Copyright (C) 2026 Laine Jones
 # Copyright (C) 2026 Stefan Reinauer
 # Stage the release drawer out/pkg/PrismRTG (+ PrismRTG.info) from out/ and
-# dist/. ./build.sh runs it last, after every program is built.
+# dist/. make runs it when one of them changed (keep the file list in step
+# with PKG_IN in the Makefile).
 #
 # The icons are the committed .info files in dist/, copied as they are; to
 # change one, edit the .info itself and commit it.
@@ -15,7 +16,7 @@ for driver in PICASSO2 ZZ9000 Z3660 P96 UAEGFX SAGA MINIMIG; do
     cp out/Drivers/$driver.driver $P/Drivers/
 done
 cp out/PrismD out/PrismPrefs out/PrismSetup out/PrismProbe out/PrismImport out/Picasso96API.library $P/
-# PrismUpdate is built only with the AmiSSL SDK headers (build.sh); a package
+# PrismUpdate is built only with the AmiSSL SDK headers (see the Makefile); a package
 # without it has no update check
 [ -f out/PrismUpdate ] && cp out/PrismUpdate $P/ || echo "mkpkg: no PrismUpdate in this package"
 cp out/PrismMon $P/Prism
@@ -33,4 +34,4 @@ cp dist/PrismRTG.guide.info $P/
 cp dist/Install_PrismRTG.info dist/Prism.info dist/PrismPrefs.info dist/PrismProbe.info dist/ReadMe.info $P/
 # the drawer's own icon goes BESIDE it, or Workbench doesn't show the drawer
 cp dist/PrismRTG.info out/pkg/
-ls -l $P
+echo "mkpkg: $(find $P -type f | wc -l) files in $P"

@@ -15,7 +15,7 @@
 
 The English text is the one in the source; the .cd carries it so a translator sees it. A text may
 hold %-formats; the translation must keep them in order."""
-import os, re, struct, sys
+import io, os, re, struct, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -24,6 +24,26 @@ IDS_H = os.path.join(ROOT, 'src', 'catalog_ids.h')
 VERSION = 1
 
 S_RE = re.compile(r'\bS\(\s*(ID_[A-Z0-9_]+)\s*,\s*((?:"(?:[^"\\]|\\.)*"\s*)+)\)')
+
+
+class Unchanged(io.StringIO):
+    """a file written only if its text changed, so make doesn't rebuild what includes it"""
+    def __init__(self, path):
+        super().__init__()
+        self.path = path
+
+    def __exit__(self, *exc):
+        if exc[0] is None:
+            text = self.getvalue()
+            try:
+                with open(self.path, encoding='latin-1', newline='') as f:
+                    same = f.read() == text
+            except OSError:
+                same = False
+            if not same:
+                with open(self.path, 'w', encoding='latin-1', newline='\n') as f:
+                    f.write(text)
+        return super().__exit__(*exc)
 
 
 def c_unescape(lit):
@@ -68,14 +88,14 @@ def cmd_ids(sources):
         if name not in numbers:
             numbers[name] = nxt; nxt += 1
     os.makedirs(os.path.dirname(CD), exist_ok=True)
-    with open(CD, 'w', encoding='latin-1', newline='\n') as f:
+    with Unchanged(CD) as f:
         f.write('; PrismRTG.cd - the texts of PrismRTG\'s tools, for translators (CatComp style).\n'
                 '; Written by tools/mkcatalog.py from the sources; the numbers never change.\n'
                 '; A translation is a .ct next to it: catalogs/deutsch.ct, compiled with mkcatalog.py --build.\n'
                 '## version %d\n' % VERSION)
         for name in sorted(found, key=lambda n: numbers[n]):
             f.write('%s (%d//)\n%s\n;\n' % (name, numbers[name], found[name]))
-    with open(IDS_H, 'w', encoding='latin-1', newline='\n') as f:
+    with Unchanged(IDS_H) as f:
         f.write('/* catalog_ids.h - written by tools/mkcatalog.py --ids; do not edit */\n'
                 '#ifndef PRISM_CATALOG_IDS_H\n#define PRISM_CATALOG_IDS_H\n')
         for name in sorted(found, key=lambda n: numbers[n]):

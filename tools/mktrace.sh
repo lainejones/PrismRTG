@@ -9,7 +9,7 @@
 # graphics.library vector as well (slow, and heavy on small stacks).
 # Run inside WSL.
 #
-# The source list is PrismD's line in build.sh (board drivers are loadable
+# The source list is PRISMD_SRC in the Makefile (board drivers are loadable
 # modules, not linked in); keep the two in step.
 set -e
 export PATH=/opt/amiga/bin:$PATH

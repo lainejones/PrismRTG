@@ -243,7 +243,7 @@ then finds the PRISM: modes and Workbench opens on whatever `ENVARC:Sys/ScreenMo
   falls back to a native mode by itself because the Prism ModeID isn't available.
 * **No board / no mode:** PrismD exits, the launcher times out (5 s), Intuition opens Workbench on
   the default native mode. Verified with `BOARD=ZZ9000` on the Picasso II box.
-* **Package:** `tools/mkpkg.sh` (run by build.sh) stages `out/pkg/Prism` + drawer icon: PrismD,
+* **Package:** `tools/mkpkg.sh` (run by make) stages `out/pkg/Prism` + drawer icon: PrismD,
   Prism (monitor), PrismPrefs, `Install` / `Uninstall` (AmigaDOS scripts, IconX icons), ReadMe.
   Install copies to C:, DEVS:Monitors, SYS:Prefs and writes a default `ENVARC:Prism.prefs` if there
   is none; Uninstall deletes them all.
