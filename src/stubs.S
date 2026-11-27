@@ -41,7 +41,6 @@ _stub_\name:
 | These variants look at the bitmap's flag byte first - Prism bitmaps have
 | bit 7 (BMF_PRISM) set - and go straight to the original function without
 | saving anything when it is clear. A set bit only means "ask the handler".
-| (A NULL pointer here reads low memory, harmlessly.)
 
 | RastPort in rp; tmp is any other address register
         .macro PATCH_RP name, rp, tmp
@@ -64,13 +63,17 @@ _stub_\name:
 3:      BODY \name
         .endm
 
-| BitMap in a0
+| BitMap in a0. NULL goes to the original without touching memory:
+| FreeBitMap(NULL) is legal, and reading its flags at address 4 is an
+| Enforcer/MuForce hit.
         .macro PATCH_BM name
         .globl _stub_\name
 _stub_\name:
+        tst.l   a0
+        beq.s   2f
         btst    #7,4(a0)
         bne.s   3f
-        move.l  _o_\name,-(sp)
+2:      move.l  _o_\name,-(sp)
         rts
 3:      BODY \name
         .endm
