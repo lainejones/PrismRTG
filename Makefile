@@ -185,6 +185,7 @@ LHA   = $(O)/PrismRTG-$(RELEASE).lha
 
 # what tools/mkpkg.sh and tools/mkcheck.sh copy from out/; keep in step
 PKG_IN   = PrismD PrismPrefs PrismSetup PrismProbe PrismImport Picasso96API.library PrismMon \
+           PrismBench PrismTest \
            $(if $(HAVE_AMISSL),PrismUpdate) \
            $(foreach d,PICASSO2 ZZ9000 Z3660 P96 UAEGFX SAGA MINIMIG,Drivers/$(d).driver)
 CHECK_IN = tmpltest p96test vramcheck PrismBench PrismProbe PrismTest prismdiag lastalert prismstate

@@ -383,6 +383,9 @@ files keep their short names (`PrismD`, `PrismPrefs`, the monitor file
 | `LIBS:Picasso96API.library` | a small stub for programs that look for the file; the library itself is built into PrismD |
 | `ENVARC:Prism.prefs` | the settings (plain text) |
 
+`PrismBench` and `PrismTest` are in the drawer (and on the floppy) but not
+installed; run them from there in a Shell.
+
 If the screen stays dark: hold the left mouse button during boot, then use
 PrismPrefs to switch a mode off, change its refresh rate or turn the
 blitter off.

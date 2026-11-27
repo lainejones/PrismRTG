@@ -20,6 +20,9 @@ cp out/PrismD out/PrismPrefs out/PrismSetup out/PrismProbe out/PrismImport out/P
 # without it has no update check
 [ -f out/PrismUpdate ] && cp out/PrismUpdate $P/ || echo "mkpkg: no PrismUpdate in this package"
 cp out/PrismMon $P/Prism
+# run from the floppy or the unpacked archive, not installed: the benchmark
+# and pixel check, and a driver tried on its own without PrismD
+cp out/PrismBench out/PrismTest $P/
 # translations: every catalogs/<language>.ct becomes Catalogs/<language>/PrismRTG.catalog
 for ct in catalogs/*.ct; do
     [ -f "$ct" ] || continue
