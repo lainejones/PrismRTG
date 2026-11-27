@@ -41,6 +41,9 @@ static void report(const char *what, ULONG t)
     printf("  %-34s %5lu ns\n", what, (unsigned long)ns);
 }
 
+/* the loops add into this so the compiler keeps them */
+static volatile ULONG sink;
+
 int main(void)
 {
     struct ConfigDev *regs, *mem;
@@ -49,7 +52,6 @@ int main(void)
     struct SignalSemaphore sem;
     volatile UBYTE *r, *v;
     volatile ULONG *chip, *fast;
-    volatile ULONG sink = 0;
     ULONG i, t0, t;
     UBYTE a, b;
 

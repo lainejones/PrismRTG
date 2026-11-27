@@ -103,12 +103,15 @@ static BOOL default_checkMode(struct PrismBoard *b, struct PrismMode *m)
 }
 static void default_setPalette(struct PrismBoard *b, UWORD first, UWORD count, const UBYTE *rgb)
 {
+    (void)b; (void)first; (void)count; (void)rgb;
 }
 static void default_setSwitch(struct PrismBoard *b, BOOL rtg)
 {
+    (void)b; (void)rtg;
 }
 static void default_nothing(struct PrismBoard *b)
 {
+    (void)b;
 }
 void board_defaults(struct PrismBoard *b)
 {

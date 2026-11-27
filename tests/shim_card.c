@@ -15,6 +15,7 @@
 #include <exec/libraries.h>
 #include <exec/resident.h>
 #include <exec/initializers.h>
+#include <dos/dos.h>
 #include <proto/exec.h>
 #include "p96sdk/boardinfo.h"
 #include "cardcall.h"

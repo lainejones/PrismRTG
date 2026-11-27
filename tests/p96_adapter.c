@@ -205,7 +205,7 @@ static void test_template(void)
 
 static void test_modes(void)
 {
-    struct PrismMode m = { 640, 480, PF_CLUT8, 60, 0 };
+    struct PrismMode m = { 640, 480, PF_CLUT8, 60, 0, 0 };
     UBYTE rgb[] = { 10, 20, 30, 99, 99, 99 };
     assert(b.checkMode(&b, &m));
     assert(m.bytesPerRow == 640 && m.refresh == 60);
@@ -378,7 +378,7 @@ static void test_prefs_sizes(void)
     p.bi.MemorySize = 16 * 1024 * 1024;
     p.bi.MaxBMWidth = 4096; p.bi.MaxBMHeight = 4096;
     for (i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++) {
-        struct PrismMode m = { sizes[i][0], sizes[i][1], PF_CLUT8, 0, 0 };
+        struct PrismMode m = { sizes[i][0], sizes[i][1], PF_CLUT8, 0, 0, 0 };
         if (!b.checkMode(&b, &m)) {
             printf("no P96 timing for %ux%u\n", sizes[i][0], sizes[i][1]);
             assert(0);

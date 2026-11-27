@@ -353,7 +353,11 @@ static void refresh_progs(struct Gui *g)
 
 static void set_status(struct Gui *g, const char *s)
 {
-    strncpy(g->status, s, sizeof(g->status) - 1);
+    size_t n = strlen(s);
+    if (n > sizeof(g->status) - 1)
+        n = sizeof(g->status) - 1;
+    memcpy(g->status, s, n);
+    g->status[n] = 0;
     if (g->win && g->gStatus)
         GT_SetGadgetAttrs(g->gStatus, g->win, NULL, GTTX_Text, (ULONG)g->status, TAG_END);
 }
@@ -507,8 +511,10 @@ static BOOL last_start(char *why, int len)
         while (n && (t[n - 1] == '\n' || t[n - 1] == '\r'))
             t[--n] = 0;
         strcpy(prev, why);
-        strncpy(why, t, len - 1);
-        why[len - 1] = 0;
+        if (n > len - 1)
+            n = len - 1;
+        memcpy(why, t, n);
+        why[n] = 0;
     }
     Close(f);
     if (!strcmp(why, "no supported board") && prev[0] && !strstr(prev, "no supported board"))

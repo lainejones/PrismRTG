@@ -234,8 +234,8 @@ int main(void)
     if (!ps->screenInfo(s, &si)) {
         /* a chipset mode (or one PrismD declined to promote): keep it open
          * for the time asked so a test can see where it went */
-        printf("PrismScreen: not a Prism screen (mode $%08lx on the chipset), held %d s\n",
-               (unsigned long)GetVPModeID(&s->ViewPort), secs);
+        printf("PrismScreen: not a Prism screen (mode $%08lx on the chipset), held %lu s\n",
+               (unsigned long)GetVPModeID(&s->ViewPort), (unsigned long)secs);
         Delay(secs * 50);
         CloseScreen(s);
         rc = 0;

@@ -404,6 +404,7 @@ BOOL p96_pip_rows(struct Screen *,WORD screenTop,WORD *y0,WORD *y1);
 BOOL p96_pip_volatile(struct Screen *);
 extern ULONG pipGen;                    /* bumped when a PIP opens, closes or changes */
 /* cgxvideo.library's video layers ride on the PIPs (p96.c) */
+struct Window;
 APTR p96_pip_attach(struct Window *w, struct PBitMap *source, UWORD sw, UWORD sh, LONG left, LONG top, LONG right, LONG bottom, LONG keyPen);
 void p96_pip_hw_tick(void);   /* once a frame: layers on a board's overlay follow their windows */
 void p96_pip_window_gone(struct Window *w);   /* CloseWindow: its PIPs leave the list */

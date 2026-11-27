@@ -568,8 +568,9 @@ static __attribute__((noinline)) BOOL blit_vram(struct PBitMap *p, WORD sx, WORD
  * a drawer were most of the 3.3 s it took on the A2000 (2026-10-20). */
 static UBYTE pbRow[MAXW / 8 + 4];
 
-static void planar_blit(struct BitMap *sb, WORD sx, WORD sy, struct BitMap *db, WORD dx, WORD dy,
-                        WORD w, WORD h, UBYTE mt, UBYTE mask)
+static __attribute__((noinline)) void planar_blit(struct BitMap *sb, WORD sx, WORD sy,
+                                                  struct BitMap *db, WORD dx, WORD dy,
+                                                  WORD w, WORD h, UBYTE mt, UBYTE mask)
 {
     UBYTE m80 = (mt & 0x80) ? 0xff : 0, m40 = (mt & 0x40) ? 0xff : 0;
     UBYTE m20 = (mt & 0x20) ? 0xff : 0, m10 = (mt & 0x10) ? 0xff : 0;
@@ -579,6 +580,8 @@ static void planar_blit(struct BitMap *sb, WORD sx, WORD sy, struct BitMap *db, 
     WORD sbpr = sb->BytesPerRow, y, y0, y1, step, k;
     UBYTE pl;
 
+    if (w <= 0 || h <= 0 || nb <= 0)
+        return;
     if (nb == 1)
         lmask &= rmask;
     if (sb == db && dy > sy) { y0 = h - 1; y1 = -1; step = -1; }
