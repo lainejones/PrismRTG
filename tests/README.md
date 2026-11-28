@@ -4,6 +4,7 @@
 
 Inside WSL, from the repository root:
 
+    make check                    # architecture.sh, catalog.sh and guide.sh
     sh tests/architecture.sh      # whole host suite (runs p96-adapter.sh too)
     sh tests/p96-adapter.sh       # the P96 adapter fixture on its own
 

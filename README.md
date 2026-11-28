@@ -383,6 +383,9 @@ files keep their short names (`PrismD`, `PrismPrefs`, the monitor file
 | `LIBS:Picasso96API.library` | a small stub for programs that look for the file; the library itself is built into PrismD |
 | `ENVARC:Prism.prefs` | the settings (plain text) |
 
+`PrismBench` and `PrismTest` are in the drawer (and on the floppy) but not
+installed; run them from there in a Shell.
+
 If the screen stays dark: hold the left mouse button during boot, then use
 PrismPrefs to switch a mode off, change its refresh rate or turn the
 blitter off.
@@ -522,12 +525,14 @@ the form asks for the card and what happens.
 Needs amiga-gcc (Bebbo) under WSL or Linux:
 
 ```sh
-./build.sh
+make -j$(nproc)
 ```
 
-Output goes to `out/`, the release drawer to `out/pkg/PrismRTG`.
-`./build.sh` packages last, after every program is built. The icons are
-finished `.info` files in `dist/`.
+(`./build.sh` does the same.) Output goes to `out/`, the release drawer to
+`out/pkg/PrismRTG`. `make drivers` builds only the board drivers, `make floppy`
+and `make package` the release's `.adf` and `.lha` in `out/`, `make check` runs
+the host tests, `make clean` removes `out/`. The drawers are restaged
+when anything in them changed. The icons are finished `.info` files in `dist/`.
 
 | Tool | What it does |
 |---|---|

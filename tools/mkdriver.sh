@@ -22,6 +22,6 @@ CFLAGS=${CFLAGS:-"-DPRISM_DEBUG -O2 -fno-tree-loop-distribute-patterns -m68020-6
 GC="-ffunction-sections -fdata-sections -Wl,--gc-sections"
 OUT=${OUT:-out/Drivers}
 mkdir -p "$OUT"
-# Strip at link time with -s, never with m68k-amigaos-strip (see build.sh).
+# Strip at link time with -s, never with m68k-amigaos-strip (see the Makefile).
 $CC $CFLAGS $GC ${DRIVER_CFLAGS:-} -s -DPRISM_DRIVER_MODULE -DDRIVER_NAME="\"$NAME\"" \
     -o "$OUT/$NAME.driver" src/driver_module.c "$@" src/boardops.c

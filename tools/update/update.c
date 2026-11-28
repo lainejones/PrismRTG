@@ -555,9 +555,8 @@ static BOOL forge_base(const char *mirror, char *base, int n)
     for (p = u.path; *p; p++)
         if (*p == '/' && p[1] && p[1] != '/')
             parts++;
-    if (parts != 2 || strlen(mirror) + 32 > (size_t)n)
+    if (parts != 2 || snprintf(base, n, "https://%s/api/v1/repos%s", u.host, u.path) >= n)
         return FALSE;
-    sprintf(base, "https://%s/api/v1/repos%s", u.host, u.path);
     if (base[strlen(base) - 1] == '/')
         base[strlen(base) - 1] = 0;
     return TRUE;

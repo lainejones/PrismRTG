@@ -1946,7 +1946,7 @@ static void line_solid(struct PBitMap *p, struct LineCtx *l, WORD bx0, WORD by0,
          * drawLine hook was offered the line already: line_direct) */
         /* (only a board with a line op pays for the call; the rest of the
          * board tests are line_hw's. The line loss once put down to register
-         * pressure here was libnix's memset - see build.sh) */
+         * pressure here was libnix's memset - see the Makefile) */
         if (p->inVram && b != 3 && (dx > 40 || dy > 40) && BOARD_CAN(p->bd, line) && line_hw(p, x, y, x1, y1, pen))
             return;
         line_fast(p, l, ox, oy, pen);

@@ -109,7 +109,7 @@ output handle that the child may still use.
 
 ## Packaging and development
 
-`build.sh` builds the four modules into `out/Drivers`. `tools/mkpkg.sh` includes
+The Makefile builds the four modules into `out/Drivers`. `tools/mkpkg.sh` includes
 them in the release drawer; the installer copies them to `LIBS:Prism`.
 Uninstall removes only the four supplied module files and removes the
 drawer only when it is empty. PrismCheck and its tools remain separate.

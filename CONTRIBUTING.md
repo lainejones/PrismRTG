@@ -25,7 +25,7 @@ descriptions, behaviour measured on the card. Notes on each card live in
 
 ## Testing
 
-* `./build.sh` under WSL with amiga-gcc builds everything and stages the
+* `make` (or `./build.sh`) under WSL with amiga-gcc builds everything and stages the
   package in `out/pkg/Prism`.
 * `PrismBench MODEID=$7A00xxxx` on a PrismRTG screen must report 0 wrong for
   every exactness check (planar blit, line, text, fill) at 8, 16 and

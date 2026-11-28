@@ -39,6 +39,9 @@ What goes where
   DEVS:Monitors/Prism    starts PrismD before Workbench opens
   SYS:Prefs/PrismPrefs   modes, refresh rates, board, blitter, palette, log
   ENVARC:Prism.prefs     the settings
+  PrismBench, PrismTest  stay in this drawer (Shell): PrismBench measures
+                         and checks every pixel (MODEID=$7A00xxxx, LIST);
+                         PrismTest tries a driver on its own (BOARD=NAME)
 
 Using it
   Reboot, open Prefs/ScreenMode and choose a PRISM: mode (8bit or 16bit).

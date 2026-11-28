@@ -1,4 +1,4 @@
-# build output (rebuild with build.sh)
+# build output (rebuild with make)
 out/
 
 *.bak

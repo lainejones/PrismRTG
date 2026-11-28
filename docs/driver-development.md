@@ -394,8 +394,8 @@ in the file header.
 1. `src/drv_<name>.c` (and headers), with a header comment: the board,
    the chip, what works, what is not implemented, where the register
    facts came from, your name.
-2. The build line: `sh tools/mkdriver.sh NAME src/drv_name.c` added to
-   `build.sh` under "Loadable board drivers", and `NAME` in the driver
+2. The build line: `$(eval $(call driver,NAME,src/drv_name.c))` added to
+   the `Makefile` under "loadable board drivers", and `NAME` in the driver
    list in `tools/mkpkg.sh` so the package carries it.
 3. Detection: the board's autoconfig manufacturer/product in
    `tools/prismsetup.c` (`DETECT`, the installer's greeting and the
@@ -427,7 +427,7 @@ checklist for drivers written here):
       if supplied
 - [ ] run the ladder in an emulator where one exists; on hardware where
       it is here (A2000 GBAPII++, A4000 ZZ9000)
-- [ ] `build.sh`, `mkpkg.sh`, `prismsetup.c`, `prismprobe.c`, the
+- [ ] `Makefile`, `mkpkg.sh`, `prismsetup.c`, `prismprobe.c`, the
       installer's card list, README table, `dist/ReadMe`, this document's
       "two kinds" if it is a new kind
 - [ ] version string in the driver's `$VER` is the release's

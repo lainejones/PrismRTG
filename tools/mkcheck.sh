@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Laine Jones
 # Stage the PrismCheck drawer (out/pkg-check/PrismCheck + PrismCheck.info) from
-# out/ and dist/check/. ./build.sh runs it after mkpkg.sh.
+# out/ and dist/check/. make runs it when one of them changed (keep the tool
+# list in step with CHECK_IN in the Makefile).
 set -e
 O=out/pkg-check
 P=$O/PrismCheck
@@ -15,4 +16,4 @@ cp dist/check/PrismCheck-drawer.info $O/PrismCheck.info
 for t in tmpltest p96test vramcheck PrismBench PrismProbe PrismTest prismdiag lastalert prismstate; do
     cp out/$t $P/Tools/
 done
-ls -l $P $P/Tools
+echo "mkcheck: $(find $P -type f | wc -l) files in $P"
