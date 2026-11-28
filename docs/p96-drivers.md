@@ -127,7 +127,8 @@ files and arbitrary user-defined timings are not imported. External
 drivers must provide a pixel-clock resolver; large clock deviations are
 rejected.
 
-Hardware cursor input is limited to 32x48 pixels. When the driver has no
+Hardware cursor input is limited to 32x48 pixels (16x16 on Vampire); a
+bigger pointer is drawn by the software pointer. When the driver has no
 sprite hooks, or its `EnableSoftSprite` asks for a software sprite in the
 current mode, the core draws a software pointer into the shown bitmap;
 `SOFTWAREPOINTER=ON` forces it over a non-working hardware sprite.
