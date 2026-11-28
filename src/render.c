@@ -733,7 +733,9 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
         const ULONG *ptab = s->rgbTab ? s->rgbTab : d->rgbTab;
         if (s->bpp <= 1 && d->bpp >= 3) {
             /* pens (planar or chunky) into true colour: each pen's pixel
-             * bytes worked out once per blit */
+             * bytes worked out once per blit. The plane mask selects
+             * source planes: the others come out 0, as true colour has no
+             * destination pen to keep them from. */
             static UBYTE penPx[256][4], penOk[256];
             static ULONG penL[256];
             UBYTE b = d->bpp;
@@ -746,7 +748,7 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
                     WORD x;
                     surf_read(s, sx, sy + y, w, rowA);
                     for (x = 0; x < w; x++) {
-                        UBYTE pen = rowA[x];
+                        UBYTE pen = rowA[x] & mask;
                         if (!penOk[pen]) {
                             pf_put(d->fmt, pen_rgb(ptab, pen), (UBYTE *)&penL[pen]);
                             penOk[pen] = 1;
@@ -761,7 +763,7 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
                 WORD x;
                 surf_read(s, sx, sy + y, w, rowA);
                 for (x = 0; x < w; x++, dp += b) {
-                    UBYTE pen = rowA[x], *e = penPx[pen];
+                    UBYTE pen = rowA[x] & mask, *e = penPx[pen];
                     if (!penOk[pen]) {
                         pf_put(d->fmt, pen_rgb(ptab, pen), e);
                         penOk[pen] = 1;
@@ -820,6 +822,11 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
             if (hi == 0x00 || hi == 0xf0) {
                 UWORD v = d->penTab ? d->penTab[hi ? mask : 0] : 0;
                 for (x = 0; x < w; x++) drow[x] = v;
+            } else if (copy && s->bpp <= 1 && mask != 0xff) {
+                /* pens through the plane mask, as into true colour */
+                surf_read(s, sx, sy + y, w, rowA);
+                for (x = 0; x < w; x++)
+                    drow[x] = d->penTab ? d->penTab[rowA[x] & mask] : 0;
             } else if (copy) {
                 surf_read16(s, sx, sy + y, w, drow, d->penTab, d->fmt);
             } else if (s->bpp != 2) {
@@ -852,6 +859,13 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
         } else {
             surf_read(d, dx, dy + y, w, rowB);
             combine2(rowA, rowB, rowC, w, mt);
+            if (d->bpp >= 3 && mask != 0xff) {
+                /* true colour is written whole: the planes outside the
+                 * mask keep the destination's pen here, as at 16 bit */
+                WORD x;
+                for (x = 0; x < w; x++)
+                    rowC[x] = (rowC[x] & mask) | (rowB[x] & ~mask);
+            }
             surf_write(d, dx, dy + y, w, rowC, mask);
         }
     }
