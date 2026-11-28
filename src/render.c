@@ -673,6 +673,19 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
         pbm_hw_rop(s->p, d->p, sx, sy, dx, dy, w, h, mt) == PR_DONE)
         return;
 
+    /* NOT destination (0x50) reads no source: in 24/32-bit it inverts the
+     * colour bits, as COMPLEMENT does there, not the nearest pen (a pen
+     * source took the path below, the destination read back as pens). */
+    if ((mt & 0xf0) == 0x50 && d->pix && d->bpp >= 3) {
+        for (y = 0; y < h; y++) {
+            UBYTE *dp = d->pix + (ULONG)(dy + y) * d->bpr + (ULONG)dx * d->bpp;
+            WORD x;
+            for (x = 0; x < w; x++, dp += d->bpp)
+                pf_put(d->fmt, pf_get(d->fmt, dp) ^ 0xffffff, dp);
+        }
+        return;
+    }
+
     if (!s->pix && d->p && (d->bpp!=2 || d->penTab)) {
         struct PrismPlanar source = { s->bm, s->rgbTab ? s->rgbTab : d->rgbTab, d->penTab };
         if (pbm_hw_planar(&source,d->p,sx,sy,dx,dy,w,h,mt,mask) != PR_DECLINED)
