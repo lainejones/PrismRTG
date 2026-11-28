@@ -835,6 +835,8 @@ static BOOL attach_board(struct P96Priv *p, struct PrismBoard *b)
         bi->SetSpriteColor && bi->SetSpritePosition) {
         b->cursorImage = p96_cursor_image; b->cursorShow = p96_cursor_show;
         b->cursorMove = p96_cursor_move;
+        b->cursorW = p->vampire ? 16 : 32;  /* a bigger pointer goes to the software one */
+        b->cursorH = p->vampire ? 16 : 48;
         b->flags |= PBF_HW_CURSOR;
     } else {
         puts("PrismD: P96 driver has no usable hardware cursor");

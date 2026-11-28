@@ -54,8 +54,9 @@ Host blits complete synchronously. Vblank waits use graphics.library's
 WaitTOF; UAE's card WaitVerticalSync entry point is a no-op.
 
 UAE RTG memory is linear, so bitmaps use direct VRAM pointers; this driver
-does not use shadow mode. The hardware cursor is limited to 32x48 pixels
-and is used when WinUAE or Amiberry provides one. Without it, for example
+does not use shadow mode. The hardware cursor takes pointers up to 32x64
+pixels and is used when WinUAE or Amiberry provides one; a wider pointer is
+drawn by the software pointer. Without it, for example
 with WinUAE's hardware sprite turned off or in the libretro build, Prism
 draws its software pointer into the shown bitmap. The experimental
 compositor (#10) supplies vertical RTG screen dragging (`DRAGGING=ON`) and

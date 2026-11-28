@@ -41,6 +41,11 @@ _Static_assert(offsetof(struct BitMapExtra, Height) == 42, "UAE panning ABI");
 /* Shared with the generic adapter: either path may claim UAE, never both. */
 #define UAE_OWNER "prism.p96.card"
 
+/* UAE's sprite source is 32 pixels wide (HIRESSPRITE, two words per plane);
+ * WinUAE and Amiberry read up to 64 lines of it */
+#define UAE_CURSOR_W 32
+#define UAE_CURSOR_H CURSOR_SIZE
+
 struct UAEPriv {
     struct BoardInfo bi;
     struct ModeInfo mode;
@@ -49,7 +54,7 @@ struct UAEPriv {
     struct SignalSemaphore owner;
     STRPTR tooltypes[1];
     UBYTE pf[5];
-    UWORD sprite[4 + 48 * 4];
+    UWORD sprite[4 + UAE_CURSOR_H * 4];
     BOOL initialized, modeSet;
 };
 static struct UAEPriv *resident;
@@ -248,9 +253,9 @@ static void uae_cursor_image(struct PrismBoard *b, const UBYTE *img, const UBYTE
     struct BoardInfo *bi = &p->bi;
     UWORD x, y;
     bi->Flags = (bi->Flags & ~BIF_BIGSPRITE) | BIF_HIRESSPRITE;
-    bi->MouseWidth = 32; bi->MouseHeight = 48;
+    bi->MouseWidth = UAE_CURSOR_W; bi->MouseHeight = UAE_CURSOR_H;
     memset(p->sprite, 0, sizeof(p->sprite));
-    for (y = 0; y < 48; y++) for (x = 0; x < 32; x++) {
+    for (y = 0; y < UAE_CURSOR_H; y++) for (x = 0; x < UAE_CURSOR_W; x++) {
         UBYTE pen = img[y*CURSOR_SIZE+x];
         if (pen & 1) p->sprite[4+4*y+x/16] |= 0x8000 >> (x & 15);
         if (pen & 2) p->sprite[6+4*y+x/16] |= 0x8000 >> (x & 15);
@@ -394,6 +399,7 @@ BOOL UAEGFX_Probe(struct PrismBoard *b)
         bi->SetSpritePosition && bi->SetSpriteColor) {
         b->cursorImage = uae_cursor_image; b->cursorShow = uae_cursor_show;
         b->cursorMove = uae_cursor_move; b->flags |= PBF_HW_CURSOR;
+        b->cursorW = UAE_CURSOR_W; b->cursorH = UAE_CURSOR_H;
     } else puts("PrismD: UAE has no hardware cursor; using software pointer");
     return TRUE;
 }
