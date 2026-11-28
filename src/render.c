@@ -1773,6 +1773,7 @@ struct LineCtx {
     struct RastPort *rp;
     WORD x0, y0, x1, y1;         /* rp coordinates                         */
     UWORD ptrn;
+    BOOL skipFirst;              /* (x0,y0) was the previous line's end    */
 };
 
 /* A solid line that lies wholly inside one piece (the usual case): no
@@ -2095,7 +2096,7 @@ static void line_cb(struct PBitMap *p, WORD bx0, WORD by0, WORD bx1, WORD by1,
     err = dx2 - dy2 + (dx > dy ? -1 : dx < dy ? 1 : 0);   /* see line_solid */
     for (;;) {
         WORD px = x + ox, py = y + oy;
-        if (px >= bx0 && px <= bx1 && py >= by0 && py <= by1) {
+        if (px >= bx0 && px <= bx1 && py >= by0 && py <= by1 && !(n == 0 && l->skipFirst)) {
             UBYTE pen = 0;
             BOOL bit = (l->ptrn >> (15 - (n & 15))) & 1;
             UBYTE op = rule(rp->DrawMode, bit, fg, bg, &pen);
@@ -2118,6 +2119,11 @@ static void do_draw(struct RastPort *rp, WORD x1, WORD y1)
     l.rp = rp;
     l.x0 = x0; l.y0 = y0; l.x1 = x1; l.y1 = y1;
     l.ptrn = rp->LinePtrn;
+    /* Move() sets FRST_DOT and every Draw() clears it, so a polyline draws
+     * each vertex once, with the segment that ends there. Only COMPLEMENT
+     * can tell: drawn twice, a vertex flips back to the background. */
+    l.skipFirst = !(rp->Flags & FRST_DOT) && (rp->DrawMode & COMPLEMENT);
+    rp->Flags &= ~FRST_DOT;
     if (l.ptrn == 0xffff && (x0 == x1 || y0 == y1) && !(rp->DrawMode & (COMPLEMENT | INVERSVID))) {
         /* solid horizontal/vertical: a 1-pixel fill */
         struct PenCtx c;
