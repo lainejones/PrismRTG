@@ -230,7 +230,7 @@ enum PrismResult rtg_planar(struct PrismBoard *b,const struct PrismPlanar *s,
     struct BoardInfo *bi=b->priv;struct RenderInfo ri;
     /* Serialized by the board lock; keep 1 KB off application task stacks. */
     static struct ColorIndexMapping cim;
-    UWORD i;
+    UWORD i,n;
     if((ULONG)sx+w>32768 || (ULONG)sy+h>32768 ||
        (b->flags & PBF_BANKED) || (bi->Flags & BIF_NOBLITTER) || !bi->WaitBlitter || (mt & 0xf0)!=0xc0 || mask!=255 || !rtg_render(b,d,&ri)) return PR_DECLINED;
     if(d->bpp==1) {
@@ -249,8 +249,11 @@ enum PrismResult rtg_planar(struct PrismBoard *b,const struct PrismPlanar *s,
                 bi->BlitPlanar2Direct=rtg_planar_direct;
         }
         cim.ColorMask=d->bpp==2 ? 0xffff : 0xffffffff;
-        for(i=0;i<256;i++) cim.Colors[i]=d->bpp==2 && s->pens16 ? s->pens16[i] :
-            rtg_colour(d->format,s->colours ? s->colours[i] : i*0x010101UL);
+        /* a bitmap of Depth planes indexes only the first 1<<Depth pens */
+        n=s->bitmap->Depth>=8 ? 256 : 1U<<s->bitmap->Depth;
+        if(d->bpp==2 && s->pens16) for(i=0;i<n;i++) cim.Colors[i]=s->pens16[i];
+        else if(s->colours) for(i=0;i<n;i++) cim.Colors[i]=rtg_colour(d->format,s->colours[i]);
+        else for(i=0;i<n;i++) cim.Colors[i]=rtg_colour(d->format,i*0x010101UL);
         bi->BlitPlanar2Direct(bi,(struct BitMap *)s->bitmap,&ri,&cim,sx,sy,dx,dy,w,h,12,mask);
     }
     rtg_wait(bi);return PR_DONE;
