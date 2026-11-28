@@ -676,7 +676,7 @@ static void blit(struct Surf *s, WORD sx, WORD sy, struct Surf *d, WORD dx, WORD
     /* NOT destination (0x50) reads no source: in 24/32-bit it inverts the
      * colour bits, as COMPLEMENT does there, not the nearest pen (a pen
      * source took the path below, the destination read back as pens). */
-    if ((mt & 0xf0) == 0x50 && d->pix && d->bpp >= 3) {
+    if ((mt & 0xf0) == 0x50 && s->bpp <= 1 && d->pix && d->bpp >= 3) {
         for (y = 0; y < h; y++) {
             UBYTE *dp = d->pix + (ULONG)(dy + y) * d->bpr + (ULONG)dx * d->bpp;
             WORD x;
