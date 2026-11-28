@@ -1386,6 +1386,13 @@ static void do_rectfill(struct RastPort *rp, WORD x0, WORD y0, WORD x1, WORD y1,
     f.tmaskBPR = tbpr;
     f.tx = x0;
     f.ty = y0;
+    /* Under JAM2 | COMPLEMENT a fill inverts the whole area: the pattern
+     * and INVERSVID decide something only with JAM1. A template differs,
+     * inverting just its set bits, so this must not go to blt_template. */
+    if ((f.dm & (JAM2 | COMPLEMENT)) == (JAM2 | COMPLEMENT)) {
+        f.solid = TRUE;
+        f.dm = COMPLEMENT;
+    }
     /* An area pattern with no mask is a 1-bit template: the pattern's
      * rows, repeated across and down. It goes the way text does - whole
      * rows, on the blitter where the board has one - in bands of a few
